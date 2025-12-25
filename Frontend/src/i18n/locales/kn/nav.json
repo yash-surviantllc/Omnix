@@ -1,0 +1,12 @@
+{
+  "dashboard": "ಡ್ಯಾಶ್‌ಬೋರ್ಡ್",
+  "orders": "ಉತ್ಪಾದನಾ ಆದೇಶಗಳು",
+  "bom": "BOM ಯೋಜಕ",
+  "wip": "WIP ಬೋರ್ಡ್",
+  "transfer": "ವಸ್ತು ವರ್ಗಾವಣೆ",
+  "materialRequest": "ವಸ್ತು ಅನುರೋಧ",
+  "qc": "QC ಪರಿಶೀಲನೆ",
+  "inventory": "ದಾಸ್ತಾನು",
+  "gateEntry": "ಗೇಟ್ ಪ್ರವೇಶ",
+  "gateExit": "ಗೇಟ್ ನಿರ್ಗಮನ"
+}

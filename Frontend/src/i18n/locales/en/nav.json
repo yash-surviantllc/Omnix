@@ -1,0 +1,12 @@
+{
+  "dashboard": "Dashboard",
+  "orders": "Production Orders",
+  "bom": "BOM Planner",
+  "wip": "WIP Board",
+  "transfer": "Material Transfer",
+  "materialRequest": "Material Request",
+  "qc": "QC Check",
+  "inventory": "Inventory",
+  "gateEntry": "Gate Entry",
+  "gateExit": "Gate Exit"
+}

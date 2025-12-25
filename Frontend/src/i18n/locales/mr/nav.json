@@ -1,0 +1,12 @@
+{
+  "dashboard": "डॅशबोर्ड",
+  "orders": "उत्पादन ऑर्डर",
+  "bom": "BOM प्लॅनर",
+  "wip": "WIP बोर्ड",
+  "transfer": "मटेरियल ट्रान्सफर",
+  "materialRequest": "मटेरियल विनंती",
+  "qc": "QC तपासणी",
+  "inventory": "इन्व्हेंटरी",
+  "gateEntry": "गेट एंट्री",
+  "gateExit": "गेट एक्झिट"
+}

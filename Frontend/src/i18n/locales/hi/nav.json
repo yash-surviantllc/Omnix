@@ -1,0 +1,12 @@
+{
+  "dashboard": "डैशबोर्ड",
+  "orders": "उत्पादन आदेश",
+  "bom": "BOM योजनाकार",
+  "wip": "WIP बोर्ड",
+  "transfer": "सामग्री स्थानांतरण",
+  "materialRequest": "सामग्री अनुरोध",
+  "qc": "QC जांच",
+  "inventory": "सूची",
+  "gateEntry": "दरवाज़े प्रवेश",
+  "gateExit": "दरवाज़े निकास"
+}
