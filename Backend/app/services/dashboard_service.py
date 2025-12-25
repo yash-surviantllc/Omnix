@@ -86,13 +86,14 @@ class DashboardService:
         try:
             # Get all active inventory items with low or critical status
             items = db.table('inventory_items').select(
-                'id', 'material_name', 'quantity', 'reorder_level', 'status', 'free_quantity'
+                'id', 'material_name', 'quantity', 'reorder_level', 'status', 'allocated_quantity'
             ).eq('is_active', True).execute()
             
             for item in items.data:
                 status = item.get('status', 'sufficient')
                 quantity = Decimal(str(item.get('quantity', 0)))
-                free_qty = Decimal(str(item.get('free_quantity', quantity)))
+                allocated_quantity = Decimal(str(item.get('allocated_quantity', 0)))
+                free_qty = quantity - allocated_quantity
                 reorder_level = Decimal(str(item.get('reorder_level', 0)))
                 
                 # Count items below reorder level
@@ -147,8 +148,8 @@ class DashboardService:
             thirty_days_ago = (datetime.utcnow() - timedelta(days=30)).isoformat()
             
             completed_orders = db.table('production_orders').select(
-                'id', 'due_date', 'completed_at'
-            ).eq('status', 'Completed').gte('completed_at', thirty_days_ago).execute()
+                'id', 'due_date', 'completion_date'
+            ).eq('status', 'Completed').gte('completion_date', thirty_days_ago).execute()
             
             if completed_orders.data:
                 on_time_count = 0
@@ -156,7 +157,7 @@ class DashboardService:
                 
                 for order in completed_orders.data:
                     due_date = datetime.fromisoformat(order['due_date']).date() if isinstance(order['due_date'], str) else order['due_date']
-                    completed_at = datetime.fromisoformat(order['completed_at'].replace('Z', '+00:00')).date()
+                    completed_at = datetime.fromisoformat(order['completion_date'].replace('Z', '+00:00')).date()
                     
                     if completed_at <= due_date:
                         on_time_count += 1
@@ -358,7 +359,7 @@ class DashboardService:
                         activity_type=f"inventory_{trans['transaction_type'].lower()}",
                         description=description,
                         user_name=user_name,
-                        timestamp=datetime.fromisoformat(trans['transaction_date'].replace('Z', '+00:00')),
+                        timestamp=datetime.fromisoformat(trans['transaction_date'].replace('Z', '+00:00')).replace(tzinfo=None),
                         icon=icon
                     ))
         except Exception as e:
@@ -411,7 +412,7 @@ class DashboardService:
                     activity_type=f"gate_entry_{entry['status']}",
                     description=description,
                     user_name=user_name,
-                    timestamp=datetime.fromisoformat(entry['created_at'].replace('Z', '+00:00')),
+                    timestamp=datetime.fromisoformat(entry['created_at'].replace('Z', '+00:00')).replace(tzinfo=None),
                     icon=icon
                 ))
         except Exception as e:
@@ -461,7 +462,7 @@ class DashboardService:
                     activity_type=trans['transaction_type'].lower(),
                     description=description,
                     user_name=user_name,
-                    timestamp=datetime.fromisoformat(trans['created_at'].replace('Z', '+00:00')),
+                    timestamp=datetime.fromisoformat(trans['created_at'].replace('Z', '+00:00')).replace(tzinfo=None),
                     icon=icon
                 ))
         
@@ -481,7 +482,7 @@ class DashboardService:
                         activity_type="user_registered",
                         description=f"New user registered: {user.get('full_name') or user['username']}",
                         user_name=user['username'],
-                        timestamp=datetime.fromisoformat(user['created_at'].replace('Z', '+00:00')),
+                        timestamp=datetime.fromisoformat(user['created_at'].replace('Z', '+00:00')).replace(tzinfo=None),
                         icon="👤"
                     ))
             except Exception as e:
