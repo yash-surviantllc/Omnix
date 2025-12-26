@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS production_orders (
     notes TEXT,
     qr_code TEXT, -- QR code data
     created_by UUID REFERENCES users(id),
+    updated_by UUID REFERENCES users(id),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

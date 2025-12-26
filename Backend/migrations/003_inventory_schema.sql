@@ -16,6 +16,19 @@ ADD COLUMN free_qty DECIMAL(15,3) GENERATED ALWAYS AS (available_qty - allocated
 UPDATE inventory SET allocated_qty = 0 WHERE allocated_qty IS NULL;
 
 -- =============================================
+-- STEP 1.1: UPDATE INVENTORY_ITEMS TABLE SCHEMA
+-- =============================================
+
+-- Add allocated_quantity column to inventory_items table
+ALTER TABLE inventory_items
+ADD COLUMN IF NOT EXISTS allocated_quantity NUMERIC(15, 3) NOT NULL DEFAULT 0 CHECK (allocated_quantity >= 0);
+
+-- Add free_quantity as computed column (available - allocated)
+ALTER TABLE inventory_items
+ADD COLUMN IF NOT EXISTS free_quantity NUMERIC(15, 3)
+GENERATED ALWAYS AS (quantity - allocated_quantity) STORED;
+
+-- =============================================
 -- STEP 2: RECREATE INVENTORY_TRANSACTIONS TABLE
 -- =============================================
 

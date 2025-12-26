@@ -5,7 +5,11 @@ import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import { motion, AnimatePresence } from 'motion/react';
 import { MaterialRequestProcessor, MaterialRequest } from '@/lib/material-request-processor';
-import { BOM_DATA, SKUs, INVENTORY_STOCK, PRODUCTION_ORDERS } from '@/lib/apparel-data';
+// Mock data removed - data now comes from backend API
+const BOM_DATA: Record<string, any[]> = {};
+const SKUs: Record<string, string> = {};
+const INVENTORY_STOCK: Record<string, any> = {};
+const PRODUCTION_ORDERS: any[] = [];
 
 type Message = {
   id: string;

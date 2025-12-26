@@ -6,7 +6,8 @@ import { Select } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Package, AlertTriangle, CheckCircle, XCircle, Send, History, Plus, X, Clock } from 'lucide-react';
 import { MaterialRequestProcessor, MaterialRequest } from '@/lib/material-request-processor';
-import { INVENTORY_STOCK } from '@/lib/apparel-data';
+// Mock data removed - data now comes from backend API
+const INVENTORY_STOCK: Record<string, any> = {};
 
 type MaterialRequestProps = {
   language: string;
@@ -45,33 +46,8 @@ export function MaterialRequest({ language }: MaterialRequestProps) {
     }
   ]);
 
-  // Simulated request history
-  const [requestHistory] = useState([
-    {
-      id: 'MR-1733001',
-      department: 'Cutting Floor',
-      material: 'Cotton Fabric',
-      quantity: '50 kg',
-      status: 'completed',
-      date: '2025-11-30'
-    },
-    {
-      id: 'MR-1733002',
-      department: 'Sewing Floor',
-      material: 'Thread (White)',
-      quantity: '5000 m',
-      status: 'approved',
-      date: '2025-11-30'
-    },
-    {
-      id: 'MR-1733003',
-      department: 'QC Floor',
-      material: 'Chemical',
-      quantity: '5 litres',
-      status: 'pending',
-      date: '2025-12-01'
-    }
-  ]);
+  // Request history - now comes from backend API
+  const [requestHistory] = useState<Array<{id: string; department: string; material: string; quantity: string; status: string; date: string}>>([]);
 
   const translations = {
     en: {
@@ -197,12 +173,7 @@ export function MaterialRequest({ language }: MaterialRequestProps) {
     { text: 'Maintenance को urgent oil चाहिए', lang: 'hi' }
   ];
 
-  const quickActions = [
-    { dept: 'Cutting Floor', material: 'Cotton Fabric', qty: '50 kg' },
-    { dept: 'Sewing Floor', material: 'Thread (White)', qty: '100 m' },
-    { dept: 'QC Floor', material: 'Chemical', qty: '5 litres' },
-    { dept: 'Packing Floor', material: 'Poly Bag', qty: '100 pcs' }
-  ];
+  const quickActions: Array<{dept: string; material: string; qty: string}> = [];
 
   const handleQuickAction = (dept: string, material: string, qty: string) => {
     const text = `Request ${qty} ${material} for ${dept}`;

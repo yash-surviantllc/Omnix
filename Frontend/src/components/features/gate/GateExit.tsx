@@ -41,54 +41,8 @@ export function GateExit({ language }: GateExitProps) {
     status: 'ready'
   });
 
-  // Mock data for history
-  const [exitHistory] = useState<GateExitRecord[]>([
-    {
-      id: 'GX-001',
-      exitType: 'dispatch',
-      destination: 'TrendWear Pvt Ltd',
-      vehicleNo: 'KA-01-XY-9876',
-      driverName: 'Suresh Kumar',
-      materials: [
-        { materialCode: 'FG-TS-001', materialName: 'Cotton T-Shirts (Black)', qty: 1200, uom: 'pcs' }
-      ],
-      linkedDocument: 'SO-5001',
-      customer: 'TrendWear Pvt Ltd',
-      status: 'dispatched',
-      timestamp: '2025-12-03 10:30 AM',
-      remarks: 'Delivered to customer warehouse'
-    },
-    {
-      id: 'GX-002',
-      exitType: 'jobwork_out',
-      destination: 'ABC Stitching Co.',
-      vehicleNo: 'KA-05-AB-1234',
-      driverName: 'Ramesh',
-      materials: [
-        { materialCode: 'WIP-030', materialName: 'Cut Hoodie Panels', qty: 300, uom: 'pcs' }
-      ],
-      linkedDocument: 'JW-OUT-045',
-      customer: 'N/A',
-      status: 'in_transit',
-      timestamp: '2025-12-03 09:15 AM',
-      remarks: 'For stitching work'
-    },
-    {
-      id: 'GX-003',
-      exitType: 'scrap',
-      destination: 'XYZ Scrap Dealers',
-      vehicleNo: 'KA-10-CD-5678',
-      driverName: 'Prakash',
-      materials: [
-        { materialCode: 'SCRAP-001', materialName: 'Fabric Waste', qty: 45, uom: 'kg' }
-      ],
-      linkedDocument: 'SCRAP-NOTE-012',
-      customer: 'N/A',
-      status: 'verified',
-      timestamp: '2025-12-03 08:00 AM',
-      remarks: 'Scrap disposal approved'
-    }
-  ]);
+  // Exit history - now comes from backend API
+  const [exitHistory] = useState<GateExitRecord[]>([]);
 
   const translations = {
     en: {

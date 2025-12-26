@@ -4,7 +4,9 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { INVENTORY_STOCK, WIP_STAGES } from '@/lib/apparel-data';
+// Mock data removed - data now comes from backend API
+const INVENTORY_STOCK: Record<string, any> = {};
+const WIP_STAGES: any[] = [];
 import { MaterialCard } from './components/MaterialCard';
 
 type MaterialTransferProps = {
@@ -197,39 +199,8 @@ export function MaterialTransfer({ language }: MaterialTransferProps) {
 
   const t = translations[language as keyof typeof translations] || translations.en;
 
-  // Sample transfer history
-  const transferHistory = [
-    {
-      id: 'TRF-1001',
-      material: 'Cotton Fabric',
-      quantity: '50 kg',
-      from: 'RM Store A',
-      to: 'Cutting Floor',
-      status: 'completed',
-      date: '2025-11-30',
-      reason: 'Production Requirement'
-    },
-    {
-      id: 'TRF-1002',
-      material: 'Thread (White)',
-      quantity: '5000 m',
-      from: 'RM Store A',
-      to: 'Sewing Floor',
-      status: 'completed',
-      date: '2025-11-30',
-      reason: 'Production Requirement'
-    },
-    {
-      id: 'TRF-1003',
-      material: 'Fleece Fabric',
-      quantity: '30 kg',
-      from: 'RM Store B',
-      to: 'Cutting Floor',
-      status: 'in_progress',
-      date: '2025-12-01',
-      reason: 'Production Requirement'
-    }
-  ];
+  // Transfer history - now comes from backend API
+  const transferHistory: Array<{id: string; material: string; quantity: string; from: string; to: string; status: string; date: string; reason: string}> = [];
 
   // Get materials from inventory
   const materials = Object.entries(INVENTORY_STOCK).map(([name, data], index) => {

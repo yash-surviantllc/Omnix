@@ -462,8 +462,11 @@ class ProductionOrderService:
         return await ProductionOrderService.get_order_by_id(order_id)
     
     @staticmethod
-    async def delete_production_order(order_id: str) -> dict:
-        """Delete (cancel) production order"""
+    async def cancel_production_order(
+        order_id: str,
+        user_id: Optional[str]
+    ) -> dict:
+        """Cancel a production order"""
         db = get_db()
         
         # Check if order exists
@@ -475,67 +478,23 @@ class ProductionOrderService:
         if existing.data[0]['status'] == 'Completed':
             raise ValidationException(detail="Cannot delete completed order")
         
-        # Update status to Cancelled
-        db.table('production_orders').update({
+        update_dict = {
             'status': 'Cancelled',
             'updated_at': datetime.utcnow().isoformat()
-        }).eq('id', order_id).execute()
+        }
+        
+        if user_id:
+            update_dict['updated_by'] = user_id
+        
+        db.table('production_orders').update(update_dict).eq('id', order_id).execute()
         
         return {"message": "Production order cancelled successfully"}
     
     @staticmethod
-    async def update_order_status(
-        order_id: str,
-        status_update: OrderStatusUpdate,
-        user_id: str
-    ) -> ProductionOrderResponse:
-        """Update order status"""
-        update_data = ProductionOrderUpdate(
-            status=status_update.status,
-            notes=status_update.notes
-        )
-        
-        return await ProductionOrderService.update_production_order(order_id, update_data, user_id)
+    async def delete_production_order(order_id: str) -> dict:
+        """Legacy alias for cancelling production orders"""
+        return await ProductionOrderService.cancel_production_order(order_id, user_id=None)
     
-    @staticmethod
-    async def get_order_progress(order_id: str) -> OrderProgress:
-        """Get order progress summary"""
-        db = get_db()
-        
-        # Get order
-        order = db.table('production_orders').select('order_number', 'status', 'due_date').eq('id', order_id).execute()
-        
-        if not order.data:
-            raise NotFoundException(detail="Production order not found")
-        
-        # Get materials status
-        materials = db.table('order_materials').select('availability_status', 'required_qty', 'allocated_qty', 'issued_qty').eq('order_id', order_id).execute()
-        
-        total_materials = len(materials.data)
-        allocated_materials = sum(1 for m in materials.data if Decimal(str(m.get('allocated_qty', 0))) > 0)
-        issued_materials = sum(1 for m in materials.data if Decimal(str(m.get('issued_qty', 0))) > 0)
-        completed_materials = sum(1 for m in materials.data if m.get('availability_status') == 'Available')
-        
-        allocation_pct = (allocated_materials / total_materials * 100) if total_materials > 0 else 0
-        
-        # Calculate days until due
-        due_date_obj = datetime.fromisoformat(order.data[0]['due_date']).date() if isinstance(order.data[0]['due_date'], str) else order.data[0]['due_date']
-        days_until_due = (due_date_obj - date.today()).days
-        is_overdue = days_until_due < 0 and order.data[0]['status'] not in ['Completed', 'Cancelled']
-        
-        return OrderProgress(
-            order_id=order_id,
-            order_number=order.data[0]['order_number'],
-            status=order.data[0]['status'],
-            total_materials=total_materials,
-            allocated_materials=allocated_materials,
-            issued_materials=issued_materials,
-            completed_materials=completed_materials,
-            allocation_percentage=round(allocation_pct, 2),
-            days_until_due=days_until_due,
-            is_overdue=is_overdue
-        )
-
     @staticmethod
     async def validate_production_feasibility(
         product_id: str,

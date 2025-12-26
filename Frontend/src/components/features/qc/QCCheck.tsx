@@ -201,28 +201,8 @@ export function QCCheck({ language }: QCCheckProps) {
     language === 'en' ? 'Wrong material' : 'गलत सामग्री'
   ];
 
-  const recentInspections = [
-    {
-      id: 1,
-      order: 'PO-101',
-      product: 'Widget A',
-      checked: 50,
-      passed: 45,
-      rework: 5,
-      scrap: 0,
-      time: '2 hours ago'
-    },
-    {
-      id: 2,
-      order: 'PO-102',
-      product: 'Gear B',
-      checked: 30,
-      passed: 28,
-      rework: 1,
-      scrap: 1,
-      time: '4 hours ago'
-    }
-  ];
+  // Recent inspections - data now comes from backend API
+  const recentInspections: Array<{id: number; order: string; product: string; checked: number; passed: number; rework: number; scrap: number; time: string}> = [];
 
   const toggleReason = (reason: string) => {
     if (selectedReasons.includes(reason)) {

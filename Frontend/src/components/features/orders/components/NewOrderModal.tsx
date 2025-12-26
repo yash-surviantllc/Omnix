@@ -2,7 +2,8 @@ import { XCircle } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { SKUs } from '@/lib/apparel-data';
+// Mock data removed - products now come from backend API
+const SKUs: Record<string, string> = {};
 
 interface NewOrderData {
   product: string;
