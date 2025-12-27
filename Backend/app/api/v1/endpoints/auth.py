@@ -1,11 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from typing import Dict
-from ...schemas.user import UserCreate, UserLogin, UserResponse, ChangePasswordRequest, ForgotPasswordRequest, ResetPasswordRequest
-from ...schemas.token import Token, RefreshTokenRequest
-from ...services.auth_service import auth_service
-from ...api.deps import get_current_user
-from ...core.security import verify_password, get_password_hash
-from ...database import get_db
+from app.schemas.user import UserCreate, UserLogin, UserResponse, ChangePasswordRequest, ForgotPasswordRequest, ResetPasswordRequest
+from app.schemas.token import Token, RefreshTokenRequest
+from app.services.auth_service import auth_service
+from app.api.deps import get_current_user
+from app.core.security import verify_password, get_password_hash
+from app.database import get_db
 
 router = APIRouter()
 

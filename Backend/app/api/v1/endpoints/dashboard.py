@@ -1,9 +1,9 @@
 from fastapi import APIRouter, Depends
 from typing import List
-from ...schemas.dashboard import DashboardResponse, QuickAction
-from ...schemas.user import UserResponse
-from ...services.dashboard_service import dashboard_service
-from ...api.deps import get_current_user
+from app.schemas.dashboard import DashboardResponse, QuickAction
+from app.schemas.user import UserResponse
+from app.services.dashboard_service import dashboard_service
+from app.api.deps import get_current_user
 
 router = APIRouter()
 

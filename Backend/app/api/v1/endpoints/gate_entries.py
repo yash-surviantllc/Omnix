@@ -1,12 +1,12 @@
 from fastapi import APIRouter, Depends, Query
 from typing import List, Optional
-from ...schemas.gate_entry import (
+from app.schemas.gate_entry import (
     GateEntryCreate, GateEntryUpdate, GateEntryResponse,
     GateEntryListItem, GateEntryStatusUpdate, GateEntryStats
 )
-from ...schemas.user import UserResponse
-from ...services.gate_entry_service import gate_entry_service
-from ...api.deps import get_current_user, require_role
+from app.schemas.user import UserResponse
+from app.services.gate_entry_service import gate_entry_service
+from app.api.deps import get_current_user, require_role
 
 router = APIRouter()
 

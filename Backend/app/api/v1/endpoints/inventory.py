@@ -1,15 +1,15 @@
 from fastapi import APIRouter, Depends, Query
 from typing import List, Optional
-from ...schemas.inventory import (
+from app.schemas.inventory import (
     InventoryResponse, InventoryListItem, StockByProduct,
     InventoryTransactionCreate, InventoryTransactionResponse,
     StockAlertCreate, StockAlertUpdate, StockAlertResponse,
     ShortageAlert, LocationResponse
 )
-from ...schemas.user import UserResponse
-from ...services.inventory_service import inventory_service
-from ...api.deps import get_current_user, require_role
-from ...schemas.inventory import InventoryTransactionCreate
+from app.schemas.user import UserResponse
+from app.services.inventory_service import inventory_service
+from app.api.deps import get_current_user, require_role
+from app.schemas.inventory import InventoryTransactionCreate
 from decimal import Decimal
 
 router = APIRouter()
@@ -316,7 +316,7 @@ async def get_inventory_summary(
 
 # Add these to your existing inventory.py endpoints
 
-from ...schemas.inventory import (
+from app.schemas.inventory import (
     InventoryTransactionResponse, InventoryAdjustmentRequest,
     StockMovementSummary
 )

@@ -1,14 +1,14 @@
 from fastapi import APIRouter, Depends, Query
 from typing import List, Optional
-from ...schemas.alert import (
+from app.schemas.alert import (
     AlertConfigCreate, AlertConfigUpdate, AlertConfigResponse,
     AlertHistoryResponse, AlertAcknowledge, NotificationLogResponse,
     SendNotificationRequest, NotificationResponse, AlertSummary
 )
-from ...schemas.user import UserResponse
-from ...api.deps import get_current_user, require_role
-from ...database import get_db
-from ...services.notification_service import notification_service
+from app.schemas.user import UserResponse
+from app.api.deps import get_current_user, require_role
+from app.database import get_db
+from app.services.notification_service import notification_service
 from datetime import datetime, timedelta
 
 router = APIRouter()

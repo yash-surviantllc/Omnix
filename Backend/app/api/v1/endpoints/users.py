@@ -1,10 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from typing import List, Optional
-from ...schemas.user import UserResponse, UserCreate
-from ...api.deps import get_current_user, require_role
-from ...database import get_db, get_admin_db
-from ...core.security import get_password_hash
-from ...core.exceptions import NotFoundException, ConflictException
+from app.schemas.user import UserResponse, UserCreate
+from app.api.deps import get_current_user, require_role
+from app.database import get_db, get_admin_db
+from app.core.security import get_password_hash
+from app.core.exceptions import NotFoundException, ConflictException
 
 router = APIRouter()
 

@@ -1,14 +1,14 @@
 from fastapi import APIRouter, Depends, Query, status
 from typing import List, Optional
-from ...schemas.material_transfer import (
+from app.schemas.material_transfer import (
     MaterialTransferCreate, MaterialTransferUpdate, MaterialTransferResponse,
     MaterialTransferListItem, TransferApprovalRequest,
     WIPStageTransferCreate, WIPStageTransferResponse, WIPStageResponse,
     WIPStageWithUnits
 )
-from ...schemas.user import UserResponse
-from ...services.material_transfer_service import material_transfer_service
-from ...api.deps import get_current_user, require_role
+from app.schemas.user import UserResponse
+from app.services.material_transfer_service import material_transfer_service
+from app.api.deps import get_current_user, require_role
 
 router = APIRouter()
 

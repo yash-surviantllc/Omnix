@@ -1,14 +1,14 @@
 from fastapi import APIRouter, Depends, Query, HTTPException
 from typing import List, Optional
-from ...schemas.inventory_items import (
+from app.schemas.inventory_items import (
     InventoryItemCreate, InventoryItemUpdate, InventoryItemResponse,
     InventoryItemListResponse, InventoryItemTransactionResponse,
     StockAlertItemResponse, InventoryItemsSummary,
     InventoryAdjustmentRequest
 )
-from ...schemas.user import UserResponse
-from ...services.inventory_items_service import inventory_items_service
-from ...api.deps import get_current_user, require_role
+from app.schemas.user import UserResponse
+from app.services.inventory_items_service import inventory_items_service
+from app.api.deps import get_current_user, require_role
 
 router = APIRouter()
 
