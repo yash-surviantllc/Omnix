@@ -1,15 +1,15 @@
 from fastapi import APIRouter, Depends, Query, status
 from typing import List, Optional
 from datetime import date
-from app.schemas.material_request import (
+from ....schemas.material_request import (
     MaterialRequestCreate, MaterialRequestUpdate, MaterialRequestResponse,
     MaterialRequestListItem, ReviewRequest, ApprovalRequest,
     PickListResponse, QuickRequestTemplate, StockAvailabilityCheck,
     StockAvailabilityResponse
 )
-from app.schemas.user import UserResponse
-from app.services.material_request_service import material_request_service
-from app.api.deps import get_current_user, require_role
+from ....schemas.user import UserResponse
+from ....services.material_request_service import material_request_service
+from ....api.deps import get_current_user, require_role
 
 router = APIRouter()
 

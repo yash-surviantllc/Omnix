@@ -1,9 +1,9 @@
 from fastapi import APIRouter, Depends, Query
 from typing import List, Optional
-from app.schemas.product import ProductCreate, ProductUpdate, ProductResponse, ProductListItem
-from app.schemas.user import UserResponse
-from app.services.product_service import product_service
-from app.api.deps import get_current_user, require_role
+from ....schemas.product import ProductCreate, ProductUpdate, ProductResponse, ProductListItem
+from ....schemas.user import UserResponse
+from ....services.product_service import product_service
+from ....api.deps import get_current_user, require_role
 
 router = APIRouter()
 

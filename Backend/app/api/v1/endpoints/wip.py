@@ -1,13 +1,13 @@
 from fastapi import APIRouter, Depends, Query
 from typing import List, Optional
-from app.schemas.wip import (
+from ....schemas.wip import (
     WorkingOrderCreate, WorkingOrderUpdate, WorkingOrderResponse, WorkingOrderListItem,
     WIPStageMetricsResponse, WIPDashboardResponse, WIPSummaryStats,
     BottleneckAlert, StagePerformanceHistoryResponse
 )
-from app.schemas.user import UserResponse
-from app.services.wip_service import wip_service
-from app.api.deps import get_current_user, require_role
+from ....schemas.user import UserResponse
+from ....services.wip_service import wip_service
+from ....api.deps import get_current_user, require_role
 
 router = APIRouter()
 
