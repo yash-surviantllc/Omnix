@@ -1,13 +1,13 @@
 from fastapi import APIRouter, Depends, Query
 from typing import List, Optional
-from app.schemas.production_order import (
+from ...schemas.production_order import (
     ProductionOrderCreate, ProductionOrderUpdate, ProductionOrderResponse,
     ProductionOrderListItem, MaterialRequirement, OrderProgress, OrderStatusUpdate,
     TeamAssignment, ProductionOrderValidation
 )
-from app.schemas.user import UserResponse
-from app.services.production_order_service import production_order_service
-from app.api.deps import get_current_user, require_role
+from ...schemas.user import UserResponse
+from ...services.production_order_service import production_order_service
+from ...api.deps import get_current_user, require_role
 from decimal import Decimal
 
 router = APIRouter()

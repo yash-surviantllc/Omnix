@@ -3,7 +3,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from typing import List, Optional
 from decimal import Decimal
-from app.schemas.bom import (
+from ...schemas.bom import (
     BOMCreate, 
     BOMUpdate, 
     BOMResponse, 
@@ -20,9 +20,9 @@ from app.schemas.bom import (
     BOMMaterialWithShortage,
     BOMCreateWithProduct
 )
-from app.schemas.user import UserResponse
-from app.services.bom_service import bom_service
-from app.api.deps import get_current_user, require_role
+from ...schemas.user import UserResponse
+from ...services.bom_service import bom_service
+from ...api.deps import get_current_user, require_role
 
 router = APIRouter()
 
