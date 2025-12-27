@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from app.api.v1.endpoints import (
+from .endpoints import (
     auth, users, dashboard, products, boms, 
     inventory, inventory_items, production_orders, material_transfers, material_requests, wip, alerts, gate_entries
 )
