@@ -17,8 +17,7 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
         
         # Verify using bcrypt
         return bcrypt.checkpw(password_bytes, hashed_bytes)
-    except Exception as e:
-        print(f"Password verification error: {e}")
+    except Exception:
         return False
 
 

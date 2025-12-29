@@ -278,7 +278,6 @@ export function MaterialTransfer({ language }: MaterialTransferProps) {
   const handleConfirmTransfer = () => {
     if (validateTransfer()) {
       // Process transfer
-      console.log('Transfer confirmed:', transferData);
       setShowTransferModal(false);
       setTransferData({});
       // Show success message

@@ -376,8 +376,6 @@ export function AddInventoryModal({ open, onOpenChange, language, onAddMaterial,
         unitCost: Number(formData.unitCost),
       };
 
-      console.log(mode === 'edit' ? 'Updated Material Data:' : 'New Material Data:', materialData);
-
       // Call the appropriate callback
       if (mode === 'edit' && onUpdateMaterial) {
         onUpdateMaterial(materialData);
@@ -421,17 +419,12 @@ export function AddInventoryModal({ open, onOpenChange, language, onAddMaterial,
       setErrors(prev => ({ ...prev, [field]: undefined }));
     }
   };
-
-  console.log('AddInventoryModal render - open:', open);
   
   return (
     <Dialog open={open} onOpenChange={onOpenChange} modal={true}>
       <DialogContent 
         className="max-w-2xl h-auto overflow-hidden p-0" 
         style={{ display: 'grid', visibility: 'visible', opacity: 1, maxHeight: '90vh' }}
-        onOpenAutoFocus={() => {
-          console.log('Dialog opened and focused');
-        }}
       >
         {/* Enhanced Header with Gradient */}
         <div className="bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-600 text-white p-4 shadow-lg">

@@ -205,8 +205,7 @@ class NotificationService:
             
             return supervisor_emails
             
-        except Exception as e:
-            print(f"Error getting supervisor contacts: {e}")
+        except Exception:
             return []
     
     @staticmethod

@@ -71,6 +71,7 @@
             "dev": "vite",
             "build": "vite build",
             "build:analyze": "vite build --mode analyze",
+            "preview": "vite preview",
             "test": "vitest",
             "test:run": "vitest run",
             "test:ui": "vitest --ui"

@@ -141,7 +141,6 @@ export function GateEntry({ language }: GateEntryProps) {
         ...(entryData.remarks && { remarks: entryData.remarks })
       };
 
-      console.log('Creating gate entry with data:', createData);
       const result = await gateEntryApi.create(createData);
       
       toast.success(`Gate Entry ${result.entry_number} created successfully!`);

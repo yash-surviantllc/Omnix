@@ -63,8 +63,8 @@ class DashboardService:
                 'status', ['Planned', 'In Progress']
             ).execute()
             live_orders_count = orders.count if hasattr(orders, 'count') else len(orders.data)
-        except Exception as e:
-            print(f"Error calculating live orders: {e}")
+        except Exception:
+            pass
         
         live_orders = KPICard(
             title="Live Orders",
@@ -105,8 +105,8 @@ class DashboardService:
                     elif status == 'low':
                         low_count += 1
                         
-        except Exception as e:
-            print(f"Error calculating inventory shortages: {e}")
+        except Exception:
+            pass
         
         # Calculate trend percentage
         trend_pct = 0.0
@@ -163,8 +163,8 @@ class DashboardService:
                         on_time_count += 1
                 
                 otd_percentage_value = (on_time_count / total_count * 100) if total_count > 0 else 0
-        except Exception as e:
-            print(f"Error calculating OTD: {e}")
+        except Exception:
+            pass
         
         otd_percentage = KPICard(
             title="On-Time Delivery",
@@ -219,8 +219,8 @@ class DashboardService:
                 completed=completed,
                 on_hold=on_hold
             )
-        except Exception as e:
-            print(f"Error fetching orders summary: {e}")
+        except Exception:
+            pass
             return OrderSummary(
                 total=0,
                 planned=0,
@@ -292,8 +292,8 @@ class DashboardService:
             # Return top 10
             return shortages[:10]
             
-        except Exception as e:
-            print(f"Error fetching material shortages: {e}")
+        except Exception:
+            pass
             return []
     
     @staticmethod
@@ -362,8 +362,8 @@ class DashboardService:
                         timestamp=datetime.fromisoformat(trans['transaction_date'].replace('Z', '+00:00')).replace(tzinfo=None),
                         icon=icon
                     ))
-        except Exception as e:
-            print(f"Error fetching inventory_items activities: {e}")
+        except Exception:
+            pass
         
         # ========================================
         # 2. Get recent gate entries (NEW!)
@@ -415,8 +415,8 @@ class DashboardService:
                     timestamp=datetime.fromisoformat(entry['created_at'].replace('Z', '+00:00')).replace(tzinfo=None),
                     icon=icon
                 ))
-        except Exception as e:
-            print(f"Error fetching gate_entries activities: {e}")
+        except Exception:
+            pass
         
         # ========================================
         # 3. Get recent inventory transactions (existing)
@@ -466,8 +466,8 @@ class DashboardService:
                     icon=icon
                 ))
         
-        except Exception as e:
-            print(f"Error fetching inventory_transactions activities: {e}")
+        except Exception:
+            pass
         
         # Also add recent user registrations if not many transactions
         if len(activities) < 10:
@@ -485,8 +485,8 @@ class DashboardService:
                         timestamp=datetime.fromisoformat(user['created_at'].replace('Z', '+00:00')).replace(tzinfo=None),
                         icon="👤"
                     ))
-            except Exception as e:
-                print(f"Error fetching user activities: {e}")
+            except Exception:
+                pass
         
         # Sort by timestamp and return top 10
         activities.sort(key=lambda x: x.timestamp, reverse=True)

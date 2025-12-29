@@ -248,11 +248,11 @@ class WIPService:
             # Trigger alert checking after metrics update
             try:
                 db.rpc('check_wip_alerts').execute()
-            except Exception as alert_error:
-                print(f"Error checking WIP alerts: {alert_error}")
+            except Exception:
+                pass
                 
-        except Exception as e:
-            print(f"Error updating WIP metrics: {e}")
+        except Exception:
+            pass
 
 
 # Create singleton instance

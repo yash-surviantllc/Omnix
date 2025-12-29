@@ -366,13 +366,8 @@ export function ProductionOrders({ language }: ProductionOrdersProps) {
         search: searchQuery,
         limit: 100
       });
-      console.log('📦 Production Orders API Response:', data);
-      console.log('📦 Is Array?', Array.isArray(data));
-      console.log('📦 Length:', data?.length);
       setOrders(data);
-      console.log('📦 Orders state set to:', data);
     } catch (err: any) {
-      console.error('Error fetching orders:', err);
       setError(err?.detail || err?.message || 'Failed to load production orders');
     } finally {
       setIsLoading(false);
@@ -389,7 +384,7 @@ export function ProductionOrders({ language }: ProductionOrdersProps) {
       });
       setProducts(data || []);
     } catch (err: any) {
-      console.error('Error fetching products:', err);
+      setError(err?.detail || err?.message || 'Failed to load products');
     }
   };
 
@@ -492,8 +487,7 @@ export function ProductionOrders({ language }: ProductionOrdersProps) {
       closeNewOrderModal();
       fetchOrders(); // Refresh list
     } catch (err: any) {
-      console.error('Error creating order:', err);
-      alert(`❌ ${language === 'en' ? 'Failed to create order' : 'ऑर्डर बनाने में विफल'}: ${err?.detail || err?.message || 'Unknown error'}`);
+      setError(err?.detail || err?.message || 'Unknown error');
     }
   };
 
@@ -502,7 +496,6 @@ export function ProductionOrders({ language }: ProductionOrdersProps) {
   };
 
   const saveTimeline = () => {
-    console.log('Saving timeline:', timelineData);
     alert(`✅ Production timeline updated for ${selectedOrder?.id}`);
     setIsEditingTimeline(false);
   };
@@ -605,8 +598,7 @@ export function ProductionOrders({ language }: ProductionOrdersProps) {
       
       closeModal();
     } catch (err: any) {
-      console.error(`Error in ${action}:`, err);
-      alert(`❌ ${language === 'en' ? 'Error' : 'त्रुटि'}: ${err?.detail || err?.message || 'Unknown error'}`);
+      setError(err?.detail || err?.message || 'Unknown error');
     }
   };
 
@@ -1952,17 +1944,12 @@ export function ProductionOrders({ language }: ProductionOrdersProps) {
                   
                   {/* Product Preview */}
                   {newOrderData.product && products.find(p => p.id === newOrderData.product) && (
-                    <div className="mt-2 p-3 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg">
-                      <div className="flex items-start justify-between">
-                        <div>
-                          <p className="text-sm font-medium text-blue-900">{products.find(p => p.id === newOrderData.product)?.name}</p>
-                          <p className="text-xs text-blue-700 mt-1">
-                            {products.find(p => p.id === newOrderData.product)?.code}
-                          </p>
-                        </div>
-                        <Badge className="bg-blue-600">
+                    <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                      <div className="flex items-center gap-2 text-sm">
+                        <p className="text-sm font-medium text-blue-900">{products.find(p => p.id === newOrderData.product)?.name}</p>
+                        <p className="text-xs text-blue-700 mt-1">
                           {products.find(p => p.id === newOrderData.product)?.code}
-                        </Badge>
+                        </p>
                       </div>
                     </div>
                   )}
@@ -2464,7 +2451,6 @@ export function ProductionOrders({ language }: ProductionOrdersProps) {
                       return;
                     }
                     const woId = `WO-${selectedOrder.id.replace('PO-', '')}-${String.fromCharCode(65 + Math.floor(Math.random() * 4))}`;
-                    console.log('Creating Working Order:', { id: woId, productionOrderId: selectedOrder.id, ...workingOrderData });
                     alert(`✅ ${language === 'en' ? 'Working Order Created!' : 'वर्किंग ऑर्डर बनाया गया!'}\n\n${language === 'en' ? 'Working Order ID' : 'वर्किंग ऑर्डर आईडी'}: ${woId}\n${language === 'en' ? 'Production Order' : 'उत्पादन आदेश'}: ${selectedOrder.id}\n${language === 'en' ? 'Operation' : 'ऑपरेशन'}: ${workingOrderData.operation}\n${language === 'en' ? 'Workstation' : 'वर्कस्टेशन'}: ${workingOrderData.workstation}`);
                     setShowCreateWorkingOrderModal(false);
                     setSelectedOrder(null);

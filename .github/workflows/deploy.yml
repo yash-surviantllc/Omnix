@@ -1,0 +1,27 @@
+name: Deploy to Render
+
+on:
+  push:
+    branches:
+      - stable-code
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Deploy to Render
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+        run: |
+          echo "Deployment triggered via GitHub Actions"
+          echo "Render will automatically deploy from the render.yaml configuration"
+          
+      - name: Notify deployment status
+        run: |
+          echo "✅ Deployment initiated successfully"
+          echo "Check Render dashboard for deployment progress"
