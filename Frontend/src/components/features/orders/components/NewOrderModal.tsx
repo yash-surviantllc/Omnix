@@ -2,8 +2,6 @@ import { XCircle } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-// Mock data removed - products now come from backend API
-const SKUs: Record<string, string> = {};
 
 interface NewOrderData {
   product: string;
@@ -25,6 +23,7 @@ interface NewOrderModalProps {
   orderData: NewOrderData;
   onOrderDataChange: (data: NewOrderData) => void;
   onSubmit: () => void;
+  products?: Record<string, string>; // Products from backend API
   translations: {
     createNewOrder: string;
     selectProduct: string;
@@ -64,6 +63,7 @@ export function NewOrderModal({
   orderData,
   onOrderDataChange,
   onSubmit,
+  products = {},
   translations: t
 }: NewOrderModalProps) {
   if (!isOpen) return null;
@@ -96,7 +96,7 @@ export function NewOrderModal({
                 className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               >
                 <option value="">{t.chooseProduct}</option>
-                {Object.entries(SKUs).map(([code, name]) => (
+                {Object.entries(products).map(([code, name]) => (
                   <option key={code} value={code}>{code} - {name}</option>
                 ))}
               </select>

@@ -2,12 +2,9 @@ import { useState } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Select } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Package, AlertTriangle, CheckCircle, XCircle, Send, History, Plus, X, Clock } from 'lucide-react';
-import { MaterialRequestProcessor, MaterialRequest } from '@/lib/material-request-processor';
-// Mock data removed - data now comes from backend API
-const INVENTORY_STOCK: Record<string, any> = {};
+import { MaterialRequestProcessor, type MaterialRequest } from '@/lib/material-request-processor';
 
 type MaterialRequestProps = {
   language: string;
@@ -56,7 +53,7 @@ export function MaterialRequest({ language }: MaterialRequestProps) {
       newRequest: 'New Request',
       history: 'Request History',
       quickRequest: 'Quick Request (Natural Language)',
-      formalRequest: '+ New Material Requisition Form',
+      formalRequest: 'New Material Requisition Form',
       materialRequisitionForm: 'Material Requisition Form',
       companyName: 'Company Name',
       formNumber: 'Form Number/ID',
@@ -72,7 +69,7 @@ export function MaterialRequest({ language }: MaterialRequestProps) {
       priority: 'Priority',
       supplierVendor: 'Supplier / Vendor',
       deliveryInstructions: 'Delivery Instructions',
-      addItem: '+ Add Item',
+      addItem: 'Add Item',
       removeItem: 'Remove',
       submitForm: 'Submit Requisition',
       cancel: 'Cancel',
@@ -111,7 +108,7 @@ export function MaterialRequest({ language }: MaterialRequestProps) {
       newRequest: 'नया अनुरोध',
       history: 'अनुरोध इतिहास',
       quickRequest: 'त्वरित अनुरोध (स्वाभाविक भाषा)',
-      formalRequest: '+ नया सामग्री अनुरोध फॉर्म',
+      formalRequest: 'नया सामग्री अनुरोध फॉर्म',
       materialRequisitionForm: 'सामग्री अनुरोध फॉर्म',
       companyName: 'कंपनी का नाम',
       formNumber: 'फॉर्म नंबर/आईडी',
@@ -182,10 +179,10 @@ export function MaterialRequest({ language }: MaterialRequestProps) {
   };
 
   const processRequest = (text?: string) => {
-    const requestText = text || requestText;
-    if (!requestText.trim()) return;
+    const textToProcess = text || requestText;
+    if (!textToProcess.trim()) return;
 
-    const request = MaterialRequestProcessor.processRequestAdvanced(requestText, language);
+    const request = MaterialRequestProcessor.processRequestAdvanced(textToProcess, language);
     setResult(request);
   };
 

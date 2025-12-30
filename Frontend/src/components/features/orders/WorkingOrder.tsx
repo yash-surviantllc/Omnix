@@ -3,7 +3,7 @@ import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 type WorkingOrderProps = {
   language: 'en' | 'hi' | 'kn' | 'ta' | 'te' | 'mr' | 'gu' | 'pa';
@@ -33,16 +33,21 @@ interface WorkOrder {
   actualEnd?: string;
 }
 
-// Work orders - data now comes from backend API
-const MOCK_WORK_ORDERS: WorkOrder[] = [];
-
 export function WorkingOrder({ language }: WorkingOrderProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [poFilter, setPoFilter] = useState<string>('all');
+  const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  // Fetch work orders from backend API
+  useEffect(() => {
+    // TODO: Implement API call to fetch work orders
+    // Example: fetchWorkOrders().then(data => setWorkOrders(data));
+  }, []);
 
   // Get unique production order IDs for filter dropdown
-  const uniquePOs = [...new Set(MOCK_WORK_ORDERS.map(wo => wo.productionOrderId))];
+  const uniquePOs = [...new Set(workOrders.map(wo => wo.productionOrderId))];
 
   const translations = {
     en: {
@@ -351,7 +356,7 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
     return <Badge className={config.color}>{config.label}</Badge>;
   };
 
-  const filteredOrders = MOCK_WORK_ORDERS.filter(order => {
+  const filteredOrders = workOrders.filter(order => {
     const matchesSearch = 
       order.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
       order.product.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -366,7 +371,7 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
   });
 
   const handleAction = (action: string, orderId: string) => {
-    const order = MOCK_WORK_ORDERS.find(o => o.id === orderId);
+    const order = workOrders.find(o => o.id === orderId);
     if (!order) return;
 
     switch (action) {

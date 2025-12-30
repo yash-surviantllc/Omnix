@@ -1,12 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { ArrowLeftRight, X, Check, AlertCircle, History, Search, ArrowRight, MapPin, Package } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-// Mock data removed - data now comes from backend API
-const INVENTORY_STOCK: Record<string, any> = {};
-const WIP_STAGES: any[] = [];
 import { MaterialCard } from './components/MaterialCard';
 
 type MaterialTransferProps = {
@@ -31,6 +28,15 @@ export function MaterialTransfer({ language }: MaterialTransferProps) {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState<'new' | 'history'>('new');
+  const [inventoryStock, setInventoryStock] = useState<Record<string, any>>({});
+  const [wipStages, setWipStages] = useState<any[]>([]);
+  
+  // Fetch data from backend API
+  useEffect(() => {
+    // TODO: Implement API calls to fetch inventory and WIP stages
+    // Example: fetchInventory().then(data => setInventoryStock(data));
+    // Example: fetchWIPStages().then(data => setWipStages(data));
+  }, []);
   
   // Stage transfer state
   const [showStageTransferModal, setShowStageTransferModal] = useState(false);
@@ -64,7 +70,7 @@ export function MaterialTransfer({ language }: MaterialTransferProps) {
       searchMaterial: 'Search materials...',
       wipStageTransfer: 'WIP Stage Transfer',
       stageTransferSubtitle: 'Move materials between production stages',
-      newStageTransfer: '+ New Stage Transfer',
+      newStageTransfer: 'New Stage Transfer',
       fromStage: 'From Stage',
       toStage: 'To Stage',
       selectFromStage: 'Select source stage',
@@ -73,7 +79,7 @@ export function MaterialTransfer({ language }: MaterialTransferProps) {
       enterOrderRef: 'Enter PO number',
       productCode: 'Product Code',
       enterProductCode: 'Enter product code (e.g., TS-001)',
-      addMaterial: '+ Add Material',
+      addMaterial: 'Add Material',
       removeMaterial: 'Remove',
       materialName: 'Material Name',
       enterMaterialName: 'Enter material name',
@@ -140,7 +146,7 @@ export function MaterialTransfer({ language }: MaterialTransferProps) {
       searchMaterial: 'सामग्री खोजें...',
       wipStageTransfer: 'WIP स्टेज ट्रांसफर',
       stageTransferSubtitle: 'उत्पादन चरणों के बीच सामग्री स्थानांतरित करें',
-      newStageTransfer: '+ नया स्टेज ट्रांसफर',
+      newStageTransfer: 'नया स्टेज ट्रांसफर',
       fromStage: 'स्टेज से',
       toStage: 'स्टेज तक',
       selectFromStage: 'स्रोत स्टेज चुनें',
@@ -149,7 +155,7 @@ export function MaterialTransfer({ language }: MaterialTransferProps) {
       enterOrderRef: 'PO नंबर दर्ज करें',
       productCode: 'उत्पाद कोड',
       enterProductCode: 'उत्पाद कोड दर्ज करें (जैसे, TS-001)',
-      addMaterial: '+ सामग्री जोड़ें',
+      addMaterial: 'सामग्री जोड़ें',
       removeMaterial: 'हटाएं',
       materialName: 'सामग्री का नाम',
       enterMaterialName: 'सामग्री का नाम दर्ज करें',
@@ -203,7 +209,7 @@ export function MaterialTransfer({ language }: MaterialTransferProps) {
   const transferHistory: Array<{id: string; material: string; quantity: string; from: string; to: string; status: string; date: string; reason: string}> = [];
 
   // Get materials from inventory
-  const materials = Object.entries(INVENTORY_STOCK).map(([name, data], index) => {
+  const materials = Object.entries(inventoryStock).map(([name, data], index) => {
     // Generate RM/BOP codes based on material type
     let rmCode = '';
     if (name.toLowerCase().includes('fabric')) {
@@ -356,7 +362,7 @@ export function MaterialTransfer({ language }: MaterialTransferProps) {
 
             {/* Stage Flow Visualization */}
             <div className="flex items-center justify-between gap-2 p-4 bg-white rounded-lg overflow-x-auto">
-              {WIP_STAGES.map((stage, index) => (
+              {wipStages.map((stage, index) => (
                 <div key={stage.id} className="flex items-center">
                   <div className="text-center">
                     <div className={`px-4 py-2 rounded-lg border-2 ${ stage.health === 'healthy' ? 'bg-green-50 border-green-300 text-green-900' : stage.health === 'warning' ? 'bg-yellow-50 border-yellow-300 text-yellow-900' : 'bg-red-50 border-red-300 text-red-900'}`}>
@@ -364,7 +370,7 @@ export function MaterialTransfer({ language }: MaterialTransferProps) {
                       <div className="text-xs mt-1 opacity-75">{stage.items} units</div>
                     </div>
                   </div>
-                  {index < WIP_STAGES.length - 1 && (
+                  {index < wipStages.length - 1 && (
                     <ArrowRight className="w-5 h-5 mx-2 text-blue-400" />
                   )}
                 </div>
@@ -678,7 +684,7 @@ export function MaterialTransfer({ language }: MaterialTransferProps) {
                     className="w-full p-3 border-2 border-zinc-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
                     <option value="">{t.selectFromStage}</option>
-                    {WIP_STAGES.map((stage) => (
+                    {wipStages.map((stage) => (
                       <option key={stage.id} value={stage.name}>
                         {stage.name} ({stage.items} units)
                       </option>
@@ -696,7 +702,7 @@ export function MaterialTransfer({ language }: MaterialTransferProps) {
                     className="w-full p-3 border-2 border-zinc-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
                     <option value="">{t.selectToStage}</option>
-                    {WIP_STAGES.map((stage) => (
+                    {wipStages.map((stage) => (
                       <option 
                         key={stage.id} 
                         value={stage.name}

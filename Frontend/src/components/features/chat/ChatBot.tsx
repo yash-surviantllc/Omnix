@@ -5,11 +5,6 @@ import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import { motion, AnimatePresence } from 'motion/react';
 import { MaterialRequestProcessor, MaterialRequest } from '@/lib/material-request-processor';
-// Mock data removed - data now comes from backend API
-const BOM_DATA: Record<string, any[]> = {};
-const SKUs: Record<string, string> = {};
-const INVENTORY_STOCK: Record<string, any> = {};
-const PRODUCTION_ORDERS: any[] = [];
 
 type Message = {
   id: string;
@@ -219,134 +214,49 @@ export function ChatBot({ isOpen, onToggle, language, onNavigate }: ChatBotProps
                   lowercaseText.includes('hd-001') || lowercaseText.includes('hoodie') || lowercaseText.includes('हुडी') ? 'HD-001' :
                   'TR-001';
       
-      const bomData = BOM_DATA[sku as keyof typeof BOM_DATA];
-      const productName = SKUs[sku as keyof typeof SKUs];
-      
       return {
         id: Date.now().toString(),
         type: 'bot',
         content: language === 'en' 
-          ? `✅ BOM for ${sku}: ${productName}\n\nHere are the required materials per unit:`
-          : `✅ ${sku} के लिए BOM: ${productName}\n\nप्रति यूनिट आवश्यक सामग्री:`,
-        actionCard: {
-          type: 'bom',
-          data: {
-            product: `${sku}: ${productName}`,
-            materials: bomData
-          }
-        }
+          ? `I can help you create a BOM for ${sku}. Please navigate to the BOM Planner section to create and manage BOMs with real-time data.`
+          : `मैं ${sku} के लिए BOM बनाने में मदद कर सकता हूं। कृपया वास्तविक समय डेटा के साथ BOM बनाने और प्रबंधित करने के लिए BOM प्लानर अनुभाग पर जाएं।`
       };
     }
     
     // Stock Inquiry
     if (lowercaseText.includes('stock') || lowercaseText.includes('inventory') || lowercaseText.includes('स्टॉक') || lowercaseText.includes('show')) {
-      // Try to extract material name
-      let materialName: string | null = null;
-      
-      // Check for specific materials in inventory
-      for (const material of Object.keys(INVENTORY_STOCK)) {
-        if (lowercaseText.includes(material.toLowerCase())) {
-          materialName = material;
-          break;
-        }
-      }
-      
-      // Check aliases
-      if (!materialName) {
-        const parsed = MaterialRequestProcessor.parseRequest(text);
-        if (parsed.materials && parsed.materials.length > 0) {
-          materialName = parsed.materials[0].name;
-        }
-      }
-      
-      if (materialName && INVENTORY_STOCK[materialName as keyof typeof INVENTORY_STOCK]) {
-        const stockData = INVENTORY_STOCK[materialName as keyof typeof INVENTORY_STOCK];
-        const allocated = Math.floor(stockData.qty * 0.3);
-        const free = stockData.qty - allocated;
-        
-        return {
-          id: Date.now().toString(),
-          type: 'bot',
-          content: language === 'en'
-            ? `📦 Stock Status: ${materialName}`
-            : `📦 स्टॉक स्थिति: ${materialName}`,
-          actionCard: {
-            type: 'stock',
-            data: {
-              material: materialName,
-              available: `${stockData.qty} ${stockData.unit}`,
-              allocated: `${allocated} ${stockData.unit}`,
-              free: `${free} ${stockData.unit}`,
-              location: stockData.location
-            }
-          }
-        };
-      }
+      return {
+        id: Date.now().toString(),
+        type: 'bot',
+        content: language === 'en'
+          ? `To check stock levels, please navigate to the Inventory section where you can view real-time stock data for all materials.`
+          : `स्टॉक स्तर की जांच करने के लिए, कृपया इन्वेंटरी अनुभाग पर जाएं जहां आप सभी सामग्रियों के लिए वास्तविक समय स्टॉक डेटा देख सकते हैं।`
+      };
     }
     
     // Production Order Status
     if (lowercaseText.includes('po-') || lowercaseText.includes('production') || lowercaseText.includes('order') || lowercaseText.includes('status')) {
       const poMatch = text.match(/po[-\s]?(\d+)/i);
-      if (poMatch) {
-        const poId = `PO-${poMatch[1]}`;
-        const order = PRODUCTION_ORDERS.find(o => o.id === poId);
-        
-        if (order) {
-          return {
-            id: Date.now().toString(),
-            type: 'bot',
-            content: language === 'en'
-              ? `📊 ${poId} Status\n\nProduct: ${order.product}\nQuantity: ${order.qty} units\nProgress: ${order.progress}%\nDue: ${order.dueDate}\nStage: ${order.stage}\nStatus: ${order.status}`
-              : `📊 ${poId} स्थिति\n\nउत्पाद: ${order.product}\nमात्रा: ${order.qty} यूनिट\nप्रगति: ${order.progress}%\nदेय: ${order.dueDate}\nचरण: ${order.stage}\nस्थिति: ${order.status}`
-          };
-        }
-      }
+      const poId = poMatch ? `PO-${poMatch[1]}` : 'production order';
+      
+      return {
+        id: Date.now().toString(),
+        type: 'bot',
+        content: language === 'en'
+          ? `To check the status of ${poId}, please navigate to the Production Orders section where you can view real-time order details.`
+          : `${poId} की स्थिति जांचने के लिए, कृपया उत्पादन आदेश अनुभाग पर जाएं जहां आप वास्तविक समय ऑर्डर विवरण देख सकते हैं।`
+      };
     }
     
     // Shortage Check
     if (lowercaseText.includes('shortage') || lowercaseText.includes('short') || lowercaseText.includes('कमी') || lowercaseText.includes('low stock')) {
-      const shortages: Array<{material: string; available: number; reorderLevel: number; shortage: number}> = [];
-      
-      Object.entries(INVENTORY_STOCK).forEach(([material, data]) => {
-        const reorderLevel = data.qty * 0.2;
-        if (data.qty < reorderLevel * 2) {
-          shortages.push({
-            material,
-            available: data.qty,
-            reorderLevel: Math.ceil(reorderLevel),
-            shortage: Math.ceil(reorderLevel * 2 - data.qty)
-          });
-        }
-      });
-      
-      if (shortages.length > 0) {
-        return {
-          id: Date.now().toString(),
-          type: 'bot',
-          content: language === 'en'
-            ? `⚠️ Material Shortages Detected (${shortages.length} items)`
-            : `⚠️ सामग्री की कमी का पता चला (${shortages.length} आइटम)`,
-          actionCard: {
-            type: 'shortage',
-            data: {
-              items: shortages.map(s => ({
-                material: s.material,
-                required: s.reorderLevel * 2,
-                available: s.available,
-                shortage: s.shortage
-              }))
-            }
-          }
-        };
-      } else {
-        return {
-          id: Date.now().toString(),
-          type: 'bot',
-          content: language === 'en'
-            ? '✅ All materials are at sufficient levels!'
-            : '✅ सभी सामग्री पर्याप्त स्तर पर हैं!'
-        };
-      }
+      return {
+        id: Date.now().toString(),
+        type: 'bot',
+        content: language === 'en'
+          ? `To check material shortages, please navigate to the Inventory section where you can view real-time stock levels and identify low stock items.`
+          : `सामग्री की कमी की जांच करने के लिए, कृपया इन्वेंटरी अनुभाग पर जाएं जहां आप वास्तविक समय स्टॉक स्तर देख सकते हैं और कम स्टॉक आइटम की पहचान कर सकते हैं।`
+      };
     }
     
     // Default response with enhanced examples
