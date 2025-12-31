@@ -1,9 +1,11 @@
-import { Search, Filter, Plus, Play, Pause, CheckCircle2, Clock, AlertCircle, Calendar, Package } from 'lucide-react';
+import { Search, Filter, Plus, Play, Pause, CheckCircle2, Clock, AlertCircle, Calendar, Package, XCircle } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useState, useEffect } from 'react';
+import { wipApi, type WorkingOrderCreate } from '@/lib/api/wip';
+import { productionOrdersApi, type ProductionOrder } from '@/lib/api/production-orders';
 
 type WorkingOrderProps = {
   language: 'en' | 'hi' | 'kn' | 'ta' | 'te' | 'mr' | 'gu' | 'pa';
@@ -39,11 +41,74 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
   const [poFilter, setPoFilter] = useState<string>('all');
   const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  
+  // New Work Order Modal state
+  const [showNewWorkOrderModal, setShowNewWorkOrderModal] = useState(false);
+  const [productionOrders, setProductionOrders] = useState<ProductionOrder[]>([]);
+  const [newWorkOrderData, setNewWorkOrderData] = useState({
+    production_order_id: '',
+    operation: '',
+    workstation: '',
+    assigned_team: '',
+    target_qty: '',
+    unit: 'pcs',
+    priority: 'Normal' as 'Low' | 'Normal' | 'High' | 'Urgent',
+    scheduled_start: '',
+    scheduled_end: '',
+    notes: ''
+  });
+  const [isCreating, setIsCreating] = useState(false);
 
   // Fetch work orders from backend API
+  const fetchWorkOrders = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await wipApi.listWorkingOrders({ limit: 100 });
+      // Transform API data to local WorkOrder format
+      const transformedOrders: WorkOrder[] = data.map(wo => ({
+        id: wo.work_order_number,
+        productionOrderId: wo.production_order_id,
+        product: wo.operation, // Using operation as product for display
+        operations: [{
+          name: wo.operation,
+          completedUnits: wo.completed_qty,
+          status: wo.status.toLowerCase().replace(' ', '-') as 'pending' | 'in-progress' | 'completed' | 'on-hold',
+          assignedTo: wo.assigned_team || 'Unassigned',
+          workstation: wo.workstation || 'N/A',
+          targetUnits: wo.target_qty
+        }],
+        assignedTo: wo.assigned_team || 'Unassigned',
+        quantity: wo.target_qty,
+        completedQty: wo.completed_qty,
+        status: wo.status.toLowerCase().replace(' ', '-') as 'pending' | 'in-progress' | 'completed' | 'on-hold',
+        priority: wo.priority.toLowerCase() as 'low' | 'normal' | 'high' | 'urgent',
+        startTime: wo.scheduled_start || wo.created_at,
+        estimatedEnd: wo.scheduled_end || '',
+        actualEnd: wo.actual_end || undefined
+      }));
+      setWorkOrders(transformedOrders);
+    } catch (err: any) {
+      setError(err?.detail || err?.message || 'Failed to load work orders');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Fetch production orders for the dropdown
+  const fetchProductionOrders = async () => {
+    try {
+      const data = await productionOrdersApi.listOrders({ limit: 100 });
+      setProductionOrders(data);
+    } catch (err: any) {
+      console.error('Failed to load production orders:', err);
+    }
+  };
+
   useEffect(() => {
-    // TODO: Implement API call to fetch work orders
-    // Example: fetchWorkOrders().then(data => setWorkOrders(data));
+    fetchWorkOrders();
+    fetchProductionOrders();
   }, []);
 
   // Get unique production order IDs for filter dropdown
@@ -387,12 +452,64 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
     }
   };
 
+  // Create new work order
+  const handleCreateWorkOrder = async () => {
+    if (!newWorkOrderData.production_order_id || !newWorkOrderData.operation || !newWorkOrderData.target_qty) {
+      alert(language === 'en' 
+        ? '⚠️ Please fill in required fields (Production Order, Operation, Target Quantity)' 
+        : '⚠️ कृपया आवश्यक फ़ील्ड भरें (उत्पादन आदेश, ऑपरेशन, लक्ष्य मात्रा)');
+      return;
+    }
+
+    setIsCreating(true);
+    try {
+      const payload: WorkingOrderCreate = {
+        production_order_id: newWorkOrderData.production_order_id,
+        operation: newWorkOrderData.operation,
+        workstation: newWorkOrderData.workstation || undefined,
+        assigned_team: newWorkOrderData.assigned_team || undefined,
+        target_qty: parseFloat(newWorkOrderData.target_qty),
+        unit: newWorkOrderData.unit,
+        priority: newWorkOrderData.priority,
+        scheduled_start: newWorkOrderData.scheduled_start || undefined,
+        scheduled_end: newWorkOrderData.scheduled_end || undefined,
+        notes: newWorkOrderData.notes || undefined
+      };
+
+      const createdOrder = await wipApi.createWorkingOrder(payload);
+      
+      alert(`✅ ${language === 'en' ? 'Work Order Created!' : 'कार्य आदेश बनाया गया!'}\n\n${language === 'en' ? 'Work Order Number' : 'कार्य आदेश नंबर'}: ${createdOrder.work_order_number}`);
+      
+      setShowNewWorkOrderModal(false);
+      setNewWorkOrderData({
+        production_order_id: '',
+        operation: '',
+        workstation: '',
+        assigned_team: '',
+        target_qty: '',
+        unit: 'pcs',
+        priority: 'Normal',
+        scheduled_start: '',
+        scheduled_end: '',
+        notes: ''
+      });
+      fetchWorkOrders(); // Refresh the list
+    } catch (err: any) {
+      alert(`❌ ${language === 'en' ? 'Error creating work order' : 'कार्य आदेश बनाने में त्रुटि'}: ${err?.detail || err?.message || 'Unknown error'}`);
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <h1 className="text-2xl font-semibold">{t.title}</h1>
-        <Button className="bg-emerald-600 hover:bg-emerald-700">
+        <Button 
+          className="bg-emerald-600 hover:bg-emerald-700"
+          onClick={() => setShowNewWorkOrderModal(true)}
+        >
           <Plus className="h-4 w-4 mr-2" />
           {t.newWorkOrder}
         </Button>
@@ -599,6 +716,216 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
             {language === 'en' ? 'No work orders found' : 'कोई कार्य आदेश नहीं मिला'}
           </p>
         </Card>
+      )}
+
+      {/* Loading State */}
+      {loading && (
+        <Card className="p-8 text-center">
+          <div className="animate-spin h-8 w-8 border-4 border-emerald-500 border-t-transparent rounded-full mx-auto mb-4" />
+          <p className="text-zinc-500">
+            {language === 'en' ? 'Loading work orders...' : 'कार्य आदेश लोड हो रहे हैं...'}
+          </p>
+        </Card>
+      )}
+
+      {/* Error State */}
+      {error && (
+        <Card className="p-8 text-center border-red-200 bg-red-50">
+          <AlertCircle className="h-12 w-12 text-red-400 mx-auto mb-4" />
+          <p className="text-red-600">{error}</p>
+          <Button onClick={fetchWorkOrders} className="mt-4" variant="outline">
+            {language === 'en' ? 'Retry' : 'पुनः प्रयास करें'}
+          </Button>
+        </Card>
+      )}
+
+      {/* New Work Order Modal */}
+      {showNewWorkOrderModal && (
+        <>
+          <div className="fixed inset-0 bg-black/50 z-40" onClick={() => setShowNewWorkOrderModal(false)} />
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <Card className="w-full max-w-lg bg-white p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+              <div className="flex items-center justify-between">
+                <h2 className="text-xl font-semibold">
+                  {language === 'en' ? 'Create New Work Order' : 'नया कार्य आदेश बनाएं'}
+                </h2>
+                <Button variant="ghost" size="sm" onClick={() => setShowNewWorkOrderModal(false)}>
+                  <XCircle className="h-5 w-5" />
+                </Button>
+              </div>
+
+              {/* Production Order Selection */}
+              <div>
+                <label className="block text-sm font-medium text-zinc-700 mb-1">
+                  {t.productionOrder} <span className="text-red-500">*</span>
+                </label>
+                <select
+                  value={newWorkOrderData.production_order_id}
+                  onChange={(e) => setNewWorkOrderData(prev => ({ ...prev, production_order_id: e.target.value }))}
+                  className="w-full p-2 border border-zinc-300 rounded-md"
+                >
+                  <option value="">{language === 'en' ? 'Select Production Order...' : 'उत्पादन आदेश चुनें...'}</option>
+                  {productionOrders.map((po) => (
+                    <option key={po.id} value={po.id}>
+                      {po.order_number} - {po.product_name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Operation */}
+              <div>
+                <label className="block text-sm font-medium text-zinc-700 mb-1">
+                  {t.operation} <span className="text-red-500">*</span>
+                </label>
+                <select
+                  value={newWorkOrderData.operation}
+                  onChange={(e) => setNewWorkOrderData(prev => ({ ...prev, operation: e.target.value }))}
+                  className="w-full p-2 border border-zinc-300 rounded-md"
+                >
+                  <option value="">{language === 'en' ? 'Select Operation...' : 'ऑपरेशन चुनें...'}</option>
+                  <option value="Cutting">{language === 'en' ? 'Cutting' : 'कटाई'}</option>
+                  <option value="Sewing">{language === 'en' ? 'Sewing' : 'सिलाई'}</option>
+                  <option value="Assembly">{language === 'en' ? 'Assembly' : 'असेंबली'}</option>
+                  <option value="Quality Check">{language === 'en' ? 'Quality Check' : 'गुणवत्ता जांच'}</option>
+                  <option value="Packaging">{language === 'en' ? 'Packaging' : 'पैकेजिंग'}</option>
+                  <option value="Finishing">{language === 'en' ? 'Finishing' : 'फिनिशिंग'}</option>
+                </select>
+              </div>
+
+              {/* Target Quantity */}
+              <div>
+                <label className="block text-sm font-medium text-zinc-700 mb-1">
+                  {t.quantity} <span className="text-red-500">*</span>
+                </label>
+                <div className="flex gap-2">
+                  <Input
+                    type="number"
+                    value={newWorkOrderData.target_qty}
+                    onChange={(e) => setNewWorkOrderData(prev => ({ ...prev, target_qty: e.target.value }))}
+                    placeholder={language === 'en' ? 'Enter quantity' : 'मात्रा दर्ज करें'}
+                    className="flex-1"
+                  />
+                  <select
+                    value={newWorkOrderData.unit}
+                    onChange={(e) => setNewWorkOrderData(prev => ({ ...prev, unit: e.target.value }))}
+                    className="w-24 p-2 border border-zinc-300 rounded-md"
+                  >
+                    <option value="pcs">pcs</option>
+                    <option value="kg">kg</option>
+                    <option value="m">m</option>
+                    <option value="units">units</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Workstation */}
+              <div>
+                <label className="block text-sm font-medium text-zinc-700 mb-1">
+                  {t.workstation}
+                </label>
+                <Input
+                  value={newWorkOrderData.workstation}
+                  onChange={(e) => setNewWorkOrderData(prev => ({ ...prev, workstation: e.target.value }))}
+                  placeholder={language === 'en' ? 'Enter workstation' : 'वर्कस्टेशन दर्ज करें'}
+                />
+              </div>
+
+              {/* Assigned Team */}
+              <div>
+                <label className="block text-sm font-medium text-zinc-700 mb-1">
+                  {t.assignedTo}
+                </label>
+                <select
+                  value={newWorkOrderData.assigned_team}
+                  onChange={(e) => setNewWorkOrderData(prev => ({ ...prev, assigned_team: e.target.value }))}
+                  className="w-full p-2 border border-zinc-300 rounded-md"
+                >
+                  <option value="">{language === 'en' ? 'Select Team...' : 'टीम चुनें...'}</option>
+                  <option value="Team A">Team A</option>
+                  <option value="Team B">Team B</option>
+                  <option value="Team C">Team C</option>
+                  <option value="Team D">Team D</option>
+                </select>
+              </div>
+
+              {/* Priority */}
+              <div>
+                <label className="block text-sm font-medium text-zinc-700 mb-1">
+                  {t.priority}
+                </label>
+                <select
+                  value={newWorkOrderData.priority}
+                  onChange={(e) => setNewWorkOrderData(prev => ({ ...prev, priority: e.target.value as 'Low' | 'Normal' | 'High' | 'Urgent' }))}
+                  className="w-full p-2 border border-zinc-300 rounded-md"
+                >
+                  <option value="Low">{t.low}</option>
+                  <option value="Normal">{t.normal}</option>
+                  <option value="High">{t.high}</option>
+                  <option value="Urgent">{t.urgent}</option>
+                </select>
+              </div>
+
+              {/* Schedule */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-zinc-700 mb-1">
+                    {t.startTime}
+                  </label>
+                  <Input
+                    type="datetime-local"
+                    value={newWorkOrderData.scheduled_start}
+                    onChange={(e) => setNewWorkOrderData(prev => ({ ...prev, scheduled_start: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-zinc-700 mb-1">
+                    {t.estimatedEnd}
+                  </label>
+                  <Input
+                    type="datetime-local"
+                    value={newWorkOrderData.scheduled_end}
+                    onChange={(e) => setNewWorkOrderData(prev => ({ ...prev, scheduled_end: e.target.value }))}
+                  />
+                </div>
+              </div>
+
+              {/* Notes */}
+              <div>
+                <label className="block text-sm font-medium text-zinc-700 mb-1">
+                  {language === 'en' ? 'Notes' : 'नोट्स'}
+                </label>
+                <textarea
+                  value={newWorkOrderData.notes}
+                  onChange={(e) => setNewWorkOrderData(prev => ({ ...prev, notes: e.target.value }))}
+                  className="w-full p-2 border border-zinc-300 rounded-md"
+                  rows={3}
+                  placeholder={language === 'en' ? 'Add notes...' : 'नोट्स जोड़ें...'}
+                />
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex gap-3 pt-2">
+                <Button 
+                  onClick={() => setShowNewWorkOrderModal(false)} 
+                  variant="outline" 
+                  className="flex-1"
+                >
+                  {language === 'en' ? 'Cancel' : 'रद्द करें'}
+                </Button>
+                <Button 
+                  onClick={handleCreateWorkOrder}
+                  className="flex-1 bg-emerald-600 hover:bg-emerald-700"
+                  disabled={isCreating}
+                >
+                  {isCreating 
+                    ? (language === 'en' ? 'Creating...' : 'बना रहे हैं...') 
+                    : (language === 'en' ? 'Create Work Order' : 'कार्य आदेश बनाएं')}
+                </Button>
+              </div>
+            </Card>
+          </div>
+        </>
       )}
     </div>
   );
