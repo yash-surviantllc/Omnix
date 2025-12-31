@@ -1,4 +1,4 @@
-import { Search, Filter, Plus, MoreVertical, Eye, Edit, XCircle, Printer, CheckCircle2, AlertCircle, Minus, RefreshCw, Package, Clock } from 'lucide-react';
+import { Search, Filter, Plus, MoreVertical, Eye, Edit, XCircle, Printer, CheckCircle2, AlertCircle, Minus, RefreshCw, Package, Clock, FileText, Download, Archive } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -7,6 +7,7 @@ import { useState, useEffect } from 'react';
 import { OrderActionsDropdown } from './components/OrderActionsDropdown';
 import { productionOrdersApi, type ProductionOrder, type CreateProductionOrderData } from '@/lib/api/production-orders';
 import { productsApi } from '@/lib/api/bom';
+import { wipApi, type WorkingOrderCreate } from '@/lib/api/wip';
 
 type ProductionOrdersProps = {
   language: 'en' | 'hi' | 'kn' | 'ta' | 'te' | 'mr' | 'gu' | 'pa';
@@ -227,15 +228,28 @@ export function ProductionOrders({ language }: ProductionOrdersProps) {
       status: 'ಸ್ಥಿತಿ',
       dueDate: 'ನಿಯತ ತಾರೀಖ',
       actions: 'ಕ್ರಿಯೆಗಳು',
+      orderPriority: 'ಆದ್ಯತೆ',
       // Dropdown actions
       viewDetails: 'ವಿವರಗಳನ್ನು ನೋಡಿ',
       editOrder: 'ಆದೇಶವನ್ನು ಸಂಪಾದಿಸಿ',
       duplicateOrder: 'ಆದೇಶವನ್ನು ನಕಲಿಸಿ',
+      printOrder: 'ಆದೇಶ ಮುದ್ರಿಸಿ',
+      trackProgress: 'ಪ್ರಗತಿಯನ್ನು ಟ್ರ್ಯಾಕ್ ಮಾಡಿ',
+      productionPlan: 'ಉತ್ಪಾದನಾ ಯೋಜನೆ',
+      assignTeam: 'ತಂಡವನ್ನು ನೇಮಿಸಿ',
+      addNotes: 'ಟಿಪ್ಪಣಿಗಳನ್ನು ಸೇರಿಸಿ',
       downloadBOM: 'BOM ಡೌನ್‌ಲೋಡ್ ಮಾಡಿ',
+      exportExcel: 'ಎಕ್ಸೆಲ್‌ಗೆ ರಫ್ತು ಮಾಡಿ',
       generateQR: 'QR ಕೋಡ್ ರಚಿಸಿ',
+      sendToProduction: 'ಉತ್ಪಾದನೆಗೆ ಕಳುಹಿಸಿ',
+      requestMaterials: 'ಸಾಮಗ್ರಿಗಳನ್ನು ಕೇಳಿ',
+      reschedule: 'ಪುನರ್ವೇಷ್ಟಿತ ವೇಳಾಪಟ್ಟಿ',
+      shareOrder: 'ಆದೇಶವನ್ನು ಹಂಚಿಕೊಳ್ಳಿ',
+      viewHistory: 'ಇತಿಹಾಸವನ್ನು ನೋಡಿ',
+      archiveOrder: 'ಆದೇಶವನ್ನು ಸಂಗ್ರಹಿಸಿ',
       markPriority: 'ಆದ್ಯತೆ ಎಂದು ಗುರುತಿಸಿ',
-      cancelOrder: 'ಆದೇಶ ರದ್ದುಮಾಡಿ',
-      deleteOrder: 'ಆದೇಶ ಅಳಿಸಿ',
+      cancelOrder: 'ಆದೇಶವನ್ನು ರದ್ದುಗೊಳಿಸಿ',
+      deleteOrder: 'ಆದೇಶವನ್ನು ಅಳಿಸಿ',
       createWorkingOrder: 'ವರ್ಕಿಂಗ್ ಆರ್ಡರ್ ರಚಿಸಿ'
     },
     ta: {
@@ -250,12 +264,25 @@ export function ProductionOrders({ language }: ProductionOrdersProps) {
       status: 'நிலை',
       dueDate: 'காலப்பாடு',
       actions: 'செயல்கள்',
+      orderPriority: 'முன்னுரிமை',
       // Dropdown actions
       viewDetails: 'விவரங்களைக் காண்க',
       editOrder: 'ஆட்டாளத்தைத் திருத்து',
       duplicateOrder: 'ஆட்டாளத்தை நகலெடு',
+      printOrder: 'ஆட்டாளத்தை அச்சுப்பிடித்தல்',
+      trackProgress: 'முன்னேற்றத்தைக் கண்காணிக்கவும்',
+      productionPlan: 'உற்பத்தித் திட்டம்',
+      assignTeam: 'குழுவை ஒதுக்கவும்',
+      addNotes: 'குறிப்புகளைச் சேர்க்கவும்',
       downloadBOM: 'BOM பதிவிறக்கு',
+      exportExcel: 'எக்ஸெலுக்கு ஏற்றுமதி செய்யவும்',
       generateQR: 'QR குறியீட்டை உருவாக்கு',
+      sendToProduction: 'உற்பத்திக்கு அனுப்பவும்',
+      requestMaterials: 'பொருட்களைக் கோரிக்கையிடவும்',
+      reschedule: 'மறுஒதுக்கீடு',
+      shareOrder: 'ஆட்டாளத்தைப் பகிர்ந்து கொள்ளவும்',
+      viewHistory: 'வரலாற்றைக் காண்க',
+      archiveOrder: 'ஆட்டாளத்தை ஆவணப்படுத்தவும்',
       markPriority: 'முன்னுரிமை எனக் குறி',
       cancelOrder: 'ஆட்டாளத்தை ரத்துசெய்',
       deleteOrder: 'ஆட்டாளத்தை அழி',
@@ -273,12 +300,27 @@ export function ProductionOrders({ language }: ProductionOrdersProps) {
       status: 'స్థితి',
       dueDate: 'ముక్తి తేదీ',
       actions: 'క్రియలు',
-      // Dropdown actions
+      orderPriority: 'ప్రాధాన్యత',
+      normal: 'Normal',
+      high: 'High',
+      urgent: 'Urgent',
       viewDetails: 'వివరాలను చూడండి',
       editOrder: 'ఆదేశాన్ని సవరించండి',
       duplicateOrder: 'ఆదేశాన్ని నకలు చేయండి',
+      printOrder: 'Print Order',
+      trackProgress: 'Track Progress',
+      productionPlan: 'Production Plan',
+      assignTeam: 'Assign Team',
+      addNotes: 'Add Notes',
       downloadBOM: 'BOM డౌన్‌లోడ్ చేయండి',
+      exportExcel: 'Export Excel',
       generateQR: 'QR కోడ్ రూపొందించండి',
+      sendToProduction: 'Send to Production',
+      requestMaterials: 'Request Materials',
+      reschedule: 'Reschedule',
+      shareOrder: 'Share Order',
+      viewHistory: 'View History',
+      archiveOrder: 'Archive Order',
       markPriority: 'ప్రాధాన్యతగా గుర్తించండి',
       cancelOrder: 'ఆదేశాన్ని రద్దు చేయండి',
       deleteOrder: 'ఆదేశాన్ని తొలగించండి',
@@ -296,12 +338,27 @@ export function ProductionOrders({ language }: ProductionOrdersProps) {
       status: 'स्थिति',
       dueDate: 'नियत तारीख',
       actions: 'क्रियाएं',
-      // Dropdown actions
+      orderPriority: 'प्राधान्य',
+      normal: 'Normal',
+      high: 'High',
+      urgent: 'Urgent',
       viewDetails: 'तपशील पहा',
       editOrder: 'आदेश संपादित करा',
       duplicateOrder: 'आदेश डुप्लिकेट करा',
+      printOrder: 'Print Order',
+      trackProgress: 'Track Progress',
+      productionPlan: 'Production Plan',
+      assignTeam: 'Assign Team',
+      addNotes: 'Add Notes',
       downloadBOM: 'BOM डाउनलोड करा',
+      exportExcel: 'Export Excel',
       generateQR: 'QR कोड तयार करा',
+      sendToProduction: 'Send to Production',
+      requestMaterials: 'Request Materials',
+      reschedule: 'Reschedule',
+      shareOrder: 'Share Order',
+      viewHistory: 'View History',
+      archiveOrder: 'Archive Order',
       markPriority: 'प्राधान्य म्हणून चिन्हांकित करा',
       cancelOrder: 'आदेश रद्द करा',
       deleteOrder: 'आदेश हटवा',
@@ -319,12 +376,27 @@ export function ProductionOrders({ language }: ProductionOrdersProps) {
       status: 'સ્થિતિ',
       dueDate: 'નિયત તારીખ',
       actions: 'ક્રિયાઓ',
-      // Dropdown actions
+      orderPriority: 'પ્રાથમિકતા',
+      normal: 'Normal',
+      high: 'High',
+      urgent: 'Urgent',
       viewDetails: 'વિગતો જુઓ',
       editOrder: 'આદેશ સંપાદિત કરો',
       duplicateOrder: 'આદેશ ડુપ્લિકેટ કરો',
+      printOrder: 'Print Order',
+      trackProgress: 'Track Progress',
+      productionPlan: 'Production Plan',
+      assignTeam: 'Assign Team',
+      addNotes: 'Add Notes',
       downloadBOM: 'BOM ડાઉનલોડ કરો',
+      exportExcel: 'Export Excel',
       generateQR: 'QR કોડ બનાવો',
+      sendToProduction: 'Send to Production',
+      requestMaterials: 'Request Materials',
+      reschedule: 'Reschedule',
+      shareOrder: 'Share Order',
+      viewHistory: 'View History',
+      archiveOrder: 'Archive Order',
       markPriority: 'પ્રાથમિકતા તરીકે ચિહ્નિત કરો',
       cancelOrder: 'આદેશ રદ કરો',
       deleteOrder: 'આદેશ કાઢી નાખો',
@@ -338,16 +410,31 @@ export function ProductionOrders({ language }: ProductionOrdersProps) {
       order: 'ਆਦੇਸ਼',
       product: 'ਉਤਪਾਦ',
       quantity: 'ਮਾਤਰਾ',
-      stage: 'ਸਟੇ',
+      stage: 'ਸਟੇਜ',
       status: 'ਸਥਿਤੀ',
       dueDate: 'ਨਿਯਤ ਤਾਰੀਖ',
       actions: 'ਕ੍ਰਿਆਵਾਂ',
-      // Dropdown actions
+      orderPriority: 'ਤਰਜੀਹ',
+      normal: 'Normal',
+      high: 'High',
+      urgent: 'Urgent',
       viewDetails: 'ਵੇਰਵੇ ਦੇਖੋ',
       editOrder: 'ਆਦੇਸ਼ ਸੰਪਾਦਿਤ ਕਰੋ',
       duplicateOrder: 'ਆਦੇਸ਼ ਡੁਪਲੀਕੇਟ ਕਰੋ',
+      printOrder: 'Print Order',
+      trackProgress: 'Track Progress',
+      productionPlan: 'Production Plan',
+      assignTeam: 'Assign Team',
+      addNotes: 'Add Notes',
       downloadBOM: 'BOM ਡਾਊਨਲੋਡ ਕਰੋ',
+      exportExcel: 'Export Excel',
       generateQR: 'QR ਕੋਡ ਬਣਾਓ',
+      sendToProduction: 'Send to Production',
+      requestMaterials: 'Request Materials',
+      reschedule: 'Reschedule',
+      shareOrder: 'Share Order',
+      viewHistory: 'View History',
+      archiveOrder: 'Archive Order',
       markPriority: 'ਤਰਜੀਹ ਵਜੋਂ ਚਿੰਨ੍ਹਿਤ ਕਰੋ',
       cancelOrder: 'ਆਦੇਸ਼ ਰੱਦ ਕਰੋ',
       deleteOrder: 'ਆਦੇਸ਼ ਮਿਟਾਓ',
@@ -406,7 +493,7 @@ export function ProductionOrders({ language }: ProductionOrdersProps) {
 
   const handleAction = (action: string, orderId: string) => {
     const order = orders.find(o => o.id === orderId);
-    setSelectedOrder(order);
+    setSelectedOrder(order || null);
     setOpenDropdown(null);
     
     if (action === 'createWorkingOrder') {
@@ -624,27 +711,27 @@ export function ProductionOrders({ language }: ProductionOrdersProps) {
           onClose={() => setOpenDropdown(null)}
           onAction={handleAction}
           translations={{
-            viewDetails: t.viewDetails,
-            editOrder: t.editOrder,
-            duplicateOrder: t.duplicateOrder,
-            printOrder: t.printOrder,
-            trackProgress: t.trackProgress,
-            productionPlan: t.productionPlan,
-            assignTeam: t.assignTeam,
-            addNotes: t.addNotes,
-            downloadBOM: t.downloadBOM,
-            exportExcel: t.exportExcel,
-            generateQR: t.generateQR,
-            sendToProduction: t.sendToProduction,
-            requestMaterials: t.requestMaterials,
-            reschedule: t.reschedule,
-            shareOrder: t.shareOrder,
-            viewHistory: t.viewHistory,
-            archiveOrder: t.archiveOrder,
-            markPriority: t.markPriority,
-            cancelOrder: t.cancelOrder,
-            deleteOrder: t.deleteOrder,
-            createWorkingOrder: t.createWorkingOrder || 'Create Working Order',
+            viewDetails: (t as any).viewDetails || 'View Details',
+            editOrder: (t as any).editOrder || 'Edit Order',
+            duplicateOrder: (t as any).duplicateOrder || 'Duplicate Order',
+            printOrder: (t as any).printOrder || 'Print Order',
+            trackProgress: (t as any).trackProgress || 'Track Progress',
+            productionPlan: (t as any).productionPlan || 'Production Plan',
+            assignTeam: (t as any).assignTeam || 'Assign Team',
+            addNotes: (t as any).addNotes || 'Add Notes',
+            downloadBOM: (t as any).downloadBOM || 'Download BOM',
+            exportExcel: (t as any).exportExcel || 'Export Excel',
+            generateQR: (t as any).generateQR || 'Generate QR',
+            sendToProduction: (t as any).sendToProduction || 'Send to Production',
+            requestMaterials: (t as any).requestMaterials || 'Request Materials',
+            reschedule: (t as any).reschedule || 'Reschedule',
+            shareOrder: (t as any).shareOrder || 'Share Order',
+            viewHistory: (t as any).viewHistory || 'View History',
+            archiveOrder: (t as any).archiveOrder || 'Archive Order',
+            markPriority: (t as any).markPriority || 'Mark Priority',
+            cancelOrder: (t as any).cancelOrder || 'Cancel Order',
+            deleteOrder: (t as any).deleteOrder || 'Delete Order',
+            createWorkingOrder: (t as any).createWorkingOrder || 'Create Working Order',
           }}
         />
       </div>
@@ -843,7 +930,7 @@ export function ProductionOrders({ language }: ProductionOrdersProps) {
                 {[
                   { stage: 'Material Planning', progress: 100, status: 'complete' },
                   { stage: 'Cutting', progress: 100, status: 'complete' },
-                  { stage: 'Sewing', progress: selectedOrder.progress, status: 'active' },
+                  { stage: 'Sewing', progress: (selectedOrder as any).progress || 0, status: 'active' },
                   { stage: 'Quality Check', progress: 0, status: 'pending' },
                   { stage: 'Packaging', progress: 0, status: 'pending' }
                 ].map((item, idx) => (
@@ -908,14 +995,13 @@ export function ProductionOrders({ language }: ProductionOrdersProps) {
                     </Button>
                   </div>
                 </div>
-                
-                <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-2">
-                  {/* Order Summary */}
-                  <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-4 rounded-lg border border-blue-200">
+                <div className="overflow-y-auto max-h-[calc(90vh-8rem)] space-y-6">
+                  <div className="bg-zinc-50 p-4 rounded-lg">
+                    <h3 className="font-medium mb-3">{language === 'en' ? 'Order Summary' : 'ऑर्डर सारांश'}</h3>
                     <div className="grid grid-cols-2 gap-3 text-sm">
                       <div>
                         <p className="text-zinc-600">{t.product}</p>
-                        <p className="font-medium">{selectedOrder.product}</p>
+                        <p className="font-medium">{selectedOrder.product_name}</p>
                       </div>
                       <div>
                         <p className="text-zinc-600">{t.quantity}</p>
@@ -927,7 +1013,7 @@ export function ProductionOrders({ language }: ProductionOrdersProps) {
                       </div>
                       <div>
                         <p className="text-zinc-600">{t.dueDate}</p>
-                        <p className="font-medium">{selectedOrder.dueDate}</p>
+                        <p className="font-medium">{new Date(selectedOrder.due_date).toLocaleDateString()}</p>
                       </div>
                     </div>
                   </div>
@@ -1157,19 +1243,19 @@ export function ProductionOrders({ language }: ProductionOrdersProps) {
                             </div>
                             <div>
                               <p className="text-zinc-600">{language === 'en' ? 'Progress' : 'प्रगति'}</p>
-                              <p>{selectedOrder.progress}%</p>
+                              <p>{(selectedOrder as any).progress || 0}%</p>
                             </div>
                           </div>
                         )}
                         <div className="bg-white rounded-lg p-2">
                           <div className="flex justify-between text-xs mb-1">
                             <span>{language === 'en' ? 'Current Progress' : 'वर्तमान प्रगति'}</span>
-                            <span className="font-medium">{selectedOrder.progress}%</span>
+                            <span className="font-medium">{(selectedOrder as any).progress || 0}%</span>
                           </div>
                           <div className="h-3 bg-zinc-200 rounded-full overflow-hidden">
                             <div 
                               className="h-full bg-gradient-to-r from-blue-500 to-blue-600"
-                              style={{ width: `${selectedOrder.progress}%` }}
+                              style={{ width: `${(selectedOrder as any).progress || 0}%` }}
                             />
                           </div>
                         </div>
@@ -1513,7 +1599,7 @@ export function ProductionOrders({ language }: ProductionOrdersProps) {
       case 'downloadBOM':
       case 'exportExcel':
         return (
-          <ModalWrapper title={activeModal === 'downloadBOM' ? t.downloadBOM : t.exportExcel}>
+          <ModalWrapper title={activeModal === 'downloadBOM' ? (t as any).downloadBOM || 'Download BOM' : (t as any).exportExcel || 'Export Excel'}>
             <div className="space-y-4">
               <div className="text-center py-8">
                 {activeModal === 'downloadBOM' && <FileText className="h-16 w-16 mx-auto text-emerald-500 mb-4" />}
@@ -2443,17 +2529,50 @@ export function ProductionOrders({ language }: ProductionOrdersProps) {
                   {language === 'en' ? 'Cancel' : 'रद्द करें'}
                 </Button>
                 <Button 
-                  onClick={() => {
+                  onClick={async () => {
                     if (!workingOrderData.operation || !workingOrderData.workstation || !workingOrderData.assignedTeam) {
                       alert(language === 'en' 
                         ? '⚠️ Please fill in all required fields (Operation, Workstation, Team)' 
                         : '⚠️ कृपया सभी आवश्यक फ़ील्ड भरें (ऑपरेशन, वर्कस्टेशन, टीम)');
                       return;
                     }
-                    const woId = `WO-${selectedOrder.id.replace('PO-', '')}-${String.fromCharCode(65 + Math.floor(Math.random() * 4))}`;
-                    alert(`✅ ${language === 'en' ? 'Working Order Created!' : 'वर्किंग ऑर्डर बनाया गया!'}\n\n${language === 'en' ? 'Working Order ID' : 'वर्किंग ऑर्डर आईडी'}: ${woId}\n${language === 'en' ? 'Production Order' : 'उत्पादन आदेश'}: ${selectedOrder.id}\n${language === 'en' ? 'Operation' : 'ऑपरेशन'}: ${workingOrderData.operation}\n${language === 'en' ? 'Workstation' : 'वर्कस्टेशन'}: ${workingOrderData.workstation}`);
-                    setShowCreateWorkingOrderModal(false);
-                    setSelectedOrder(null);
+                    
+                    try {
+                      // Prepare working order data for API
+                      const workingOrderPayload: WorkingOrderCreate = {
+                        production_order_id: selectedOrder.id,
+                        operation: workingOrderData.operation,
+                        workstation: workingOrderData.workstation,
+                        assigned_team: workingOrderData.assignedTeam,
+                        target_qty: parseFloat(workingOrderData.targetQty) || selectedOrder.quantity,
+                        unit: selectedOrder.unit || 'pcs',
+                        priority: workingOrderData.priority as 'Low' | 'Normal' | 'High' | 'Urgent',
+                        scheduled_start: workingOrderData.scheduledStart || undefined,
+                        scheduled_end: workingOrderData.scheduledEnd || undefined,
+                        notes: workingOrderData.notes || undefined
+                      };
+                      
+                      // Call backend API to create working order
+                      const createdWorkOrder = await wipApi.createWorkingOrder(workingOrderPayload);
+                      
+                      alert(`✅ ${language === 'en' ? 'Working Order Created Successfully!' : 'वर्किंग ऑर्डर सफलतापूर्वक बनाया गया!'}\n\n${language === 'en' ? 'Working Order Number' : 'वर्किंग ऑर्डर नंबर'}: ${createdWorkOrder.work_order_number}\n${language === 'en' ? 'Production Order' : 'उत्पादन आदेश'}: ${selectedOrder.order_number}\n${language === 'en' ? 'Operation' : 'ऑपरेशन'}: ${createdWorkOrder.operation}\n${language === 'en' ? 'Workstation' : 'वर्कस्टेशन'}: ${createdWorkOrder.workstation}\n${language === 'en' ? 'Status' : 'स्थिति'}: ${createdWorkOrder.status}`);
+                      
+                      setShowCreateWorkingOrderModal(false);
+                      setSelectedOrder(null);
+                      setWorkingOrderData({
+                        operation: '',
+                        workstation: '',
+                        assignedTeam: '',
+                        targetQty: '',
+                        scheduledStart: '',
+                        scheduledEnd: '',
+                        priority: 'Medium',
+                        notes: ''
+                      });
+                    } catch (error: any) {
+                      alert(`❌ ${language === 'en' ? 'Failed to create working order' : 'वर्किंग ऑर्डर बनाने में विफल'}\n\n${error?.message || error?.detail || 'Unknown error'}`);
+                      console.error('Error creating working order:', error);
+                    }
                   }} 
                   className="flex-1 bg-emerald-600"
                 >

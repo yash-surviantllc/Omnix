@@ -56,7 +56,7 @@ export function MaterialRequest({ language }: MaterialRequestProps) {
       formalRequest: 'New Material Requisition Form',
       materialRequisitionForm: 'Material Requisition Form',
       companyName: 'Company Name',
-      formNumber: 'Form Number/ID',
+      formNumber: 'Work Order',
       dateOfRequest: 'Date of Request',
       requestedBy: 'Requested By',
       reviewedBy: 'Reviewed By',
@@ -111,7 +111,7 @@ export function MaterialRequest({ language }: MaterialRequestProps) {
       formalRequest: 'नया सामग्री अनुरोध फॉर्म',
       materialRequisitionForm: 'सामग्री अनुरोध फॉर्म',
       companyName: 'कंपनी का नाम',
-      formNumber: 'फॉर्म नंबर/आईडी',
+      formNumber: 'वर्क ऑर्डर',
       dateOfRequest: 'अनुरोध की तारीख',
       requestedBy: 'अनुरोध किया गया',
       reviewedBy: 'रिव्यू किया गया',
@@ -564,7 +564,7 @@ export function MaterialRequest({ language }: MaterialRequestProps) {
                         value={formData.formNumber}
                         onChange={(e) => setFormData({ ...formData, formNumber: e.target.value })}
                         className="w-full p-2.5 border-2 border-slate-300 rounded-md"
-                        placeholder="e.g., MR-2025-014"
+                        placeholder="e.g., WO-2025-001"
                       />
                     </div>
                     <div>

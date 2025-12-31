@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { MaterialCard } from './components/MaterialCard';
+import { wipApi, type WorkingOrder } from '@/lib/api/wip';
 
 type MaterialTransferProps = {
   language: 'en' | 'hi' | 'kn' | 'ta' | 'te' | 'mr' | 'gu' | 'pa';
@@ -30,9 +31,21 @@ export function MaterialTransfer({ language }: MaterialTransferProps) {
   const [activeTab, setActiveTab] = useState<'new' | 'history'>('new');
   const [inventoryStock, setInventoryStock] = useState<Record<string, any>>({});
   const [wipStages, setWipStages] = useState<any[]>([]);
+  const [workingOrders, setWorkingOrders] = useState<WorkingOrder[]>([]);
   
   // Fetch data from backend API
   useEffect(() => {
+    const fetchData = async () => {
+      try {
+        // Fetch working orders
+        const orders = await wipApi.listWorkingOrders({ limit: 100 });
+        setWorkingOrders(orders);
+      } catch (error) {
+        console.error('Error fetching working orders:', error);
+      }
+    };
+    
+    fetchData();
     // TODO: Implement API calls to fetch inventory and WIP stages
     // Example: fetchInventory().then(data => setInventoryStock(data));
     // Example: fetchWIPStages().then(data => setWipStages(data));
@@ -75,8 +88,8 @@ export function MaterialTransfer({ language }: MaterialTransferProps) {
       toStage: 'To Stage',
       selectFromStage: 'Select source stage',
       selectToStage: 'Select destination stage',
-      orderReference: 'Order Reference',
-      enterOrderRef: 'Enter PO number',
+      orderReference: 'Work Order',
+      enterOrderRef: 'Enter Work Order number',
       productCode: 'Product Code',
       enterProductCode: 'Enter product code (e.g., TS-001)',
       addMaterial: 'Add Material',
@@ -151,8 +164,8 @@ export function MaterialTransfer({ language }: MaterialTransferProps) {
       toStage: 'स्टेज तक',
       selectFromStage: 'स्रोत स्टेज चुनें',
       selectToStage: 'गंतव्य स्टेज चुनें',
-      orderReference: 'ऑर्डर संदर्भ',
-      enterOrderRef: 'PO नंबर दर्ज करें',
+      orderReference: 'वर्क ऑर्डर',
+      enterOrderRef: 'वर्क ऑर्डर नंबर दर्ज करें',
       productCode: 'उत्पाद कोड',
       enterProductCode: 'उत्पाद कोड दर्ज करें (जैसे, TS-001)',
       addMaterial: 'सामग्री जोड़ें',
@@ -730,19 +743,24 @@ export function MaterialTransfer({ language }: MaterialTransferProps) {
                 </div>
               )}
 
-              {/* Order Reference & Product Code */}
+              {/* Work Order & Product Code */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block mb-2 text-zinc-900 font-medium">
                     {t.orderReference} <span className="text-red-500">*</span>
                   </label>
-                  <Input
-                    type="text"
+                  <select
                     value={stageTransferData.orderRef}
                     onChange={(e) => setStageTransferData({ ...stageTransferData, orderRef: e.target.value })}
-                    placeholder={t.enterOrderRef}
-                    className="border-2"
-                  />
+                    className="w-full p-3 border-2 border-zinc-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">{t.enterOrderRef}</option>
+                    {workingOrders.map((order) => (
+                      <option key={order.id} value={order.work_order_number}>
+                        {order.work_order_number} - {order.operation} ({order.status})
+                      </option>
+                    ))}
+                  </select>
                 </div>
                 
                 <div>
