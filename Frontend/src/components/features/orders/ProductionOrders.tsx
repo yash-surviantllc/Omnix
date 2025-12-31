@@ -1,4 +1,4 @@
-import { Search, Filter, Plus, MoreVertical, Eye, Edit, XCircle, Printer, CheckCircle2, AlertCircle, Minus, RefreshCw, Package, Clock, FileText, Download, Archive } from 'lucide-react';
+import { Search, Filter, Plus, MoreVertical, Eye, Edit, XCircle, Printer, CheckCircle2, AlertCircle, Minus, RefreshCw, Package, Clock, FileText, Download, Archive, Users, MessageSquare, Send, Calendar, Star, Trash2 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -229,6 +229,9 @@ export function ProductionOrders({ language }: ProductionOrdersProps) {
       dueDate: 'ನಿಯತ ತಾರೀಖ',
       actions: 'ಕ್ರಿಯೆಗಳು',
       orderPriority: 'ಆದ್ಯತೆ',
+      normal: 'Normal',
+      high: 'High',
+      urgent: 'Urgent',
       // Dropdown actions
       viewDetails: 'ವಿವರಗಳನ್ನು ನೋಡಿ',
       editOrder: 'ಆದೇಶವನ್ನು ಸಂಪಾದಿಸಿ',
@@ -250,7 +253,35 @@ export function ProductionOrders({ language }: ProductionOrdersProps) {
       markPriority: 'ಆದ್ಯತೆ ಎಂದು ಗುರುತಿಸಿ',
       cancelOrder: 'ಆದೇಶವನ್ನು ರದ್ದುಗೊಳಿಸಿ',
       deleteOrder: 'ಆದೇಶವನ್ನು ಅಳಿಸಿ',
-      createWorkingOrder: 'ವರ್ಕಿಂಗ್ ಆರ್ಡರ್ ರಚಿಸಿ'
+      createWorkingOrder: 'ವರ್ಕಿಂಗ್ ಆರ್ಡರ್ ರಚಿಸಿ',
+      createNewOrder: 'Create New Production Order',
+      selectProduct: 'Select Product',
+      chooseProduct: 'Choose product...',
+      enterQuantity: 'Enter Quantity',
+      units: 'units',
+      selectDueDate: 'Due Date',
+      customerName: 'Customer Name',
+      enterCustomer: 'Enter customer name...',
+      productionStage: 'Production Stage',
+      assignTeamLabel: 'Assign Team',
+      selectTeam: 'Select team...',
+      orderNotes: 'Order Notes',
+      enterNotes: 'Enter special instructions or notes...',
+      requiredFields: 'Required Fields',
+      createOrder: 'Create Order',
+      shiftNumber: 'Shift Number',
+      shift1: 'Shift 1 (6 AM - 2 PM)',
+      shift2: 'Shift 2 (2 PM - 10 PM)',
+      shift3: 'Shift 3 (10 PM - 6 AM)',
+      productionTimeline: 'Production Timeline',
+      startTime: 'Start Time',
+      endTime: 'End Time',
+      selectStartTime: 'Select start time...',
+      selectEndTime: 'Select end time...',
+      editTimeline: 'Edit Timeline',
+      viewMode: 'View Mode',
+      saveChanges: 'Save Changes',
+      cancel: 'Cancel'
     },
     ta: {
       title: 'உற்பத்தி ஆட்டாளங்கள்',
@@ -265,6 +296,9 @@ export function ProductionOrders({ language }: ProductionOrdersProps) {
       dueDate: 'காலப்பாடு',
       actions: 'செயல்கள்',
       orderPriority: 'முன்னுரிமை',
+      normal: 'Normal',
+      high: 'High',
+      urgent: 'Urgent',
       // Dropdown actions
       viewDetails: 'விவரங்களைக் காண்க',
       editOrder: 'ஆட்டாளத்தைத் திருத்து',
@@ -286,7 +320,35 @@ export function ProductionOrders({ language }: ProductionOrdersProps) {
       markPriority: 'முன்னுரிமை எனக் குறி',
       cancelOrder: 'ஆட்டாளத்தை ரத்துசெய்',
       deleteOrder: 'ஆட்டாளத்தை அழி',
-      createWorkingOrder: 'வேலை ஆர்டர் உருவாக்கு'
+      createWorkingOrder: 'வேலை ஆர்டர் உருவாக்கு',
+      createNewOrder: 'புதிய உற்பத்தி ஆட்டாளம் உருவாக்கு',
+      selectProduct: 'பொருளைத் தேர்ந்தெடுக்கவும்',
+      chooseProduct: 'பொருளைத் தேர்ந்தெடுக்கவும்...',
+      enterQuantity: 'அளவை உள்ளீடு செய்யவும்',
+      units: 'அலகுகள்',
+      selectDueDate: 'காலப்பாடு',
+      customerName: 'வாடிக்கையாளர் பெயர்',
+      enterCustomer: 'வாடிக்கையாளர் பெயரை உள்ளீடு செய்யவும்...',
+      productionStage: 'உற்பத்தி நிலை',
+      assignTeamLabel: 'குழுவை ஒதுக்கவும்',
+      selectTeam: 'குழுவைத் தேர்ந்தெடுக்கவும்...',
+      orderNotes: 'ஆட்டாள குறிப்புகள்',
+      enterNotes: 'சிறப்பு அறிவுரைகள் அல்லது குறிப்புகளை உள்ளீடு செய்யவும்...',
+      requiredFields: 'தேவையான புலங்கள்',
+      createOrder: 'ஆட்டாளம் உருவாக்கு',
+      shiftNumber: 'பணி எண்',
+      shift1: 'பணி 1 (காலை 6 - மதியம் 2)',
+      shift2: 'பணி 2 (மதியம் 2 - இரவு 10)',
+      shift3: 'பணி 3 (இரவு 10 - காலை 6)',
+      productionTimeline: 'உற்பத்தி நேரக்கோடு',
+      startTime: 'தொடக்க நேரம்',
+      endTime: 'முடிவு நேரம்',
+      selectStartTime: 'தொடக்க நேரத்தைத் தேர்ந்தெடுக்கவும்...',
+      selectEndTime: 'முடிவு நேரத்தைத் தேர்ந்தெடுக்கவும்...',
+      editTimeline: 'நேரக்கோட்டைத் திருத்து',
+      viewMode: 'பார்வை பாங்கு',
+      saveChanges: 'மாற்றங்களைச் சேமிக்கவும்',
+      cancel: 'ரத்து செய்யவும்'
     },
     te: {
       title: 'ఉత్పత్తి ఆదేశాలు',
@@ -324,7 +386,35 @@ export function ProductionOrders({ language }: ProductionOrdersProps) {
       markPriority: 'ప్రాధాన్యతగా గుర్తించండి',
       cancelOrder: 'ఆదేశాన్ని రద్దు చేయండి',
       deleteOrder: 'ఆదేశాన్ని తొలగించండి',
-      createWorkingOrder: 'వర్కింగ్ ఆర్డర్ సృష్టించండి'
+      createWorkingOrder: 'వర్కింగ్ ఆర్డర్ సృష్టించండి',
+      createNewOrder: 'Create New Production Order',
+      selectProduct: 'Select Product',
+      chooseProduct: 'Choose product...',
+      enterQuantity: 'Enter Quantity',
+      units: 'units',
+      selectDueDate: 'Due Date',
+      customerName: 'Customer Name',
+      enterCustomer: 'Enter customer name...',
+      productionStage: 'Production Stage',
+      assignTeamLabel: 'Assign Team',
+      selectTeam: 'Select team...',
+      orderNotes: 'Order Notes',
+      enterNotes: 'Enter special instructions or notes...',
+      requiredFields: 'Required Fields',
+      createOrder: 'Create Order',
+      shiftNumber: 'Shift Number',
+      shift1: 'Shift 1 (6 AM - 2 PM)',
+      shift2: 'Shift 2 (2 PM - 10 PM)',
+      shift3: 'Shift 3 (10 PM - 6 AM)',
+      productionTimeline: 'Production Timeline',
+      startTime: 'Start Time',
+      endTime: 'End Time',
+      selectStartTime: 'Select start time...',
+      selectEndTime: 'Select end time...',
+      editTimeline: 'Edit Timeline',
+      viewMode: 'View Mode',
+      saveChanges: 'Save Changes',
+      cancel: 'Cancel'
     },
     mr: {
       title: 'उत्पादन आदेश',
@@ -362,7 +452,35 @@ export function ProductionOrders({ language }: ProductionOrdersProps) {
       markPriority: 'प्राधान्य म्हणून चिन्हांकित करा',
       cancelOrder: 'आदेश रद्द करा',
       deleteOrder: 'आदेश हटवा',
-      createWorkingOrder: 'वर्किंग ऑर्डर तयार करा'
+      createWorkingOrder: 'वर्किंग ऑर्डर तयार करा',
+      createNewOrder: 'Create New Production Order',
+      selectProduct: 'Select Product',
+      chooseProduct: 'Choose product...',
+      enterQuantity: 'Enter Quantity',
+      units: 'units',
+      selectDueDate: 'Due Date',
+      customerName: 'Customer Name',
+      enterCustomer: 'Enter customer name...',
+      productionStage: 'Production Stage',
+      assignTeamLabel: 'Assign Team',
+      selectTeam: 'Select team...',
+      orderNotes: 'Order Notes',
+      enterNotes: 'Enter special instructions or notes...',
+      requiredFields: 'Required Fields',
+      createOrder: 'Create Order',
+      shiftNumber: 'Shift Number',
+      shift1: 'Shift 1 (6 AM - 2 PM)',
+      shift2: 'Shift 2 (2 PM - 10 PM)',
+      shift3: 'Shift 3 (10 PM - 6 AM)',
+      productionTimeline: 'Production Timeline',
+      startTime: 'Start Time',
+      endTime: 'End Time',
+      selectStartTime: 'Select start time...',
+      selectEndTime: 'Select end time...',
+      editTimeline: 'Edit Timeline',
+      viewMode: 'View Mode',
+      saveChanges: 'Save Changes',
+      cancel: 'Cancel'
     },
     gu: {
       title: 'ઉત્પદન આદેશો',
@@ -400,7 +518,35 @@ export function ProductionOrders({ language }: ProductionOrdersProps) {
       markPriority: 'પ્રાથમિકતા તરીકે ચિહ્નિત કરો',
       cancelOrder: 'આદેશ રદ કરો',
       deleteOrder: 'આદેશ કાઢી નાખો',
-      createWorkingOrder: 'વર્કિંગ ઓર્ડર બનાવો'
+      createWorkingOrder: 'વર્કિંગ ઓર્ડર બનાવો',
+      createNewOrder: 'Create New Production Order',
+      selectProduct: 'Select Product',
+      chooseProduct: 'Choose product...',
+      enterQuantity: 'Enter Quantity',
+      units: 'units',
+      selectDueDate: 'Due Date',
+      customerName: 'Customer Name',
+      enterCustomer: 'Enter customer name...',
+      productionStage: 'Production Stage',
+      assignTeamLabel: 'Assign Team',
+      selectTeam: 'Select team...',
+      orderNotes: 'Order Notes',
+      enterNotes: 'Enter special instructions or notes...',
+      requiredFields: 'Required Fields',
+      createOrder: 'Create Order',
+      shiftNumber: 'Shift Number',
+      shift1: 'Shift 1 (6 AM - 2 PM)',
+      shift2: 'Shift 2 (2 PM - 10 PM)',
+      shift3: 'Shift 3 (10 PM - 6 AM)',
+      productionTimeline: 'Production Timeline',
+      startTime: 'Start Time',
+      endTime: 'End Time',
+      selectStartTime: 'Select start time...',
+      selectEndTime: 'Select end time...',
+      editTimeline: 'Edit Timeline',
+      viewMode: 'View Mode',
+      saveChanges: 'Save Changes',
+      cancel: 'Cancel'
     },
     pa: {
       title: 'ਉਤਪਾਦਨ ਆਦੇਸ਼',
@@ -438,7 +584,35 @@ export function ProductionOrders({ language }: ProductionOrdersProps) {
       markPriority: 'ਤਰਜੀਹ ਵਜੋਂ ਚਿੰਨ੍ਹਿਤ ਕਰੋ',
       cancelOrder: 'ਆਦੇਸ਼ ਰੱਦ ਕਰੋ',
       deleteOrder: 'ਆਦੇਸ਼ ਮਿਟਾਓ',
-      createWorkingOrder: 'ਵਰਕਿੰਗ ਆਰਡਰ ਬਣਾਓ'
+      createWorkingOrder: 'ਵਰਕਿੰਗ ਆਰਡਰ ਬਣਾਓ',
+      createNewOrder: 'Create New Production Order',
+      selectProduct: 'Select Product',
+      chooseProduct: 'Choose product...',
+      enterQuantity: 'Enter Quantity',
+      units: 'units',
+      selectDueDate: 'Due Date',
+      customerName: 'Customer Name',
+      enterCustomer: 'Enter customer name...',
+      productionStage: 'Production Stage',
+      assignTeamLabel: 'Assign Team',
+      selectTeam: 'Select team...',
+      orderNotes: 'Order Notes',
+      enterNotes: 'Enter special instructions or notes...',
+      requiredFields: 'Required Fields',
+      createOrder: 'Create Order',
+      shiftNumber: 'Shift Number',
+      shift1: 'Shift 1 (6 AM - 2 PM)',
+      shift2: 'Shift 2 (2 PM - 10 PM)',
+      shift3: 'Shift 3 (10 PM - 6 AM)',
+      productionTimeline: 'Production Timeline',
+      startTime: 'Start Time',
+      endTime: 'End Time',
+      selectStartTime: 'Select start time...',
+      selectEndTime: 'Select end time...',
+      editTimeline: 'Edit Timeline',
+      viewMode: 'View Mode',
+      saveChanges: 'Save Changes',
+      cancel: 'Cancel'
     }
   };
 
@@ -1437,7 +1611,7 @@ export function ProductionOrders({ language }: ProductionOrdersProps) {
                             </div>
                             <div>
                               <p className="text-zinc-600">{language === 'en' ? 'Delivery Date' : 'वितरण तिथि'}</p>
-                              <p className="font-medium text-emerald-600">{selectedOrder.dueDate}</p>
+                              <p className="font-medium text-emerald-600">{selectedOrder.due_date}</p>
                             </div>
                           </div>
                         )}
@@ -1582,7 +1756,7 @@ export function ProductionOrders({ language }: ProductionOrdersProps) {
                 {selectedOrder.qr_code && (
                   <Button onClick={() => {
                     const link = document.createElement('a');
-                    link.href = selectedOrder.qr_code;
+                    link.href = selectedOrder.qr_code || '';
                     link.download = `${selectedOrder.order_number}-QR.png`;
                     link.click();
                     alert(`✅ QR ${language === 'en' ? 'code downloaded' : 'कोड डाउनलोड किया गया'}`);
@@ -1690,7 +1864,7 @@ export function ProductionOrders({ language }: ProductionOrdersProps) {
                 <label className="text-sm text-zinc-600 mb-2 block">
                   {language === 'en' ? 'Current Due Date' : 'वर्तमान नियत तारीख'}
                 </label>
-                <Input type="text" value={selectedOrder.dueDate} disabled />
+                <Input type="text" value={selectedOrder.due_date} disabled />
               </div>
               <div>
                 <label className="text-sm text-zinc-600 mb-2 block">
@@ -2028,6 +2202,22 @@ export function ProductionOrders({ language }: ProductionOrdersProps) {
                     ))}
                   </select>
                   
+                  {/* Add New Product Link */}
+                  <div className="mt-2 flex items-center gap-2">
+                    <span className="text-sm text-zinc-500">{language === 'en' ? "Can't find your product?" : 'अपना उत्पाद नहीं मिल रहा?'}</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        closeNewOrderModal();
+                        // Navigate to BOM Planner to add new product
+                        window.location.href = '/bom-planner';
+                      }}
+                      className="text-sm text-blue-600 hover:text-blue-800 underline font-medium"
+                    >
+                      {language === 'en' ? '+ Add New Product' : '+ नया उत्पाद जोड़ें'}
+                    </button>
+                  </div>
+                  
                   {/* Product Preview */}
                   {newOrderData.product && products.find(p => p.id === newOrderData.product) && (
                     <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
@@ -2080,7 +2270,7 @@ export function ProductionOrders({ language }: ProductionOrdersProps) {
                       onChange={(e) => handleNewOrderChange('priority', e.target.value)}
                       className="w-full p-2.5 border border-zinc-300 rounded-md"
                     >
-                      <option value="Low">🟢 {t.normal}</option>
+                      <option value="Low">🟢 {language === 'en' ? 'Low' : 'कम'}</option>
                       <option value="Medium">⚪ {t.normal}</option>
                       <option value="High">🟡 {t.high}</option>
                       <option value="Urgent">🔴 {t.urgent}</option>
@@ -2389,7 +2579,7 @@ export function ProductionOrders({ language }: ProductionOrdersProps) {
               {/* Production Order Info */}
               <div className="bg-zinc-50 p-3 rounded-lg border border-zinc-200">
                 <p className="text-sm text-zinc-600">{language === 'en' ? 'Production Order' : 'उत्पादन आदेश'}</p>
-                <p className="font-medium">{selectedOrder.id} - {selectedOrder.product}</p>
+                <p className="font-medium">{selectedOrder.order_number} - {selectedOrder.product_name}</p>
                 <p className="text-sm text-zinc-500">{language === 'en' ? 'Quantity' : 'मात्रा'}: {selectedOrder.quantity}</p>
               </div>
 
