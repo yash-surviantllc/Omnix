@@ -1,4 +1,4 @@
-import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { Login } from './components/features';
 import { AppLayout } from './components/layout/AppLayout';
 import { AppRoutes } from './components/AppRoutes';
@@ -21,25 +21,8 @@ const viewToPath: Record<View, string> = {
   'settings': '/settings',
 };
 
-const pathToView: Record<string, View> = {
-  '/': 'dashboard',
-  '/orders': 'orders',
-  '/working-order': 'working-order',
-  '/bom': 'bom',
-  '/wip': 'wip',
-  '/transfer': 'transfer',
-  '/material-request': 'material-request',
-  '/qc': 'qc',
-  '/inventory': 'inventory',
-  '/gate-entry': 'gate-entry',
-  '/gate-exit': 'gate-exit',
-  '/settings': 'settings',
-};
-
 export default function App() {
   const navigate = useNavigate();
-  const location = useLocation();
-  const currentView = pathToView[location.pathname] || 'dashboard';
 
   // Use Zustand stores
   const { isAuthenticated, login } = useAuthStore();

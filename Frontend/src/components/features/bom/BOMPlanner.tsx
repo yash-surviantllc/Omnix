@@ -4,7 +4,7 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { bomApi, productsApi, type Product, type BOM, type BOMMaterialWithShortage, type BOMCreate } from '@/lib/api/bom';
+import { bomApi, productsApi, type Product, type BOM, type BOMMaterialWithShortage } from '@/lib/api/bom';
 import { AddMaterialModal } from './AddMaterialModal';
 import { EditMaterialModal } from './EditMaterialModal';
 import { inventoryItemsApi, type InventoryItemResponse } from '@/services/inventoryItemsApi';
@@ -120,7 +120,11 @@ export function BOMPlanner({ language }: BOMPlannerProps) {
       shortage: 'कमी',
       sufficient: 'पर्याप्त',
       for: 'के लिए',
-      units: 'यूनिट'
+      units: 'यूनिट',
+      editMaterial: 'सामग्री संपादित करें',
+      deleteMaterial: 'सामग्री हटाएं',
+      confirmDelete: 'क्या आप वाकई इस सामग्री को हटाना चाहते हैं?',
+      scrapPercentage: 'स्क्रैप %'
     },
     kn: {
       title: 'BOM ಸ್ವತ: ಯೋಜನಾಕಾರ',
@@ -150,11 +154,15 @@ export function BOMPlanner({ language }: BOMPlannerProps) {
       createBOM: 'BOM ರಚಿಸಿ',
       itemCode: 'ವಸ್ತು ಕೋಡ್',
       enterItemCode: 'ಉದಾ., MAT-001',
-      available: 'उपलब्ध',
+      available: 'ಉಪಲಭ್ಯ',
       shortage: 'ಕೆಲಸ',
       sufficient: 'ಪರ್ಯಾಪ್ತ',
       for: 'ಕ್ರಿಯೆಗಳು',
-      units: 'ಯೂನಿಟ್'
+      units: 'ಯೂನಿಟ್',
+      editMaterial: 'ಸಾಮಗ್ರಿ ಸಂಪಾದಿಸಿ',
+      deleteMaterial: 'ಸಾಮಗ್ರಿ ಅಳಿಸಿ',
+      confirmDelete: 'ನೀವು ಈ ಸಾಮಗ್ರಿಯನ್ನು ಅಳಿಸಲು ಖಚಿತವಾಗಿ ಬಯಸುವಿರಾ?',
+      scrapPercentage: 'ಸ್ಕ್ರ್ಯಾಪ್ %'
     },
     ta: {
       title: 'BOM தானியாக்கு திட்டம்',
@@ -188,7 +196,11 @@ export function BOMPlanner({ language }: BOMPlannerProps) {
       shortage: 'விடுப்பு',
       sufficient: 'பரம்பரைய',
       for: 'க்ரியைகளுக்கு',
-      units: 'அலகுகள்'
+      units: 'அலகுகள்',
+      editMaterial: 'பொருள் திருத்து',
+      deleteMaterial: 'பொருள் நீக்கு',
+      confirmDelete: 'இந்த பொருளை நீக்க விரும்புகிறீர்களா?',
+      scrapPercentage: 'ஸ்கிராப் %'
     },
     te: {
       title: 'BOM స్వత: యోజనాకారం',
@@ -222,7 +234,11 @@ export function BOMPlanner({ language }: BOMPlannerProps) {
       shortage: 'కోమ్ప్యూటర్',
       sufficient: 'పర్యాప్తం',
       for: 'క్రియలకు',
-      units: 'యూనిట్'
+      units: 'యూనిట్',
+      editMaterial: 'మెటీరియల్ సవరించు',
+      deleteMaterial: 'మెటీరియల్ తొలగించు',
+      confirmDelete: 'మీరు ఈ మెటీరియల్‌ను తొలగించాలనుకుంటున్నారా?',
+      scrapPercentage: 'స్క్రాప్ %'
     },
     mr: {
       title: 'BOM स्वत: योजनाकार',
@@ -256,7 +272,11 @@ export function BOMPlanner({ language }: BOMPlannerProps) {
       shortage: 'कमी',
       sufficient: 'पर्याप्त',
       for: 'क्रियाएं',
-      units: 'यूनिट'
+      units: 'यूनिट',
+      editMaterial: 'सामग्री संपादित करा',
+      deleteMaterial: 'सामग्री हटवा',
+      confirmDelete: 'तुम्हाला खात्री आहे की तुम्ही ही सामग्री हटवू इच्छिता?',
+      scrapPercentage: 'स्क्रैप %'
     },
     gu: {
       title: 'BOM સ્વત: યોજનાકાર',
@@ -290,7 +310,11 @@ export function BOMPlanner({ language }: BOMPlannerProps) {
       shortage: 'કમી',
       sufficient: 'પર્યાપ્ત',
       for: 'ક્રિયાઓ',
-      units: 'યૂનિટ્સ'
+      units: 'યૂનિટ્સ',
+      editMaterial: 'સામગ્રી સંપાદિત કરો',
+      deleteMaterial: 'સામગ્રી કાઢી નાખો',
+      confirmDelete: 'શું તમે ખરેખર આ સામગ્રી કાઢી નાખવા માંગો છો?',
+      scrapPercentage: 'સ્ક્રેપ %'
     },
     pa: {
       title: 'BOM ਸਵੈੱਖਾਵਾਂ ਯੋਜਨਾਕਾਰ',
@@ -320,11 +344,15 @@ export function BOMPlanner({ language }: BOMPlannerProps) {
       createBOM: 'BOM ਬਣਾਓ',
       itemCode: 'ਆਈਟਮ ਕੋਡ',
       enterItemCode: 'ਉਦਾ., MAT-001',
-      available: 'ਉਪਲਭ્ય',
+      available: 'ਉਪਲਭ੍ਯ',
       shortage: 'ਕਮੀ',
-      sufficient: 'ਪਰ્યાપ્ત',
+      sufficient: 'ਪਰ੍ਯਾਪ੍ਤ',
       for: 'ਕ੍ਰਿਆਵਾਂ',
-      units: 'ਯੂਨਿਟ'
+      units: 'ਯੂਨਿਟ',
+      editMaterial: 'ਸਮੱਗਰੀ ਸੰਪਾਦਿਤ ਕਰੋ',
+      deleteMaterial: 'ਸਮੱਗਰੀ ਮਿਟਾਓ',
+      confirmDelete: 'ਕੀ ਤੁਸੀਂ ਯਕੀਨੀ ਹੋ ਕਿ ਤੁਸੀਂ ਇਸ ਸਮੱਗਰੀ ਨੂੰ ਮਿਟਾਉਣਾ ਚਾਹੁੰਦੇ ਹੋ?',
+      scrapPercentage: 'ਸਕ੍ਰੈਪ %'
     }
   };
 
@@ -560,23 +588,6 @@ export function BOMPlanner({ language }: BOMPlannerProps) {
     }
   };
 
-  const getStatusBadge = (status: string) => {
-    if (status === 'sufficient') {
-      return (
-        <Badge className="bg-emerald-500 flex items-center gap-1">
-          <CheckCircle className="h-3 w-3" />
-          {t.sufficient}
-        </Badge>
-      );
-    }
-    return (
-      <Badge className="bg-red-500 flex items-center gap-1">
-        <AlertCircle className="h-3 w-3" />
-        {t.shortage}
-      </Badge>
-    );
-  };
-
   // Loading state
   if (isLoadingProducts) {
     return (
@@ -730,7 +741,7 @@ export function BOMPlanner({ language }: BOMPlannerProps) {
             <div className="space-y-2 text-sm">
               <div className="flex justify-between">
                 <span className="text-zinc-600">{t.qtyPerUnit}:</span>
-                <span>{item.quantity_per_unit} {item.unit}</span>
+                <span>{item.quantity_per_unit || item.quantity} {item.unit}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-zinc-600">{t.stock}:</span>
@@ -772,7 +783,7 @@ export function BOMPlanner({ language }: BOMPlannerProps) {
                 {materials.map((item) => (
                   <tr key={item.id} className="border-b hover:bg-zinc-50">
                     <td className="p-4">{item.material_name}</td>
-                    <td className="p-4">{item.quantity_per_unit}</td>
+                    <td className="p-4">{item.quantity_per_unit || item.quantity}</td>
                     <td className="p-4">{item.unit}</td>
                     <td className="p-4">{item.stock_qty} {item.unit}</td>
                     <td className="p-4">

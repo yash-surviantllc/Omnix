@@ -234,17 +234,17 @@ export function ChatBot({ isOpen, onToggle, language, onNavigate }: ChatBotProps
       };
     }
     
-    // Production Order Status
-    if (lowercaseText.includes('po-') || lowercaseText.includes('production') || lowercaseText.includes('order') || lowercaseText.includes('status')) {
+    // Purchase Order Status
+    if (lowercaseText.includes('po-') || lowercaseText.includes('purchase') || lowercaseText.includes('order') || lowercaseText.includes('status')) {
       const poMatch = text.match(/po[-\s]?(\d+)/i);
-      const poId = poMatch ? `PO-${poMatch[1]}` : 'production order';
+      const poId = poMatch ? `PO-${poMatch[1]}` : 'purchase order';
       
       return {
         id: Date.now().toString(),
         type: 'bot',
         content: language === 'en'
-          ? `To check the status of ${poId}, please navigate to the Production Orders section where you can view real-time order details.`
-          : `${poId} की स्थिति जांचने के लिए, कृपया उत्पादन आदेश अनुभाग पर जाएं जहां आप वास्तविक समय ऑर्डर विवरण देख सकते हैं।`
+          ? `To check the status of ${poId}, please navigate to the Purchase Orders section where you can view real-time order details.`
+          : `${poId} की स्थिति जांचने के लिए, कृपया खरीद आदेश अनुभाग पर जाएं जहां आप वास्तविक समय ऑर्डर विवरण देख सकते हैं।`
       };
     }
     

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { TruckIcon, Package, FileText, CheckCircle, Clock, AlertCircle, Search, Plus, X, Send } from 'lucide-react';
+import { TruckIcon, Package, FileText, CheckCircle, Clock, Search, Plus, X, Send } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';

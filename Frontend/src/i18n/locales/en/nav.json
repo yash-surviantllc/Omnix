@@ -1,6 +1,6 @@
 {
   "dashboard": "Dashboard",
-  "orders": "Production Orders",
+  "orders": "Purchase Orders",
   "bom": "BOM Planner",
   "wip": "WIP Board",
   "transfer": "Material Transfer",

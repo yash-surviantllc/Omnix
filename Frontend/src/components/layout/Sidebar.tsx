@@ -43,7 +43,7 @@ const translations = {
     title: 'OMNIX',
     tagline: 'Precision at every step.',
     dashboard: 'Dashboard',
-    orders: 'Production Orders',
+    orders: 'Purchase Orders',
     'working-order': 'Working Order',
     bom: 'BOM Planner',
     wip: 'WIP Board',

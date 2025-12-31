@@ -5,7 +5,7 @@ import { useAppStore } from '@/stores/appStore';
 
 // Lazy load components
 const Dashboard = lazy(() => import('@/components/features').then(module => ({ default: module.Dashboard })));
-const ProductionOrders = lazy(() => import('@/components/features').then(module => ({ default: module.ProductionOrders })));
+const PurchaseOrders = lazy(() => import('@/components/features').then(module => ({ default: module.PurchaseOrders })));
 const WorkingOrder = lazy(() => import('@/components/features').then(module => ({ default: module.WorkingOrder })));
 const BOMPlanner = lazy(() => import('@/components/features').then(module => ({ default: module.BOMPlanner })));
 const WIPBoard = lazy(() => import('@/components/features').then(module => ({ default: module.WIPBoard })));
@@ -36,7 +36,7 @@ export function AppRoutes({ language, setCurrentView }: AppRoutesProps) {
     <Suspense fallback={<LoadingSpinner />}>
       <Routes>
         <Route path="/" element={<Dashboard onNavigate={setCurrentView} language={language} />} />
-        <Route path="/orders" element={<ProductionOrders language={language} />} />
+        <Route path="/orders" element={<PurchaseOrders language={language} />} />
         <Route path="/working-order" element={<WorkingOrder language={language} />} />
         <Route path="/bom" element={<BOMPlanner language={language} />} />
         <Route path="/wip" element={<WIPBoard language={language} />} />

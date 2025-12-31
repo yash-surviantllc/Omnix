@@ -1,21 +1,21 @@
-import { Search, Filter, Plus, MoreVertical, Eye, Edit, XCircle, Printer, CheckCircle2, AlertCircle, Minus, RefreshCw, Package, Clock, FileText, Download, Archive, Users, MessageSquare, Send, Calendar, Star, Trash2 } from 'lucide-react';
+import { Search, Plus, MoreVertical, Eye, Edit, XCircle, Printer, CheckCircle2, AlertCircle, Minus, RefreshCw, Package, Clock, FileText, Download, Archive, Users, MessageSquare, Send, Calendar, Star, Trash2 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useState, useEffect } from 'react';
 import { OrderActionsDropdown } from './components/OrderActionsDropdown';
-import { productionOrdersApi, type ProductionOrder, type CreateProductionOrderData } from '@/lib/api/production-orders';
+import { purchaseOrdersApi, type PurchaseOrder, type CreatePurchaseOrderData } from '@/lib/api/production-orders';
 import { productsApi } from '@/lib/api/bom';
 import { wipApi, type WorkingOrderCreate } from '@/lib/api/wip';
 
-type ProductionOrdersProps = {
+type PurchaseOrdersProps = {
   language: 'en' | 'hi' | 'kn' | 'ta' | 'te' | 'mr' | 'gu' | 'pa';
 };
 
-export function ProductionOrders({ language }: ProductionOrdersProps) {
+export function PurchaseOrders({ language }: PurchaseOrdersProps) {
   // API Data State
-  const [orders, setOrders] = useState<ProductionOrder[]>([]);
+  const [orders, setOrders] = useState<PurchaseOrder[]>([]);
   const [products, setProducts] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -24,7 +24,7 @@ export function ProductionOrders({ language }: ProductionOrdersProps) {
   // UI State
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
   const [activeModal, setActiveModal] = useState<string | null>(null);
-  const [selectedOrder, setSelectedOrder] = useState<ProductionOrder | null>(null);
+  const [selectedOrder, setSelectedOrder] = useState<PurchaseOrder | null>(null);
   const [noteText, setNoteText] = useState('');
   const [selectedTeam, setSelectedTeam] = useState('');
   const [newDueDate, setNewDueDate] = useState('');
@@ -81,7 +81,7 @@ export function ProductionOrders({ language }: ProductionOrdersProps) {
 
   const translations = {
     en: {
-      title: 'Production Orders',
+      title: 'Purchase Orders',
       search: 'Search orders...',
       filter: 'Filter',
       newOrder: 'New Order',
@@ -119,7 +119,7 @@ export function ProductionOrders({ language }: ProductionOrdersProps) {
       saveChanges: 'Save Changes',
       cancel: 'Cancel',
       // New Order Form
-      createNewOrder: 'Create New Production Order',
+      createNewOrder: 'Create New Purchase Order',
       selectProduct: 'Select Product',
       chooseProduct: 'Choose product...',
       enterQuantity: 'Enter Quantity',
@@ -254,7 +254,7 @@ export function ProductionOrders({ language }: ProductionOrdersProps) {
       cancelOrder: 'ಆದೇಶವನ್ನು ರದ್ದುಗೊಳಿಸಿ',
       deleteOrder: 'ಆದೇಶವನ್ನು ಅಳಿಸಿ',
       createWorkingOrder: 'ವರ್ಕಿಂಗ್ ಆರ್ಡರ್ ರಚಿಸಿ',
-      createNewOrder: 'Create New Production Order',
+      createNewOrder: 'Create New Purchase Order',
       selectProduct: 'Select Product',
       chooseProduct: 'Choose product...',
       enterQuantity: 'Enter Quantity',
@@ -387,7 +387,7 @@ export function ProductionOrders({ language }: ProductionOrdersProps) {
       cancelOrder: 'ఆదేశాన్ని రద్దు చేయండి',
       deleteOrder: 'ఆదేశాన్ని తొలగించండి',
       createWorkingOrder: 'వర్కింగ్ ఆర్డర్ సృష్టించండి',
-      createNewOrder: 'Create New Production Order',
+      createNewOrder: 'Create New Purchase Order',
       selectProduct: 'Select Product',
       chooseProduct: 'Choose product...',
       enterQuantity: 'Enter Quantity',
@@ -453,7 +453,7 @@ export function ProductionOrders({ language }: ProductionOrdersProps) {
       cancelOrder: 'आदेश रद्द करा',
       deleteOrder: 'आदेश हटवा',
       createWorkingOrder: 'वर्किंग ऑर्डर तयार करा',
-      createNewOrder: 'Create New Production Order',
+      createNewOrder: 'Create New Purchase Order',
       selectProduct: 'Select Product',
       chooseProduct: 'Choose product...',
       enterQuantity: 'Enter Quantity',
@@ -519,7 +519,7 @@ export function ProductionOrders({ language }: ProductionOrdersProps) {
       cancelOrder: 'આદેશ રદ કરો',
       deleteOrder: 'આદેશ કાઢી નાખો',
       createWorkingOrder: 'વર્કિંગ ઓર્ડર બનાવો',
-      createNewOrder: 'Create New Production Order',
+      createNewOrder: 'Create New Purchase Order',
       selectProduct: 'Select Product',
       chooseProduct: 'Choose product...',
       enterQuantity: 'Enter Quantity',
@@ -585,7 +585,7 @@ export function ProductionOrders({ language }: ProductionOrdersProps) {
       cancelOrder: 'ਆਦੇਸ਼ ਰੱਦ ਕਰੋ',
       deleteOrder: 'ਆਦੇਸ਼ ਮਿਟਾਓ',
       createWorkingOrder: 'ਵਰਕਿੰਗ ਆਰਡਰ ਬਣਾਓ',
-      createNewOrder: 'Create New Production Order',
+      createNewOrder: 'Create New Purchase Order',
       selectProduct: 'Select Product',
       chooseProduct: 'Choose product...',
       enterQuantity: 'Enter Quantity',
@@ -618,18 +618,18 @@ export function ProductionOrders({ language }: ProductionOrdersProps) {
 
   const t = translations[language];
 
-  // Fetch production orders from API
+  // Fetch purchase orders from API
   const fetchOrders = async () => {
     setIsLoading(true);
     setError(null);
     try {
-      const data = await productionOrdersApi.listOrders({
+      const data = await purchaseOrdersApi.listOrders({
         search: searchQuery,
         limit: 100
       });
       setOrders(data);
     } catch (err: any) {
-      setError(err?.detail || err?.message || 'Failed to load production orders');
+      setError(err?.detail || err?.message || 'Failed to load purchase orders');
     } finally {
       setIsLoading(false);
     }
@@ -727,7 +727,7 @@ export function ProductionOrders({ language }: ProductionOrdersProps) {
     }
 
     try {
-      const orderData: CreateProductionOrderData = {
+      const orderData: CreatePurchaseOrderData = {
         product_id: newOrderData.product,
         quantity: parseFloat(newOrderData.quantity),
         due_date: newOrderData.dueDate,
@@ -741,7 +741,7 @@ export function ProductionOrders({ language }: ProductionOrdersProps) {
         end_time: newOrderData.endTime || undefined
       };
 
-      const createdOrder = await productionOrdersApi.createOrder(orderData);
+      const createdOrder = await purchaseOrdersApi.createOrder(orderData);
       
       alert(`✅ ${language === 'en' ? 'New Order Created!' : 'नया ऑर्डर बनाया गया!'}\n\n${language === 'en' ? 'Order Number' : 'ऑर्डर नंबर'}: ${createdOrder.order_number}\n${language === 'en' ? 'Product' : 'उत्पाद'}: ${createdOrder.product_name}\n${language === 'en' ? 'Quantity' : 'मात्रा'}: ${createdOrder.quantity} ${createdOrder.unit}`);
       
@@ -773,14 +773,14 @@ export function ProductionOrders({ language }: ProductionOrdersProps) {
           if (editOrderData.priority) updateData.priority = editOrderData.priority;
           if (editOrderData.notes !== undefined) updateData.notes = editOrderData.notes;
           
-          await productionOrdersApi.updateOrder(selectedOrder.id, updateData);
+          await purchaseOrdersApi.updateOrder(selectedOrder.id, updateData);
           alert(`✅ ${language === 'en' ? 'Order updated successfully' : 'ऑर्डर सफलतापूर्वक अपडेट किया गया'}`);
           fetchOrders(); // Refresh list
           break;
           
         case 'cancel':
           if (confirm(`${language === 'en' ? 'Are you sure you want to cancel this order?' : 'क्या आप वाकई इस ऑर्डर को रद्द करना चाहते हैं?'}\n${selectedOrder.order_number}`)) {
-            await productionOrdersApi.updateStatus(selectedOrder.id, { status: 'Cancelled' });
+            await purchaseOrdersApi.updateStatus(selectedOrder.id, { status: 'Cancelled' });
             alert(`✅ ${language === 'en' ? 'Order cancelled' : 'ऑर्डर रद्द किया गया'}`);
             fetchOrders();
           }
@@ -788,7 +788,7 @@ export function ProductionOrders({ language }: ProductionOrdersProps) {
           
         case 'delete':
           if (confirm(`${language === 'en' ? 'Are you sure you want to delete this order? This cannot be undone.' : 'क्या आप वाकई इस ऑर्डर को हटाना चाहते हैं? यह पूर्ववत नहीं किया जा सकता।'}\n${selectedOrder.order_number}`)) {
-            await productionOrdersApi.cancelOrder(selectedOrder.id);
+            await purchaseOrdersApi.cancelOrder(selectedOrder.id);
             alert(`✅ ${language === 'en' ? 'Order deleted' : 'ऑर्डर हटाया गया'}`);
             fetchOrders();
           }
@@ -799,7 +799,7 @@ export function ProductionOrders({ language }: ProductionOrdersProps) {
           break;
         case 'assignTeam':
           if (selectedTeam) {
-            await productionOrdersApi.updateOrder(selectedOrder.id, { assigned_team: selectedTeam });
+            await purchaseOrdersApi.updateOrder(selectedOrder.id, { assigned_team: selectedTeam });
             alert(`✅ ${selectedOrder.order_number} ${language === 'en' ? 'assigned to' : 'को असाइन किया गया'} ${selectedTeam}`);
             fetchOrders();
           }
@@ -811,7 +811,7 @@ export function ProductionOrders({ language }: ProductionOrdersProps) {
               ? `${currentNotes}\n\n[${new Date().toLocaleString()}]\n${noteText}`
               : `[${new Date().toLocaleString()}]\n${noteText}`;
             
-            await productionOrdersApi.updateOrder(selectedOrder.id, { notes: updatedNotes });
+            await purchaseOrdersApi.updateOrder(selectedOrder.id, { notes: updatedNotes });
             alert(`✅ ${language === 'en' ? 'Note added to' : 'नोट जोड़ा गया'} ${selectedOrder.order_number}`);
             fetchOrders();
           }
@@ -823,7 +823,7 @@ export function ProductionOrders({ language }: ProductionOrdersProps) {
           alert(`✅ ${selectedOrder.order_number} ${language === 'en' ? 'exported to Excel' : 'Excel में निर्यात किया गया'}`);
           break;
         case 'sendToProduction':
-          await productionOrdersApi.updateStatus(selectedOrder.id, { status: 'In Progress' });
+          await purchaseOrdersApi.updateStatus(selectedOrder.id, { status: 'In Progress' });
           alert(`✅ ${selectedOrder.order_number} ${language === 'en' ? 'sent to production floor' : 'उत्पादन में भेजा गया'}`);
           fetchOrders();
           break;
@@ -832,13 +832,13 @@ export function ProductionOrders({ language }: ProductionOrdersProps) {
           break;
         case 'reschedule':
           if (newDueDate) {
-            await productionOrdersApi.updateOrder(selectedOrder.id, { due_date: newDueDate });
+            await purchaseOrdersApi.updateOrder(selectedOrder.id, { due_date: newDueDate });
             alert(`✅ ${selectedOrder.order_number} ${language === 'en' ? 'rescheduled to' : 'पुनर्निर्धारित'} ${newDueDate}`);
             fetchOrders();
           }
           break;
         case 'duplicate':
-          const duplicatedOrder = await productionOrdersApi.duplicateOrder(selectedOrder.id);
+          const duplicatedOrder = await purchaseOrdersApi.duplicateOrder(selectedOrder.id);
           alert(`✅ ${language === 'en' ? 'Order duplicated successfully!' : 'ऑर्डर सफलतापूर्वक डुप्लिकेट किया गया!'}\n\n${language === 'en' ? 'New Order Number' : 'नया ऑर्डर नंबर'}: ${duplicatedOrder.order_number}`);
           fetchOrders();
           break;
@@ -846,12 +846,12 @@ export function ProductionOrders({ language }: ProductionOrdersProps) {
           alert(`✅ ${selectedOrder.order_number} ${language === 'en' ? 'shared successfully' : 'सफलतापूर्वक साझा किया गया'}`);
           break;
         case 'archive':
-          await productionOrdersApi.archiveOrder(selectedOrder.id);
+          await purchaseOrdersApi.archiveOrder(selectedOrder.id);
           alert(`✅ ${selectedOrder.order_number} ${language === 'en' ? 'archived successfully' : 'सफलतापूर्वक संग्रहीत'}`);
           fetchOrders();
           break;
         case 'priority':
-          await productionOrdersApi.updateOrder(selectedOrder.id, { priority: 'Urgent' });
+          await purchaseOrdersApi.updateOrder(selectedOrder.id, { priority: 'Urgent' });
           alert(`✅ ${selectedOrder.order_number} ${language === 'en' ? 'marked as priority' : 'प्राथमिकता के रूप में चिह्नित'}`);
           fetchOrders();
           break;
@@ -2035,7 +2035,7 @@ export function ProductionOrders({ language }: ProductionOrdersProps) {
         <Card className="p-8">
           <div className="flex flex-col items-center justify-center gap-3">
             <RefreshCw className="h-8 w-8 animate-spin text-emerald-600" />
-            <p className="text-zinc-600">{language === 'en' ? 'Loading production orders...' : 'उत्पादन आदेश लोड हो रहे हैं...'}</p>
+            <p className="text-zinc-600">{language === 'en' ? 'Loading purchase orders...' : 'उत्पादन आदेश लोड हो रहे हैं...'}</p>
           </div>
         </Card>
       )}
@@ -2060,7 +2060,7 @@ export function ProductionOrders({ language }: ProductionOrdersProps) {
         <Card className="p-8">
           <div className="flex flex-col items-center justify-center gap-3">
             <Package className="h-12 w-12 text-zinc-400" />
-            <p className="text-zinc-600 font-medium">{language === 'en' ? 'No production orders found' : 'कोई उत्पादन आदेश नहीं मिला'}</p>
+            <p className="text-zinc-600 font-medium">{language === 'en' ? 'No purchase orders found' : 'कोई उत्पादन आदेश नहीं मिला'}</p>
             <p className="text-zinc-500 text-sm">{language === 'en' ? 'Create your first order to get started' : 'शुरू करने के लिए अपना पहला ऑर्डर बनाएं'}</p>
             <Button onClick={() => setShowNewOrderModal(true)} className="mt-2">
               <Plus className="h-4 w-4 mr-2" />
@@ -2210,7 +2210,7 @@ export function ProductionOrders({ language }: ProductionOrdersProps) {
                       onClick={() => {
                         closeNewOrderModal();
                         // Navigate to BOM Planner to add new product
-                        window.location.href = '/bom-planner';
+                        window.location.href = '/bom';
                       }}
                       className="text-sm text-blue-600 hover:text-blue-800 underline font-medium"
                     >
@@ -2576,9 +2576,9 @@ export function ProductionOrders({ language }: ProductionOrdersProps) {
                 </Button>
               </div>
 
-              {/* Production Order Info */}
+              {/* Purchase Order Info */}
               <div className="bg-zinc-50 p-3 rounded-lg border border-zinc-200">
-                <p className="text-sm text-zinc-600">{language === 'en' ? 'Production Order' : 'उत्पादन आदेश'}</p>
+                <p className="text-sm text-zinc-600">{language === 'en' ? 'Purchase Order' : 'खरीद आदेश'}</p>
                 <p className="font-medium">{selectedOrder.order_number} - {selectedOrder.product_name}</p>
                 <p className="text-sm text-zinc-500">{language === 'en' ? 'Quantity' : 'मात्रा'}: {selectedOrder.quantity}</p>
               </div>
@@ -2745,7 +2745,7 @@ export function ProductionOrders({ language }: ProductionOrdersProps) {
                       // Call backend API to create working order
                       const createdWorkOrder = await wipApi.createWorkingOrder(workingOrderPayload);
                       
-                      alert(`✅ ${language === 'en' ? 'Working Order Created Successfully!' : 'वर्किंग ऑर्डर सफलतापूर्वक बनाया गया!'}\n\n${language === 'en' ? 'Working Order Number' : 'वर्किंग ऑर्डर नंबर'}: ${createdWorkOrder.work_order_number}\n${language === 'en' ? 'Production Order' : 'उत्पादन आदेश'}: ${selectedOrder.order_number}\n${language === 'en' ? 'Operation' : 'ऑपरेशन'}: ${createdWorkOrder.operation}\n${language === 'en' ? 'Workstation' : 'वर्कस्टेशन'}: ${createdWorkOrder.workstation}\n${language === 'en' ? 'Status' : 'स्थिति'}: ${createdWorkOrder.status}`);
+                      alert(`✅ ${language === 'en' ? 'Working Order Created Successfully!' : 'वर्किंग ऑर्डर सफलतापूर्वक बनाया गया!'}\n\n${language === 'en' ? 'Working Order Number' : 'वर्किंग ऑर्डर नंबर'}: ${createdWorkOrder.work_order_number}\n${language === 'en' ? 'Purchase Order' : 'खरीद आदेश'}: ${selectedOrder.order_number}\n${language === 'en' ? 'Operation' : 'ऑपरेशन'}: ${createdWorkOrder.operation}\n${language === 'en' ? 'Workstation' : 'वर्कस्टेशन'}: ${createdWorkOrder.workstation}\n${language === 'en' ? 'Status' : 'स्थिति'}: ${createdWorkOrder.status}`);
                       
                       setShowCreateWorkingOrderModal(false);
                       setSelectedOrder(null);

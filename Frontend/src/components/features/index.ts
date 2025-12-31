@@ -31,7 +31,7 @@ export { TransferModal } from './materials/components/TransferModal';
 export { TransferHistoryTable } from './materials/components/TransferHistoryTable';
 
 // Orders
-export { ProductionOrders } from './orders/ProductionOrders';
+export { PurchaseOrders } from './orders/PurchaseOrders';
 export { WorkingOrder } from './orders/WorkingOrder';
 export { WIPBoard } from './orders/WIPBoard';
 export { OrderActionsDropdown } from './orders/components/OrderActionsDropdown';

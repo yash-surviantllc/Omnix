@@ -182,8 +182,8 @@ export function Dashboard({ onNavigate, language }: DashboardProps) {
         value: kpis.material_shortages.value.toString(),
         subtitle: t.criticalShortages,
         icon: AlertTriangle,
-        color: kpis.material_shortages.value > 0 ? 'bg-red-500' : 'bg-green-500',
-        trend: kpis.material_shortages.value > 0 ? 'Action needed' : 'All good'
+        color: Number(kpis.material_shortages.value) > 0 ? 'bg-red-500' : 'bg-green-500',
+        trend: Number(kpis.material_shortages.value) > 0 ? 'Action needed' : 'All good'
       },
       {
         title: t.rework,

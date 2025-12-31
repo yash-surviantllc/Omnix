@@ -1,4 +1,4 @@
-import { ArrowRight, AlertTriangle, CheckCircle, Clock, Package, TrendingUp, AlertCircle, BarChart3, X } from 'lucide-react';
+import { Clock, Package, TrendingUp, AlertCircle, BarChart3, X } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { useState, useEffect } from 'react';
@@ -80,7 +80,9 @@ export function WIPBoard({ language }: WIPBoardProps) {
       askBot: 'बॉट से पूछें क्यों?',
       stageHealth: 'स्टेज स्वास्थ्य संकेतक',
       min: 'मिनट',
-      utilization: 'उपयोग'
+      utilization: 'उपयोग',
+      viewTrend: 'ट्रेंड देखें',
+      close: 'बंद करें'
     },
     kn: {
       title: 'WIP ಲೈವ್ ಬೋರ್ಡ್',
@@ -97,7 +99,9 @@ export function WIPBoard({ language }: WIPBoardProps) {
       askBot: 'ಬೋಟ್ ಅನ್ನು ಏಕೆ ಕೇಳಿ?',
       stageHealth: 'ಸ್ಟೇಜ್ ಸ್ವಾಸ್ಥ್ಯ ಸೂಚಕಗಳು',
       min: 'ನಿಮಿಷ',
-      utilization: 'ಬಳಕೆ'
+      utilization: 'ಬಳಕೆ',
+      viewTrend: 'ಟ್ರೆಂಡ್ ನೋಡಿ',
+      close: 'ಮುಚ್ಚಿ'
     },
     ta: {
       title: 'WIP நேரடி பலகை',
@@ -114,7 +118,9 @@ export function WIPBoard({ language }: WIPBoardProps) {
       askBot: 'போட் ஏன் என்று கேளுங்கள்?',
       stageHealth: 'நிலை ஆரோக்கிய குறிகாட்டிகள்',
       min: 'நிமிடம்',
-      utilization: 'பயன்பாடு'
+      utilization: 'பயன்பாடு',
+      viewTrend: 'போக்கைக் காண்க',
+      close: 'மூடு'
     },
     te: {
       title: 'WIP లైవ్ బోర్డ్',
@@ -131,7 +137,9 @@ export function WIPBoard({ language }: WIPBoardProps) {
       askBot: 'బాట్‌ను ఎందుకు అని అడగండి?',
       stageHealth: 'దశ ఆరోగ్య సూచికలు',
       min: 'నిమిషం',
-      utilization: 'వినియోగం'
+      utilization: 'వినియోగం',
+      viewTrend: 'ట్రెండ్ చూడండి',
+      close: 'మూసివేయండి'
     },
     mr: {
       title: 'WIP लाइव्ह बोर्ड',
@@ -148,7 +156,9 @@ export function WIPBoard({ language }: WIPBoardProps) {
       askBot: 'बॉट ला का विचारा?',
       stageHealth: 'स्टेज आरोग्य संकेतक',
       min: 'मिनिट',
-      utilization: 'वापर'
+      utilization: 'वापर',
+      viewTrend: 'ट्रेंड पहा',
+      close: 'बंद करा'
     },
     gu: {
       title: 'WIP લાઇવ બોર્ડ',
@@ -165,7 +175,9 @@ export function WIPBoard({ language }: WIPBoardProps) {
       askBot: 'બોટને શા માટે પૂછો?',
       stageHealth: 'સ્ટેજ આરોગ્ય સૂચક',
       min: 'મિનિટ',
-      utilization: 'ઉપયોગ'
+      utilization: 'ઉપયોગ',
+      viewTrend: 'ટ્રેંડ જુઓ',
+      close: 'બંધ કરો'
     },
     pa: {
       title: 'WIP ਲਾਈਵ ਬੋਰਡ',
@@ -182,7 +194,9 @@ export function WIPBoard({ language }: WIPBoardProps) {
       askBot: 'ਬੋਟ ਨੂੰ ਕਿਉਂ ਪੁੱਛੋ?',
       stageHealth: 'ਪੜਾਅ ਸਿਹਤ ਸੂਚਕ',
       min: 'ਮਿੰਟ',
-      utilization: 'ਵਰਤੋਂ'
+      utilization: 'ਵਰਤੋਂ',
+      viewTrend: 'ਟ੍ਰੈਂਡ ਦੇਖੋ',
+      close: 'ਬੰਦ ਕਰੋ'
     }
   };
 

@@ -199,7 +199,7 @@ export function UserProfile({ user, language, onLogout, onNavigateToSettings, is
               </button>
               <button
                 onClick={() => {
-                  setShowDropdown(false);
+                  setShowProfileMenu(false);
                   onNavigateToSettings?.();
                 }}
                 className="w-full flex items-center gap-3 px-4 py-3 text-sm text-zinc-700 hover:bg-zinc-50 transition-colors"
@@ -225,7 +225,6 @@ export function UserProfile({ user, language, onLogout, onNavigateToSettings, is
             user={user}
             t={t}
             onClose={() => setShowProfileModal(false)}
-            getRoleBadgeColor={getRoleBadgeColor}
             getInitials={getInitials}
           />
         )}
@@ -296,13 +295,11 @@ function ProfileModal({
   user,
   t,
   onClose,
-  getRoleBadgeColor,
   getInitials,
 }: {
   user: UserData;
   t: Record<string, string>;
   onClose: () => void;
-  getRoleBadgeColor: (role: string) => string;
   getInitials: (name: string) => string;
 }) {
   return (

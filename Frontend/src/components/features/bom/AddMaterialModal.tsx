@@ -31,7 +31,7 @@ export function AddMaterialModal({
 }: AddMaterialModalProps) {
   if (!show) return null;
 
-  const t = {
+  const translations = {
     en: {
       addMaterial: 'Add Material',
       selectMaterial: 'Select Material',
@@ -51,17 +51,69 @@ export function AddMaterialModal({
       scrapPercentage: 'स्क्रैप %',
       cancel: 'रद्द करें',
       add: 'जोड़ें'
+    },
+    kn: {
+      addMaterial: 'ಸಾಮಗ್ರಿ ಸೇರಿಸಿ',
+      selectMaterial: 'ಸಾಮಗ್ರಿ ಆಯ್ಕೆಮಾಡಿ',
+      quantity: 'ಪ್ರಮಾಣ',
+      unit: 'ಯೂನಿಟ್',
+      unitCost: 'ಯೂನಿಟ್ ವೆಚ್ಚ',
+      scrapPercentage: 'ಸ್ಕ್ರ್ಯಾಪ್ %',
+      cancel: 'ರದ್ದುಮಾಡಿ',
+      add: 'ಸೇರಿಸಿ'
+    },
+    ta: {
+      addMaterial: 'பொருள் சேர்க்கவும்',
+      selectMaterial: 'பொருள் தேர்ந்தெடுக்கவும்',
+      quantity: 'அளவு',
+      unit: 'அலகு',
+      unitCost: 'அலகு செலவு',
+      scrapPercentage: 'ஸ்கிராப் %',
+      cancel: 'ரத்துசெய்',
+      add: 'சேர்'
+    },
+    te: {
+      addMaterial: 'మెటీరియల్ జోడించండి',
+      selectMaterial: 'మెటీరియల్ ఎంచుకోండి',
+      quantity: 'పరిమాణం',
+      unit: 'యూనిట్',
+      unitCost: 'యూనిట్ ఖర్చు',
+      scrapPercentage: 'స్క్రాప్ %',
+      cancel: 'రద్దుచేయి',
+      add: 'జోడించు'
+    },
+    mr: {
+      addMaterial: 'सामग्री जोडा',
+      selectMaterial: 'सामग्री निवडा',
+      quantity: 'प्रमाण',
+      unit: 'यूनिट',
+      unitCost: 'यूनिट किंमत',
+      scrapPercentage: 'स्क्रैप %',
+      cancel: 'रद्द करा',
+      add: 'जोडा'
+    },
+    gu: {
+      addMaterial: 'સામગ્રી ઉમેરો',
+      selectMaterial: 'સામગ્રી પસંદ કરો',
+      quantity: 'જથ્થો',
+      unit: 'યૂનિટ',
+      unitCost: 'યૂનિટ કિંમત',
+      scrapPercentage: 'સ્ક્રેપ %',
+      cancel: 'રદ કરો',
+      add: 'ઉમેરો'
+    },
+    pa: {
+      addMaterial: 'ਸਮੱਗਰੀ ਜੋੜੋ',
+      selectMaterial: 'ਸਮੱਗਰੀ ਚੁਣੋ',
+      quantity: 'ਮਾਤਰਾ',
+      unit: 'ਯੂਨਿਟ',
+      unitCost: 'ਯੂਨਿਟ ਕੀਮਤ',
+      scrapPercentage: 'ਸਕ੍ਰੈਪ %',
+      cancel: 'ਰੱਦ ਕਰੋ',
+      add: 'ਜੋੜੋ'
     }
-  }[language] || {
-    addMaterial: 'Add Material',
-    selectMaterial: 'Select Material',
-    quantity: 'Quantity',
-    unit: 'Unit',
-    unitCost: 'Unit Cost',
-    scrapPercentage: 'Scrap %',
-    cancel: 'Cancel',
-    add: 'Add'
   };
+  const t = translations[language];
 
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">

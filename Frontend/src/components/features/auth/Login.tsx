@@ -249,7 +249,7 @@ export function Login({ onLogin, language, onLanguageChange }: LoginProps) {
           {/* Feature highlights */}
           <div className="grid grid-cols-2 gap-4 pt-8">
             {[
-              { label: 'Production Orders', value: '1000+' },
+              { label: 'Purchase Orders', value: '1000+' },
               { label: 'Active Users', value: '50+' },
               { label: 'Efficiency Gain', value: '35%' },
               { label: 'Languages', value: '8' },

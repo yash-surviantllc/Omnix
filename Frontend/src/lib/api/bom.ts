@@ -27,11 +27,27 @@ export interface BOMMaterial {
   sequence_number: number;
 }
 
-export interface BOMMaterialWithShortage extends BOMMaterial {
-  stock_qty: number;
-  required_qty: number;
-  shortage_status: 'Sufficient' | 'Shortage';
-  shortage_display: string | null;
+export interface BOMMaterialWithShortage {
+  id: string;
+  material_id: string;
+  material_code: string;
+  material_name: string;
+  quantity_per_unit: number;  // Qty per 1 unit (for display)
+  quantity: number;  // Alias for quantity_per_unit for backward compatibility
+  required_qty: number;  // Total required for production qty
+  unit: string;
+  scrap_percentage: number;
+  unit_cost: number;
+  sequence_number?: number;
+  
+  // Inventory & Shortage Info
+  stock_qty: number;  // Current stock
+  available_qty: number;
+  allocated_qty: number;
+  free_qty: number;
+  shortage_qty: number;
+  shortage_status: 'Sufficient' | 'Shortage' | 'Moderate' | 'Critical' | 'Out of Stock';
+  shortage_display: string | null;  // "Need 800 m" or null
 }
 
 export interface BOM {

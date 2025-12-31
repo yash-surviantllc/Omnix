@@ -10,20 +10,6 @@ interface MobileMenuProps {
   setCurrentView: (view: View | string) => void;
 }
 
-const viewToPath: Record<View, string> = {
-  'dashboard': '/',
-  'orders': '/orders',
-  'working-order': '/working-order',
-  'bom': '/bom',
-  'wip': '/wip',
-  'transfer': '/transfer',
-  'material-request': '/material-request',
-  'qc': '/qc',
-  'inventory': '/inventory',
-  'gate-entry': '/gate-entry',
-  'gate-exit': '/gate-exit',
-};
-
 const languageOptions = [
   { code: 'en' as Language, name: 'English' },
   { code: 'hi' as Language, name: 'हिंदी' },
@@ -38,7 +24,7 @@ const languageOptions = [
 const translations = {
   en: {
     dashboard: 'Dashboard',
-    orders: 'Production Orders',
+    orders: 'Purchase Orders',
     'working-order': 'Working Order',
     bom: 'BOM Planner',
     wip: 'WIP Board',

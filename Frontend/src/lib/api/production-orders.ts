@@ -132,7 +132,7 @@ export interface ListOrdersParams {
 
 // API Client
 export const productionOrdersApi = {
-  // List production orders
+  // List purchase orders
   async listOrders(params?: ListOrdersParams): Promise<ProductionOrder[]> {
     const queryParams = new URLSearchParams();
     
@@ -148,22 +148,22 @@ export const productionOrdersApi = {
     return await apiClient.get<ProductionOrder[]>(url);
   },
 
-  // Get single production order
+  // Get single purchase order
   async getOrder(orderId: string): Promise<ProductionOrder> {
     return await apiClient.get<ProductionOrder>(`/production-orders/${orderId}`);
   },
 
-  // Create production order
+  // Create purchase order
   async createOrder(data: CreateProductionOrderData): Promise<ProductionOrder> {
     return await apiClient.post<ProductionOrder>('/production-orders', data);
   },
 
-  // Duplicate production order
+  // Duplicate purchase order
   async duplicateOrder(orderId: string): Promise<ProductionOrder> {
     return await apiClient.post<ProductionOrder>(`/production-orders/${orderId}/duplicate`);
   },
 
-  // Update production order
+  // Update purchase order
   async updateOrder(orderId: string, data: UpdateProductionOrderData): Promise<ProductionOrder> {
     return await apiClient.put<ProductionOrder>(`/production-orders/${orderId}`, data);
   },
@@ -217,3 +217,9 @@ export const productionOrdersApi = {
     return await apiClient.post<ProductionValidation>(`/production-orders/validate-production?${queryParams.toString()}`);
   },
 };
+
+// Aliases for Purchase Order naming (frontend display)
+export type PurchaseOrder = ProductionOrder;
+export type CreatePurchaseOrderData = CreateProductionOrderData;
+export type UpdatePurchaseOrderData = UpdateProductionOrderData;
+export const purchaseOrdersApi = productionOrdersApi;

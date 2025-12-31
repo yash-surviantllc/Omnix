@@ -33,7 +33,7 @@ export function EditMaterialModal({
 }: EditMaterialModalProps) {
   if (!show) return null;
 
-  const t = {
+  const translations = {
     en: {
       editMaterial: 'Edit Material',
       selectMaterial: 'Select Material',
@@ -55,18 +55,75 @@ export function EditMaterialModal({
       cancel: 'रद्द करें',
       update: 'अपडेट करें',
       delete: 'सामग्री हटाएं'
+    },
+    kn: {
+      editMaterial: 'ಸಾಮಗ್ರಿ ಸಂಪಾದಿಸಿ',
+      selectMaterial: 'ಸಾಮಗ್ರಿ ಆಯ್ಕೆಮಾಡಿ',
+      quantity: 'ಪ್ರಮಾಣ',
+      unit: 'ಯೂನಿಟ್',
+      unitCost: 'ಯೂನಿಟ್ ವೆಚ್ಚ',
+      scrapPercentage: 'ಸ್ಕ್ರ್ಯಾಪ್ %',
+      cancel: 'ರದ್ದುಮಾಡಿ',
+      update: 'ನವೀಕರಿಸಿ',
+      delete: 'ಸಾಮಗ್ರಿ ಅಳಿಸಿ'
+    },
+    ta: {
+      editMaterial: 'பொருள் திருத்து',
+      selectMaterial: 'பொருள் தேர்ந்தெடுக்கவும்',
+      quantity: 'அளவு',
+      unit: 'அலகு',
+      unitCost: 'அலகு செலவு',
+      scrapPercentage: 'ஸ்கிராப் %',
+      cancel: 'ரத்துசெய்',
+      update: 'புதுப்பி',
+      delete: 'பொருள் நீக்கு'
+    },
+    te: {
+      editMaterial: 'మెటీరియల్ సవరించు',
+      selectMaterial: 'మెటీరియల్ ఎంచుకోండి',
+      quantity: 'పరిమాణం',
+      unit: 'యూనిట్',
+      unitCost: 'యూనిట్ ఖర్చు',
+      scrapPercentage: 'స్క్రాప్ %',
+      cancel: 'రద్దుచేయి',
+      update: 'నవీకరించు',
+      delete: 'మెటీరియల్ తొలగించు'
+    },
+    mr: {
+      editMaterial: 'सामग्री संपादित करा',
+      selectMaterial: 'सामग्री निवडा',
+      quantity: 'प्रमाण',
+      unit: 'यूनिट',
+      unitCost: 'यूनिट किंमत',
+      scrapPercentage: 'स्क्रैप %',
+      cancel: 'रद्द करा',
+      update: 'अपडेट करा',
+      delete: 'सामग्री हटवा'
+    },
+    gu: {
+      editMaterial: 'સામગ્રી સંપાદિત કરો',
+      selectMaterial: 'સામગ્રી પસંદ કરો',
+      quantity: 'જથ્થો',
+      unit: 'યૂનિટ',
+      unitCost: 'યૂનિટ કિંમત',
+      scrapPercentage: 'સ્ક્રેપ %',
+      cancel: 'રદ કરો',
+      update: 'અપડેટ કરો',
+      delete: 'સામગ્રી કાઢી નાખો'
+    },
+    pa: {
+      editMaterial: 'ਸਮੱਗਰੀ ਸੰਪਾਦਿਤ ਕਰੋ',
+      selectMaterial: 'ਸਮੱਗਰੀ ਚੁਣੋ',
+      quantity: 'ਮਾਤਰਾ',
+      unit: 'ਯੂਨਿਟ',
+      unitCost: 'ਯੂਨਿਟ ਕੀਮਤ',
+      scrapPercentage: 'ਸਕ੍ਰੈਪ %',
+      cancel: 'ਰੱਦ ਕਰੋ',
+      update: 'ਅੱਪਡੇਟ ਕਰੋ',
+      delete: 'ਸਮੱਗਰੀ ਮਿਟਾਓ'
     }
-  }[language] || {
-    editMaterial: 'Edit Material',
-    selectMaterial: 'Select Material',
-    quantity: 'Quantity',
-    unit: 'Unit',
-    unitCost: 'Unit Cost',
-    scrapPercentage: 'Scrap %',
-    cancel: 'Cancel',
-    update: 'Update',
-    delete: 'Delete Material'
   };
+  const t = translations[language];
 
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
