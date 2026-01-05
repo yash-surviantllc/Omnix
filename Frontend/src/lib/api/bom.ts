@@ -42,6 +42,7 @@ export interface BOMMaterialWithShortage {
   
   // Inventory & Shortage Info
   stock_qty: number;  // Current stock
+  ordered_qty?: number;  // Ordered but not yet received
   available_qty: number;
   allocated_qty: number;
   free_qty: number;

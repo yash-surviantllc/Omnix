@@ -309,13 +309,15 @@ export function WIPBoard({ language }: WIPBoardProps) {
               <div className="h-2 bg-zinc-200 rounded-full overflow-hidden">
                 <div
                   className={`h-full transition-all ${
-                    stage.health === 'delayed'
-                      ? 'bg-red-500'
-                      : stage.health === 'warning'
+                    stage.utilization >= 90 && stage.utilization <= 110
+                      ? 'bg-emerald-500'
+                      : stage.utilization >= 80 && stage.utilization < 90
                       ? 'bg-yellow-500'
-                      : 'bg-emerald-500'
+                      : stage.utilization > 110 && stage.utilization <= 120
+                      ? 'bg-yellow-500'
+                      : 'bg-red-500'
                   }`}
-                  style={{ width: `${stage.utilization}%` }}
+                  style={{ width: `${Math.min(stage.utilization, 100)}%` }}
                 />
               </div>
             </div>
@@ -365,13 +367,15 @@ export function WIPBoard({ language }: WIPBoardProps) {
                       <div className="flex-1 h-2 bg-zinc-200 rounded-full overflow-hidden max-w-[100px]">
                         <div
                           className={`h-full transition-all ${
-                            stage.health === 'delayed'
-                              ? 'bg-red-500'
-                              : stage.health === 'warning'
+                            stage.utilization >= 90 && stage.utilization <= 110
+                              ? 'bg-emerald-500'
+                              : stage.utilization >= 80 && stage.utilization < 90
                               ? 'bg-yellow-500'
-                              : 'bg-emerald-500'
+                              : stage.utilization > 110 && stage.utilization <= 120
+                              ? 'bg-yellow-500'
+                              : 'bg-red-500'
                           }`}
-                          style={{ width: `${stage.utilization}%` }}
+                          style={{ width: `${Math.min(stage.utilization, 100)}%` }}
                         />
                       </div>
                       <span className="text-sm text-zinc-600 min-w-[3rem]">{stage.utilization}%</span>

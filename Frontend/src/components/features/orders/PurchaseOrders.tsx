@@ -2101,11 +2101,25 @@ export function PurchaseOrders({ language }: PurchaseOrdersProps) {
               </div>
             </div>
 
-            {/* Priority Badge */}
-            <div className="mt-3">
-              <Badge className={order.priority === 'High' || order.priority === 'Urgent' ? 'bg-red-500' : order.priority === 'Medium' ? 'bg-yellow-500' : 'bg-blue-500'}>
+            {/* Priority Badge and Progress */}
+            <div className="mt-3 space-y-2">
+              <Badge className={order.priority === 'High' || order.priority === 'Urgent' ? 'bg-red-500' : order.priority === 'Cancelled' ? 'bg-zinc-500' : order.priority === 'Medium' ? 'bg-yellow-500' : 'bg-blue-500'}>
                 {order.priority}
               </Badge>
+              {order.progress_percentage !== undefined && (
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between text-xs text-zinc-600">
+                    <span>{language === 'en' ? 'Progress' : 'प्रगति'}</span>
+                    <span className="font-medium">{Math.round(order.progress_percentage)}%</span>
+                  </div>
+                  <div className="h-2 bg-zinc-200 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-emerald-500 transition-all"
+                      style={{ width: `${order.progress_percentage}%` }}
+                    />
+                  </div>
+                </div>
+              )}
             </div>
           </Card>
           ))}
@@ -2137,11 +2151,26 @@ export function PurchaseOrders({ language }: PurchaseOrdersProps) {
                     <td className="p-4">{order.product_name}</td>
                     <td className="p-4">{order.quantity} {order.unit}</td>
                     <td className="p-4">
-                      <Badge className={order.priority === 'High' || order.priority === 'Urgent' ? 'bg-red-500' : order.priority === 'Medium' ? 'bg-yellow-500' : 'bg-blue-500'}>
+                      <Badge className={order.priority === 'High' || order.priority === 'Urgent' ? 'bg-red-500' : order.priority === 'Cancelled' ? 'bg-zinc-500' : order.priority === 'Medium' ? 'bg-yellow-500' : 'bg-blue-500'}>
                         {order.priority}
                       </Badge>
                     </td>
-                    <td className="p-4">{getStatusBadge(order.status)}</td>
+                    <td className="p-4">
+                      <div className="space-y-1">
+                        {getStatusBadge(order.status)}
+                        {order.progress_percentage !== undefined && (
+                          <div className="flex items-center gap-2">
+                            <div className="flex-1 h-1.5 bg-zinc-200 rounded-full overflow-hidden">
+                              <div
+                                className="h-full bg-emerald-500 transition-all"
+                                style={{ width: `${order.progress_percentage}%` }}
+                              />
+                            </div>
+                            <span className="text-xs text-zinc-600 min-w-[3rem]">{Math.round(order.progress_percentage)}%</span>
+                          </div>
+                        )}
+                      </div>
+                    </td>
                     <td className="p-4">
                       {order.days_until_due !== undefined && (
                         <span className={order.is_overdue ? 'text-red-600 font-medium' : order.days_until_due <= 3 ? 'text-yellow-600' : 'text-zinc-600'}>
@@ -2274,6 +2303,7 @@ export function PurchaseOrders({ language }: PurchaseOrdersProps) {
                       <option value="Medium">⚪ {t.normal}</option>
                       <option value="High">🟡 {t.high}</option>
                       <option value="Urgent">🔴 {t.urgent}</option>
+                      <option value="Cancelled">⛔ {language === 'en' ? 'Cancelled' : 'रद्द'}</option>
                     </select>
                     {newOrderData.priority === 'high' && (
                       <p className="text-xs text-amber-600 mt-1">🟡 {language === 'en' ? 'High priority order' : 'उच्च प्राथमिकता ऑर्डर'}</p>

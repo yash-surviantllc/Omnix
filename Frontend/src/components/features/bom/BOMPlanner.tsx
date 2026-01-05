@@ -34,6 +34,8 @@ export function BOMPlanner({ language }: BOMPlannerProps) {
   const [editingMaterial, setEditingMaterial] = useState<any>(null);
   const [rawMaterials, setRawMaterials] = useState<Product[]>([]);
   const [inventoryItems, setInventoryItems] = useState<InventoryItemResponse[]>([]);
+  const [showProductDetailsModal, setShowProductDetailsModal] = useState(false);
+  const [selectedProductDetails, setSelectedProductDetails] = useState<Product | null>(null);
   const [newBOM, setNewBOM] = useState({
     productCode: '',
     productName: '',
@@ -59,6 +61,8 @@ export function BOMPlanner({ language }: BOMPlannerProps) {
       unit: 'Unit',
       unitCost: 'Unit Cost',
       stock: 'Stock',
+      orderedStock: 'Ordered Stock',
+      requiredStock: 'Required Stock',
       status: 'Status',
       actions: 'Actions',
       addMaterial: 'Add Material',
@@ -97,13 +101,15 @@ export function BOMPlanner({ language }: BOMPlannerProps) {
       unit: 'यूनिट',
       unitCost: 'यूनिट कीमत',
       stock: 'स्टॉक',
+      orderedStock: 'ऑर्डर किया गया स्टॉक',
+      requiredStock: 'आवश्यक स्टॉक',
       status: 'स्थिति',
       actions: 'क्रियाएं',
       addMaterial: 'सामग्री जोड़ें',
       saveBOM: 'BOM सहेजें',
       autoCalculate: 'स्वत: गणना',
       stockCheck: 'स्टॉक जांच',
-      createNewBOM: 'नया BOM बनाएं',
+      createNewBOM: '+ नया BOM बनाएं',
       newBOM: 'नया BOM',
       productCode: 'उत्पाद कोड',
       productName: 'उत्पाद का नाम',
@@ -135,6 +141,8 @@ export function BOMPlanner({ language }: BOMPlannerProps) {
       unit: 'ಯೂನಿಟ್',
       unitCost: 'ಯೂನಿಟ್ ವೆಚ್ಚ',
       stock: 'ಸ್ಟಾಕ್',
+      orderedStock: 'ಆದೇಶಿಸಿದ ಸ್ಟಾಕ್',
+      requiredStock: 'ಅಗತ್ಯವಿರುವ ಸ್ಟಾಕ್',
       status: 'ಸ್ಥಿತಿ',
       actions: 'ಕ್ರಿಯೆಗಳು',
       addMaterial: 'ಸಾಮಾನ ಸೇರಿಸಿ',
@@ -173,6 +181,8 @@ export function BOMPlanner({ language }: BOMPlannerProps) {
       unit: 'அலகு',
       unitCost: 'அலகு செலவு',
       stock: 'செயலாக்கு',
+      orderedStock: 'ஆணையிடப்பட்ட செயலாக்கு',
+      requiredStock: 'தேவையான செயலாக்கு',
       status: 'நிலை',
       actions: 'செயல்கள்',
       addMaterial: 'பொருள் சேர்க்கவும்',
@@ -211,6 +221,8 @@ export function BOMPlanner({ language }: BOMPlannerProps) {
       unit: 'యూనిట్',
       unitCost: 'యూనిట్ ఖర్చు',
       stock: 'స్టాక్',
+      orderedStock: 'ఆర్డర్ చేసిన స్టాక్',
+      requiredStock: 'అవసరమైన స్టాక్',
       status: 'స్థితి',
       actions: 'క్రియలు',
       addMaterial: 'సమాచారం జోడించండి',
@@ -249,6 +261,8 @@ export function BOMPlanner({ language }: BOMPlannerProps) {
       unit: 'यूनिट',
       unitCost: 'यूनिट किंमत',
       stock: 'स्टॉक',
+      orderedStock: 'आदेशित स्टॉक',
+      requiredStock: 'आवश्यक स्टॉक',
       status: 'स्थिति',
       actions: 'क्रियाएं',
       addMaterial: 'सामग्री जोडा',
@@ -287,6 +301,8 @@ export function BOMPlanner({ language }: BOMPlannerProps) {
       unit: 'યૂનિટ',
       unitCost: 'યૂનિટ કિંમત',
       stock: 'સ્ટોક',
+      orderedStock: 'આદેશિત સ્ટોક',
+      requiredStock: 'જરૂરી સ્ટોક',
       status: 'સ્થિતિ',
       actions: 'ક્રિયાઓ',
       addMaterial: 'માટેરિયલ જોડો',
@@ -325,6 +341,8 @@ export function BOMPlanner({ language }: BOMPlannerProps) {
       unit: 'ਯੂਨਿਟ',
       unitCost: 'ਯੂਨਿਟ ਕੀਮਤ',
       stock: 'ਸਟੋਕ',
+      orderedStock: 'ਆਦੇਸ਼ਿਤ ਸਟਾਕ',
+      requiredStock: 'ਲੋੜੀਂਦਾ ਸਟਾਕ',
       status: 'ਸਥਿਤੀ',
       actions: 'ਕ੍ਰਿਆਵਾਂ',
       addMaterial: 'ਮਾਟੇਰੀਅਲ ਜੋੰਡੋ',
@@ -657,20 +675,31 @@ export function BOMPlanner({ language }: BOMPlannerProps) {
             {language === 'en' ? 'No finished goods found. Create products first.' : 'कोई तैयार माल नहीं मिला। पहले उत्पाद बनाएं।'}
           </p>
         ) : (
-          <div className="flex flex-col sm:flex-row gap-2 flex-wrap">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
             {products.map((product) => (
-              <Button
-                key={product.id}
-                variant={selectedProductId === product.id ? 'default' : 'outline'}
-                onClick={() => setSelectedProductId(product.id)}
-                className="justify-start sm:flex-1"
-                disabled={isLoadingBOM}
-              >
-                <div className="flex flex-col items-start">
-                  <span className="font-semibold">{product.code}</span>
-                  <span className="text-xs opacity-80">{product.name}</span>
-                </div>
-              </Button>
+              <div key={product.id} className="relative group">
+                <Button
+                  variant={selectedProductId === product.id ? 'default' : 'outline'}
+                  onClick={() => setSelectedProductId(product.id)}
+                  className="justify-start w-full h-[4.5rem] p-3"
+                  disabled={isLoadingBOM}
+                >
+                  <div className="flex flex-col items-start gap-1 overflow-hidden w-full">
+                    <span className="font-semibold text-sm truncate w-full">{product.code}</span>
+                    <span className="text-xs opacity-80 line-clamp-2 text-left">{product.name}</span>
+                  </div>
+                </Button>
+                <button
+                  onClick={() => {
+                    setSelectedProductDetails(product);
+                    setShowProductDetailsModal(true);
+                  }}
+                  className="absolute right-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity p-1.5 hover:bg-white/20 rounded"
+                  title="View Details"
+                >
+                  <AlertCircle className="h-4 w-4" />
+                </button>
+              </div>
             ))}
           </div>
         )}
@@ -748,6 +777,14 @@ export function BOMPlanner({ language }: BOMPlannerProps) {
                 <span>{item.stock_qty} {item.unit}</span>
               </div>
               <div className="flex justify-between">
+                <span className="text-zinc-600">{t.orderedStock}:</span>
+                <span>{item.ordered_qty || 0} {item.unit}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-zinc-600">{t.requiredStock}:</span>
+                <span>{item.required_qty || 0} {item.unit}</span>
+              </div>
+              <div className="flex justify-between">
                 <span className="text-zinc-600">{t.unitCost}:</span>
                 <span>₹{item.unit_cost}</span>
               </div>
@@ -774,6 +811,8 @@ export function BOMPlanner({ language }: BOMPlannerProps) {
                   <th className="text-left p-4">{t.qtyPerUnit}</th>
                   <th className="text-left p-4">{t.unit}</th>
                   <th className="text-left p-4">{t.stock}</th>
+                  <th className="text-left p-4">{t.orderedStock}</th>
+                  <th className="text-left p-4">{t.requiredStock}</th>
                   <th className="text-left p-4">{t.status}</th>
                   <th className="text-left p-4">{t.unitCost}</th>
                   <th className="text-left p-4">{t.actions}</th>
@@ -785,7 +824,18 @@ export function BOMPlanner({ language }: BOMPlannerProps) {
                     <td className="p-4">{item.material_name}</td>
                     <td className="p-4">{item.quantity_per_unit || item.quantity}</td>
                     <td className="p-4">{item.unit}</td>
-                    <td className="p-4">{item.stock_qty} {item.unit}</td>
+                    <td className="p-4">
+                      <span className="font-medium">{item.stock_qty}</span>
+                      <span className="text-xs text-zinc-500 ml-1">{item.unit}</span>
+                    </td>
+                    <td className="p-4">
+                      <span className="text-blue-600 font-medium">{item.ordered_qty || 0}</span>
+                      <span className="text-xs text-zinc-500 ml-1">{item.unit}</span>
+                    </td>
+                    <td className="p-4">
+                      <span className="text-orange-600 font-medium">{item.required_qty || 0}</span>
+                      <span className="text-xs text-zinc-500 ml-1">{item.unit}</span>
+                    </td>
                     <td className="p-4">
                       {item.shortage_status === 'Sufficient' ? (
                         <Badge className="bg-emerald-500 flex items-center gap-1">
@@ -1268,6 +1318,64 @@ export function BOMPlanner({ language }: BOMPlannerProps) {
         setMaterial={setNewMaterial}
         language={language}
       />
+
+      {/* Product Details Modal */}
+      {showProductDetailsModal && selectedProductDetails && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <Card className="max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6 border-b flex items-center justify-between">
+              <h2 className="text-xl font-semibold">Product Details</h2>
+              <button
+                onClick={() => setShowProductDetailsModal(false)}
+                className="p-2 hover:bg-zinc-100 rounded-full transition-colors"
+              >
+                <Plus className="w-5 h-5 rotate-45" />
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-sm text-zinc-600">Product Code</label>
+                  <p className="font-medium">{selectedProductDetails.code}</p>
+                </div>
+                <div>
+                  <label className="text-sm text-zinc-600">Product Name</label>
+                  <p className="font-medium">{selectedProductDetails.name}</p>
+                </div>
+                <div>
+                  <label className="text-sm text-zinc-600">Category</label>
+                  <p className="font-medium">{selectedProductDetails.category}</p>
+                </div>
+                <div>
+                  <label className="text-sm text-zinc-600">Unit</label>
+                  <p className="font-medium">{selectedProductDetails.unit}</p>
+                </div>
+                {selectedProductDetails.description && (
+                  <div className="col-span-2">
+                    <label className="text-sm text-zinc-600">Description</label>
+                    <p className="font-medium">{selectedProductDetails.description}</p>
+                  </div>
+                )}
+              </div>
+              {currentBOM && (
+                <div className="mt-6 pt-6 border-t">
+                  <h3 className="font-semibold mb-3">Production Info</h3>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-sm text-zinc-600">Batch Size</label>
+                      <p className="font-medium">{currentBOM.batch_size}</p>
+                    </div>
+                    <div>
+                      <label className="text-sm text-zinc-600">Production Quantity</label>
+                      <p className="font-medium">{productionQty}</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </Card>
+        </div>
+      )}
     </div>
   );
 }

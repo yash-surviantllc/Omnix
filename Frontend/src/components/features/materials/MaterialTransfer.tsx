@@ -122,8 +122,10 @@ export function MaterialTransfer({ language }: MaterialTransferProps) {
       transferId: 'Transfer ID',
       material: 'Material',
       quantity: 'Quantity',
-      from: 'From',
-      to: 'To',
+      completedQty: 'Completed Qty',
+      pendingQty: 'Pending Qty',
+      unit: 'Unit',
+      location: 'Location',
       status: 'Status',
       date: 'Date',
       viewDetails: 'View Details',
@@ -198,8 +200,10 @@ export function MaterialTransfer({ language }: MaterialTransferProps) {
       transferId: 'स्थानांतरण ID',
       material: 'सामग्री',
       quantity: 'मात्रा',
-      from: 'से',
-      to: 'तक',
+      completedQty: 'पूर्ण मात्रा',
+      pendingQty: 'लंबित मात्रा',
+      unit: 'यूनिट',
+      location: 'स्थान',
       status: 'स्थिति',
       date: 'तारीख',
       viewDetails: 'विवरण देखें',
@@ -219,7 +223,7 @@ export function MaterialTransfer({ language }: MaterialTransferProps) {
   const t = translations[language as keyof typeof translations] || translations.en;
 
   // Transfer history - now comes from backend API
-  const transferHistory: Array<{id: string; material: string; quantity: string; from: string; to: string; status: string; date: string; reason: string}> = [];
+  const transferHistory: Array<{id: string; material: string; quantity: string; from: string; to: string; status: string; date: string; reason: string; completed_qty: number}> = [];
 
   // Get materials from inventory
   const materials = Object.entries(inventoryStock).map(([name, data], index) => {
@@ -244,7 +248,8 @@ export function MaterialTransfer({ language }: MaterialTransferProps) {
       code: rmCode,
       stock: data.qty || 0,
       location: data.location || 'RM Store A',
-      uom: data.unit || 'kg'
+      uom: data.unit || 'kg',
+      completed_qty: data.completed_qty || 0
     };
   });
 
@@ -457,16 +462,24 @@ export function MaterialTransfer({ language }: MaterialTransferProps) {
                         <div className="text-zinc-600">{t.material}</div>
                         <div className="text-zinc-900">{transfer.material}</div>
                       </div>
-                      <div>
-                        <div className="text-zinc-600">{t.quantity}</div>
-                        <div className="text-zinc-900">{transfer.quantity}</div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-zinc-600">{t.quantity}:</span>
+                        <span className="font-medium">{transfer.quantity} {transfer.unit}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-zinc-600">{t.completedQty}:</span>
+                        <span className="font-medium text-emerald-600">{transfer.completed_qty || 0} {transfer.unit}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-zinc-600">{t.pendingQty}:</span>
+                        <span className="font-medium text-orange-600">{(transfer.quantity - (transfer.completed_qty || 0))} {transfer.unit}</span>
                       </div>
                       <div>
-                        <div className="text-zinc-600">{t.from}</div>
+                        <div className="text-zinc-600">From</div>
                         <div className="text-zinc-900">{transfer.from}</div>
                       </div>
                       <div>
-                        <div className="text-zinc-600">{t.to}</div>
+                        <div className="text-zinc-600">To</div>
                         <div className="text-zinc-900">{transfer.to}</div>
                       </div>
                       <div>
