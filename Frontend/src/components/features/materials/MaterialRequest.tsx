@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -42,6 +42,9 @@ export function MaterialRequest({ language }: MaterialRequestProps) {
       priority: 'Normal'
     }
   ]);
+
+  // WebSocket refs and states
+  const wsRef = useRef<WebSocket | null>(null);
 
   // Request history - now comes from backend API
   const [requestHistory] = useState<Array<{id: string; department: string; material: string; quantity: string; status: string; date: string}>>([]);

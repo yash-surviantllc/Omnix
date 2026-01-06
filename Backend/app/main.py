@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from .config import settings
-from .api.v1.router import api_router
+from app.api.v1.router import api_router
 import logging
 import time
 

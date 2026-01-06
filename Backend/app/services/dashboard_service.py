@@ -12,6 +12,7 @@ from app.schemas.dashboard import (
     RecentActivity,
     QuickAction
 )
+from app.services.websocket_manager import manager  # Import the global manager
 
 
 class DashboardService:
@@ -590,6 +591,56 @@ class DashboardService:
         ]
         
         return filtered_actions
+
+
+# Broadcast methods for real-time updates
+@staticmethod
+async def broadcast_kpis_update():
+    """
+    Broadcast updated KPIs to all connected clients.
+    """
+    try:
+        db = get_db()
+        kpis = await DashboardService._calculate_kpis(db)
+        await manager.broadcast_dashboard_update("kpis", kpis.dict())
+    except Exception as e:
+        logger.error(f"Failed to broadcast KPIs update: {e}")
+
+@staticmethod
+async def broadcast_orders_update():
+    """
+    Broadcast updated orders summary to all connected clients.
+    """
+    try:
+        db = get_db()
+        orders_summary = await DashboardService._get_orders_summary(db)
+        await manager.broadcast_dashboard_update("orders", orders_summary.dict())
+    except Exception as e:
+        logger.error(f"Failed to broadcast orders update: {e}")
+
+@staticmethod
+async def broadcast_shortages_update():
+    """
+    Broadcast updated material shortages to all connected clients.
+    """
+    try:
+        db = get_db()
+        shortages = await DashboardService._get_material_shortages(db)
+        await manager.broadcast_dashboard_update("shortages", [s.dict() for s in shortages])
+    except Exception as e:
+        logger.error(f"Failed to broadcast shortages update: {e}")
+
+@staticmethod
+async def broadcast_activities_update():
+    """
+    Broadcast updated recent activities to all connected clients.
+    """
+    try:
+        db = get_db()
+        activities = await DashboardService._get_recent_activities(db)
+        await manager.broadcast_dashboard_update("activities", [a.dict() for a in activities])
+    except Exception as e:
+        logger.error(f"Failed to broadcast activities update: {e}")
 
 
 # Create singleton instance

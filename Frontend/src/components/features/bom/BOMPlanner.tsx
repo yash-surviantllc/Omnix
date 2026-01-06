@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Plus, Edit, Trash2, AlertCircle, CheckCircle, RefreshCw, Loader2 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -50,6 +50,8 @@ export function BOMPlanner({ language }: BOMPlannerProps) {
     unitCost: '',
     scrapPercentage: '0'
   });
+  const wsRef = useRef<WebSocket | null>(null);
+  const [wsConnected, setWsConnected] = useState(false);
 
   const translations = {
     en: {
@@ -375,6 +377,55 @@ export function BOMPlanner({ language }: BOMPlannerProps) {
   };
 
   const t = translations[language];
+
+  // WebSocket for real-time BOM updates
+  useEffect(() => {
+    const token = localStorage.getItem('access_token');
+    if (!token) return;
+
+    const wsUrl = `ws://localhost:8000/ws/boms?token=${token}`;
+    wsRef.current = new WebSocket(wsUrl);
+
+    wsRef.current.onopen = () => {
+      console.log('BOM WebSocket connected');
+      setWsConnected(true);
+    };
+
+    wsRef.current.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.type === 'bom_update') {
+          // Refetch BOM and materials on update
+          if (selectedProductId) {
+            // Trigger refetch by updating state or calling functions
+            setSelectedProductId(selectedProductId); // To trigger useEffect
+          }
+        }
+      } catch (error) {
+        console.error('BOM WebSocket message parse error:', error);
+      }
+    };
+
+    wsRef.current.onerror = (error) => {
+      console.error('BOM WebSocket error:', error);
+      setWsConnected(false);
+    };
+
+    wsRef.current.onclose = () => {
+      console.log('BOM WebSocket disconnected');
+      setWsConnected(false);
+      // Optional: Auto-reconnect
+      setTimeout(() => {
+        // Reconnect logic if needed
+      }, 5000);
+    };
+
+    return () => {
+      if (wsRef.current) {
+        wsRef.current.close();
+      }
+    };
+  }, [selectedProductId]);
 
   // Fetch products and inventory items on mount
   useEffect(() => {

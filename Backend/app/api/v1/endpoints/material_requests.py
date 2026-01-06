@@ -3,13 +3,14 @@ from typing import List, Optional
 from datetime import date
 from app.schemas.material_request import (
     MaterialRequestCreate, MaterialRequestUpdate, MaterialRequestResponse,
-    MaterialRequestListItem, ReviewRequest, ApprovalRequest,
-    PickListResponse, QuickRequestTemplate, StockAvailabilityCheck,
-    StockAvailabilityResponse
+    MaterialRequestListItem, RequestItemResponse, ReviewRequest,
+    ApprovalRequest, PickListResponse, PickListItem, QuickRequestTemplate,
+    StockAvailabilityCheck, StockAvailabilityResponse
 )
 from app.schemas.user import UserResponse
 from app.services.material_request_service import material_request_service
 from app.api.deps import get_current_user, require_role
+import asyncio
 
 router = APIRouter()
 
@@ -122,7 +123,9 @@ async def review_request(
     Changes status from 'Pending' to 'Reviewed'.
     Forwards to approver.
     """
-    return await material_request_service.review_request(request_id, review, current_user.id)
+    result = await material_request_service.review_request(request_id, review, current_user.id)
+    asyncio.create_task(material_request_service.broadcast_request_status_updated(request_id, "Reviewed"))
+    return result
 
 
 @router.post("/{request_id}/approve", response_model=MaterialRequestResponse)
@@ -139,7 +142,9 @@ async def approve_request(
     - Auto-creates material transfers if enabled
     - Status changes to 'Approved' or 'Partially Approved'
     """
-    return await material_request_service.approve_request(request_id, approval, current_user.id)
+    result = await material_request_service.approve_request(request_id, approval, current_user.id)
+    asyncio.create_task(material_request_service.broadcast_request_status_updated(request_id, result.status))
+    return result
 
 
 @router.post("/{request_id}/reject", status_code=status.HTTP_200_OK)
@@ -153,7 +158,9 @@ async def reject_request(
     
     Sets status to 'Rejected'.
     """
-    return await material_request_service.reject_request(request_id, notes, current_user.id)
+    result = await material_request_service.reject_request(request_id, notes, current_user.id)
+    asyncio.create_task(material_request_service.broadcast_request_rejected(request_id))
+    return result
 
 
 @router.get("/{request_id}/pick-list", response_model=PickListResponse)

@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 from app.api.v1.endpoints import (
     auth, users, dashboard, products, boms, 
-    inventory, inventory_items, production_orders, material_transfers, material_requests, wip, alerts, gate_entries
+    inventory, inventory_items, production_orders, material_transfers, material_requests, wip, alerts, gate_entries, websockets
 )
 
 api_router = APIRouter()
@@ -94,4 +94,11 @@ api_router.include_router(
     gate_entries.router,
     prefix="/gate-entries",
     tags=["Gate Entry"]
+)
+
+# WebSocket routes
+api_router.include_router(
+    websockets.router,
+    prefix="/ws",
+    tags=["WebSockets"]
 )

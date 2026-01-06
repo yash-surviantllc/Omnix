@@ -7,8 +7,10 @@ from app.schemas.production_order import (
 )
 from app.schemas.user import UserResponse
 from app.services.production_order_service import production_order_service
+from app.services.dashboard_service import dashboard_service
 from app.api.deps import get_current_user, require_role
 from decimal import Decimal
+import asyncio
 
 router = APIRouter()
 
@@ -114,7 +116,13 @@ async def update_order_status(
     Workflow: Planned → In Progress → Completed
     Can cancel from any state
     """
-    return await production_order_service.update_order_status(order_id, status_data, current_user.id)
+    result = await production_order_service.update_order_status(order_id, status_data, current_user.id)
+    
+    # Broadcast dashboard updates in background
+    asyncio.create_task(dashboard_service.broadcast_kpis_update())
+    asyncio.create_task(dashboard_service.broadcast_orders_update())
+    
+    return result
 
 
 @router.post("/{order_id}/archive", response_model=ProductionOrderResponse)
