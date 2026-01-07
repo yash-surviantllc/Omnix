@@ -6,16 +6,16 @@ import io
 import base64
 import json
 from app.database import get_db
-from app.schemas.production_order import (
-    ProductionOrderCreate, ProductionOrderUpdate, ProductionOrderResponse,
-    ProductionOrderListItem, OrderMaterialResponse, OrderStatusUpdate,
+from app.schemas.purchase_order import (
+    PurchaseOrderCreate, PurchaseOrderUpdate, PurchaseOrderResponse,
+    PurchaseOrderListItem, OrderMaterialResponse, OrderStatusUpdate,
     OrderAssignment, OrderAssignmentResponse, OrderProgress,
-    MaterialAllocationRequest, ProductionOrderValidation  
+    MaterialAllocationRequest, PurchaseOrderValidation  
 )
 from app.core.exceptions import NotFoundException, ValidationException
 
 
-class ProductionOrderService:
+class PurchaseOrderService:
     
     @staticmethod
     def _generate_order_number() -> str:
@@ -24,7 +24,7 @@ class ProductionOrderService:
         year = datetime.now().year
         
         # Get count of orders this year
-        result = db.table('production_orders').select('order_number', count='exact').like(
+        result = db.table('purchase_orders').select('order_number', count='exact').like(
             'order_number', f'PO-{year}-%'
         ).execute()
         
@@ -50,33 +50,33 @@ class ProductionOrderService:
         return f"data:image/png;base64,{img_str}"
     
     @staticmethod
-    async def duplicate_production_order(
+    async def duplicate_purchase_order(
         order_id: str,
         user_id: str
-    ) -> ProductionOrderResponse:
+    ) -> PurchaseOrderResponse:
         """
-        Duplicate an existing production order.
+        Duplicate an existing purchase order.
         Creates a new order with same product, quantity, and BOM but new order number.
         """
         db = get_db()
         
         # Get existing order
-        existing_order = db.table('production_orders').select('*').eq('id', order_id).execute()
+        existing_order = db.table('purchase_orders').select('*').eq('id', order_id).execute()
         
         if not existing_order.data:
-            raise NotFoundException(detail="Production order not found")
+            raise NotFoundException(detail="Purchase order not found")
         
         order = existing_order.data[0]
         
         # Create new order data from existing order
-        from app.schemas.production_order import ProductionOrderCreate
+        from app.schemas.purchase_order import PurchaseOrderCreate
         from decimal import Decimal
         from datetime import date, timedelta
         
         # Set due date to 7 days from now by default
         new_due_date = date.today() + timedelta(days=7)
         
-        new_order_data = ProductionOrderCreate(
+        new_order_data = PurchaseOrderCreate(
             product_id=order['product_id'],
             quantity=Decimal(str(order['quantity'])),
             due_date=new_due_date,
@@ -85,19 +85,19 @@ class ProductionOrderService:
             customer_name=order.get('customer_name'),
             assigned_team=order.get('assigned_team'),
             shift_number=order.get('shift_number'),
-            production_stage=order.get('production_stage')
+            purchase_order_stage=order.get('purchase_order_stage')
         )
         
         # Create the new order using existing create method
-        return await ProductionOrderService.create_production_order(new_order_data, user_id)
+        return await PurchaseOrderService.create_purchase_order(new_order_data, user_id)
     
     @staticmethod
-    async def create_production_order(
-        order_data: ProductionOrderCreate,
+    async def create_purchase_order(
+        order_data: PurchaseOrderCreate,
         user_id: str
-    ) -> ProductionOrderResponse:
+    ) -> PurchaseOrderResponse:
         """
-        Create production order with automatic material calculation from BOM.
+        Create purchase order with automatic material calculation from BOM.
         """
         db = get_db()
         
@@ -110,7 +110,7 @@ class ProductionOrderService:
             raise NotFoundException(detail="Product not found")
         
         if product.data[0]['category'] != 'Finished Goods':
-            raise ValidationException(detail="Production orders can only be created for finished goods")
+            raise ValidationException(detail="Purchase orders can only be created for finished goods")
         
         product_unit = product.data[0]['unit']
         
@@ -137,10 +137,10 @@ class ProductionOrderService:
         }
         
         # Generate order number and QR code
-        order_number = ProductionOrderService._generate_order_number()
-        qr_code = ProductionOrderService._generate_qr_code(order_number)
+        order_number = PurchaseOrderService._generate_order_number()
+        qr_code = PurchaseOrderService._generate_qr_code(order_number)
         
-        # Create production order with BOM version tracking
+        # Create purchase order with BOM version tracking
         order_dict = {
             'order_number': order_number,
             'product_id': order_data.product_id,
@@ -156,29 +156,29 @@ class ProductionOrderService:
             'customer_name': order_data.customer_name,
             'assigned_team': order_data.assigned_team,
             'shift_number': order_data.shift_number,
-            'production_stage': order_data.production_stage,
+            'purchase_order_stage': order_data.purchase_order_stage,
             'start_time': order_data.start_time.isoformat() if order_data.start_time else None,
             'end_time': order_data.end_time.isoformat() if order_data.end_time else None,
             'qr_code': qr_code,
             'created_by': user_id
         }
         
-        order_result = db.table('production_orders').insert(order_dict).execute()
+        order_result = db.table('purchase_orders').insert(order_dict).execute()
         
         if not order_result.data:
-            raise Exception("Failed to create production order")
+            raise Exception("Failed to create purchase order")
         
         created_order = order_result.data[0]
         
         # Calculate material requirements from BOM
-        await ProductionOrderService._calculate_material_requirements(
+        await PurchaseOrderService._calculate_material_requirements(
             order_id=created_order['id'],
             product_id=order_data.product_id,
             quantity=order_data.quantity,
             bom_id=bom_id
         )
         
-        return await ProductionOrderService.get_order_by_id(created_order['id'])
+        return await PurchaseOrderService.get_order_by_id(created_order['id'])
     
     @staticmethod
     async def _calculate_material_requirements(
@@ -215,7 +215,7 @@ class ProductionOrderService:
             }).execute()
     
     @staticmethod
-    async def list_production_orders(
+    async def list_purchase_orders(
         page: int = 1,
         limit: int = 20,
         status: Optional[str] = None,
@@ -223,13 +223,13 @@ class ProductionOrderService:
         product_id: Optional[str] = None,
         overdue_only: bool = False,
         search: Optional[str] = None
-    ) -> List[ProductionOrderListItem]:
-        """List production orders with filters"""
+    ) -> List[PurchaseOrderListItem]:
+        """List purchase orders with filters"""
         db = get_db()
         
         offset = (page - 1) * limit
         
-        query = db.table('production_orders').select('*')
+        query = db.table('purchase_orders').select('*')
         
         if status:
             query = query.eq('status', status)
@@ -283,7 +283,7 @@ class ProductionOrderService:
                     search_lower not in product.data[0]['name'].lower()):
                     continue
             
-            orders.append(ProductionOrderListItem(
+            orders.append(PurchaseOrderListItem(
                 id=order['id'],
                 order_number=order['order_number'],
                 product_id=order['product_id'],
@@ -303,15 +303,15 @@ class ProductionOrderService:
         return orders
     
     @staticmethod
-    async def get_order_by_id(order_id: str) -> ProductionOrderResponse:
-        """Get production order by ID with all materials"""
+    async def get_order_by_id(order_id: str) -> PurchaseOrderResponse:
+        """Get purchase order by ID with all materials"""
         db = get_db()
         
         # Get order
-        order_result = db.table('production_orders').select('*').eq('id', order_id).execute()
+        order_result = db.table('purchase_orders').select('*').eq('id', order_id).execute()
         
         if not order_result.data:
-            raise NotFoundException(detail="Production order not found")
+            raise NotFoundException(detail="Purchase order not found")
         
         order = order_result.data[0]
         
@@ -349,7 +349,7 @@ class ProductionOrderService:
                 updated_at=datetime.fromisoformat(mat['updated_at'].replace('Z', '+00:00'))
             ))
         
-        return ProductionOrderResponse(
+        return PurchaseOrderResponse(
             id=order['id'],
             order_number=order['order_number'],
             product_id=order['product_id'],
@@ -374,18 +374,18 @@ class ProductionOrderService:
         )
     
     @staticmethod
-    async def update_production_order(
+    async def update_purchase_order(
         order_id: str,
-        update_data: ProductionOrderUpdate,
+        update_data: PurchaseOrderUpdate,
         user_id: str
-    ) -> ProductionOrderResponse:
-        """Update production order"""
+    ) -> PurchaseOrderResponse:
+        """Update purchase order"""
         db = get_db()
         
         # Check if order exists
-        existing = db.table('production_orders').select('id', 'status').eq('id', order_id).execute()
+        existing = db.table('purchase_orders').select('id', 'status').eq('id', order_id).execute()
         if not existing.data:
-            raise NotFoundException(detail="Production order not found")
+            raise NotFoundException(detail="Purchase order not found")
         
         # Don't allow updates to completed/cancelled orders
         if existing.data[0]['status'] in ['Completed', 'Cancelled']:
@@ -423,25 +423,25 @@ class ProductionOrderService:
         if update_data.shift_number is not None:
             update_dict['shift_number'] = update_data.shift_number
         
-        if update_data.production_stage is not None:
-            update_dict['production_stage'] = update_data.production_stage
+        if update_data.purchase_order_stage is not None:
+            update_dict['purchase_order_stage'] = update_data.purchase_order_stage
         
-        db.table('production_orders').update(update_dict).eq('id', order_id).execute()
+        db.table('purchase_orders').update(update_dict).eq('id', order_id).execute()
         
-        return await ProductionOrderService.get_order_by_id(order_id)
+        return await PurchaseOrderService.get_order_by_id(order_id)
     
     @staticmethod
-    async def archive_production_order(
+    async def archive_purchase_order(
         order_id: str,
         user_id: str
-    ) -> ProductionOrderResponse:
-        """Archive a production order"""
+    ) -> PurchaseOrderResponse:
+        """Archive a purchase order"""
         db = get_db()
         
         # Check if order exists
-        existing = db.table('production_orders').select('id', 'status', 'is_archived').eq('id', order_id).execute()
+        existing = db.table('purchase_orders').select('id', 'status', 'is_archived').eq('id', order_id).execute()
         if not existing.data:
-            raise NotFoundException(detail="Production order not found")
+            raise NotFoundException(detail="Purchase order not found")
         
         if existing.data[0].get('is_archived'):
             raise ValidationException(detail="Order is already archived")
@@ -457,22 +457,22 @@ class ProductionOrderService:
             'archived_by': user_id
         }
         
-        db.table('production_orders').update(update_dict).eq('id', order_id).execute()
+        db.table('purchase_orders').update(update_dict).eq('id', order_id).execute()
         
-        return await ProductionOrderService.get_order_by_id(order_id)
+        return await PurchaseOrderService.get_order_by_id(order_id)
     
     @staticmethod
-    async def cancel_production_order(
+    async def cancel_purchase_order(
         order_id: str,
         user_id: Optional[str]
     ) -> dict:
-        """Cancel a production order"""
+        """Cancel a purchase order"""
         db = get_db()
         
         # Check if order exists
-        existing = db.table('production_orders').select('id', 'status').eq('id', order_id).execute()
+        existing = db.table('purchase_orders').select('id', 'status').eq('id', order_id).execute()
         if not existing.data:
-            raise NotFoundException(detail="Production order not found")
+            raise NotFoundException(detail="Purchase order not found")
         
         # Can only cancel if not completed
         if existing.data[0]['status'] == 'Completed':
@@ -486,27 +486,27 @@ class ProductionOrderService:
         if user_id:
             update_dict['updated_by'] = user_id
         
-        db.table('production_orders').update(update_dict).eq('id', order_id).execute()
+        db.table('purchase_orders').update(update_dict).eq('id', order_id).execute()
         
-        return {"message": "Production order cancelled successfully"}
+        return {"message": "Purchase order cancelled successfully"}
     
     @staticmethod
-    async def delete_production_order(order_id: str) -> dict:
-        """Legacy alias for cancelling production orders"""
-        return await ProductionOrderService.cancel_production_order(order_id, user_id=None)
+    async def delete_purchase_order(order_id: str) -> dict:
+        """Legacy alias for cancelling purchase orders"""
+        return await PurchaseOrderService.cancel_purchase_order(order_id, user_id=None)
     
     @staticmethod
-    async def validate_production_feasibility(
+    async def validate_purchase_feasibility(
         product_id: str,
         quantity: Decimal,
         target_location_id: Optional[str] = None
-    ) -> ProductionOrderValidation:
+    ) -> PurchaseOrderValidation:
         """
-        Validate if production order can be fulfilled with current inventory.
+        Validate if purchase order can be fulfilled with current inventory.
         Uses BOM shortage calculation.
         """
         from app.services.bom_service import bom_service
-        from app.schemas.production_order import OrderMaterialWithShortage, ProductionOrderValidation
+        from app.schemas.purchase_order import OrderMaterialWithShortage, PurchaseOrderValidation
         
         db = get_db()
         
@@ -545,7 +545,7 @@ class ProductionOrderService:
                 procurement_needed=mat.procurement_needed
             ))
         
-        return ProductionOrderValidation(
+        return PurchaseOrderValidation(
             can_produce=shortage_calc.summary['can_produce'],
             product_id=product_id,
             product_code=product_code,
@@ -559,4 +559,4 @@ class ProductionOrderService:
         )
 
 # Singleton instance
-production_order_service = ProductionOrderService()
+purchase_order_service = PurchaseOrderService()

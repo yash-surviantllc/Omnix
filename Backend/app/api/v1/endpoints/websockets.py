@@ -113,3 +113,37 @@ async def purchase_orders_websocket(
     except Exception as e:
         logger.error(f"WebSocket error for {current_user['id']}: {e}")
         manager.disconnect(websocket, current_user["id"])
+
+
+@router.websocket("/inventory")
+async def inventory_websocket(
+    websocket: WebSocket,
+    token: Optional[str] = Query(None, description="JWT access token for authentication")
+):
+    """
+    WebSocket endpoint for real-time Inventory updates.
+    
+    Clients connect to receive live updates for stock changes, alerts, allocations, etc.
+    Authentication via query parameter token.
+    """
+    # Authenticate user
+    try:
+        current_user = await get_current_user_ws(token)
+    except Exception as e:
+        await websocket.close(code=1008, reason="Authentication failed")
+        return
+
+    await manager.connect(websocket, current_user.id)
+    
+    try:
+        while True:
+            data = await websocket.receive_text()
+            # Handle client messages if needed (e.g., subscribe to specific products/locations)
+            logger.info(f"Received message from {current_user['id']}: {data}")
+            
+    except WebSocketDisconnect:
+        manager.disconnect(websocket, current_user["id"])
+        logger.info(f"Client {current_user['id']} disconnected from Inventory")
+    except Exception as e:
+        logger.error(f"WebSocket error for {current_user['id']}: {e}")
+        manager.disconnect(websocket, current_user["id"])
