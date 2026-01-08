@@ -122,7 +122,7 @@ class InventoryTransactionCreate(BaseModel):
     from_location_id: Optional[str] = None
     to_location_id: Optional[str] = None
     reference_id: Optional[str] = None
-    reference_type: Optional[str] = Field(None, description="material_transfer, gate_entry, gate_exit, production_order")
+    reference_type: Optional[str] = Field(None, description="material_transfer, gate_entry, gate_exit, purchase_order")
     notes: Optional[str] = None
 
 

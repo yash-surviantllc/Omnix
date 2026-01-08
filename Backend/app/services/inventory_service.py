@@ -990,7 +990,7 @@ class InventoryService:
         user_id: str
     ) -> dict:
         """
-        Allocate inventory for production order or reservation.
+        Allocate inventory for purchase order or reservation.
         Moves quantity from free to allocated.
         """
         db = get_db()
@@ -1040,7 +1040,7 @@ class InventoryService:
         user_id: str
     ) -> dict:
         """
-        Release allocated inventory (e.g., production order cancelled).
+        Release allocated inventory (e.g., purchase order cancelled).
         Moves quantity from allocated back to free.
         """
         db = get_db()

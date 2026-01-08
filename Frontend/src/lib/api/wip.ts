@@ -1,7 +1,7 @@
 import { apiClient } from './client';
 
 // ============================================
-// TYPES
+// LEGACY WIP TYPES (existing Live Board)
 // ============================================
 
 export interface WIPStageMetrics {
@@ -47,7 +47,7 @@ export interface BottleneckAlert {
 export interface WorkingOrder {
   id: string;
   work_order_number: string;
-  production_order_id: string;
+  purchase_order_id: string;
   operation: string;
   workstation: string | null;
   assigned_team: string | null;
@@ -66,8 +66,156 @@ export interface WorkingOrder {
   updated_at: string;
 }
 
+export type WIPHealthStatus = 'green' | 'yellow' | 'red';
+export type WIPAlertSeverity = 'info' | 'warning' | 'critical';
+export type WIPAlertType = 'under_utilization' | 'over_utilization' | 'bottleneck' | 'delay';
+
+// ============================================
+// WIP BOARD TYPES (new module)
+// ============================================
+
+export interface WIPStage {
+  id: string;
+  name: string;
+  code: string;
+  sequence_number: number;
+  target_avg_time_minutes: number;
+  description?: string | null;
+  color?: string | null;
+  icon?: string | null;
+  location_id?: string | null;
+  is_active: boolean;
+  created_by?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WIPStageCreatePayload {
+  name: string;
+  code: string;
+  sequence_number: number;
+  target_avg_time_minutes: number;
+  description?: string;
+  color?: string;
+  icon?: string;
+  location_id?: string;
+  is_active?: boolean;
+}
+
+export interface WIPStageUpdatePayload extends Partial<WIPStageCreatePayload> {
+  is_active?: boolean;
+}
+
+export interface WIPBoardStageMetrics {
+  stage_id: string;
+  stage_name: string;
+  sequence_number: number;
+  orders_count: number;
+  units_count: number;
+  avg_time_minutes: number;
+  target_avg_time_minutes: number;
+  utilization_percentage: number;
+  health_status: WIPHealthStatus;
+}
+
+export interface WIPBoardResponse {
+  stages: WIPBoardStageMetrics[];
+  total_orders: number;
+  total_units: number;
+  avg_cycle_time: number;
+  bottleneck_stage?: string | null;
+  last_updated: string;
+}
+
+export interface StageOrderItem {
+  order_id: string;
+  order_number: string;
+  product_name?: string | null;
+  quantity_in_stage: number;
+  priority?: string | null;
+  status?: string | null;
+  entered_stage_at: string;
+}
+
+export interface StageOrdersResponse {
+  stage_id: string;
+  stage_name: string;
+  orders: StageOrderItem[];
+}
+
+export interface StageMetricPoint {
+  timestamp: string;
+  orders_in_stage: number;
+  units_in_stage: number;
+  avg_time_minutes: number;
+  utilization_percentage: number;
+  health_status: WIPHealthStatus;
+}
+
+export interface StageMetricsDetailResponse {
+  stage: WIPStage;
+  latest_metrics: WIPBoardStageMetrics;
+  history: StageMetricPoint[];
+}
+
+export interface WIPTransferCreatePayload {
+  order_id: string;
+  from_stage_id?: string;
+  to_stage_id: string;
+  quantity: number;
+  unit: string;
+  start_time?: string;
+  end_time?: string;
+  notes?: string;
+}
+
+export interface WIPTransferResponse extends WIPTransferCreatePayload {
+  id: string;
+  transfer_number: string;
+  status: string;
+  actual_time_minutes?: number;
+  transferred_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BottleneckResponse {
+  stage_id: string;
+  stage_name: string;
+  avg_time_minutes: number;
+  target_avg_time_minutes: number;
+  utilization_percentage: number;
+  orders_count: number;
+  units_count: number;
+  severity: WIPAlertSeverity;
+}
+
+export interface TrendPoint {
+  date: string;
+  orders_processed: number;
+  units_processed: number;
+  avg_time_minutes: number;
+  utilization_percentage: number;
+  health_status: WIPHealthStatus;
+}
+
+export interface TrendResponse {
+  stage_id: string;
+  stage_name: string;
+  points: TrendPoint[];
+}
+
+export interface WIPAlertResponse {
+  stage_id: string;
+  stage_name: string;
+  alert_type: WIPAlertType;
+  severity: WIPAlertSeverity;
+  message: string;
+  detected_at: string;
+}
+
 export interface WorkingOrderCreate {
-  production_order_id: string;
+  purchase_order_id: string;
   operation: string;
   workstation?: string;
   assigned_team?: string;
@@ -143,14 +291,14 @@ export const wipApi = {
     limit?: number;
     status?: string;
     operation?: string;
-    production_order_id?: string;
+    purchase_order_id?: string;
   }): Promise<WorkingOrder[]> => {
     const queryParams = new URLSearchParams();
     if (params?.page) queryParams.append('page', params.page.toString());
     if (params?.limit) queryParams.append('limit', params.limit.toString());
     if (params?.status) queryParams.append('status', params.status);
     if (params?.operation) queryParams.append('operation', params.operation);
-    if (params?.production_order_id) queryParams.append('production_order_id', params.production_order_id);
+    if (params?.purchase_order_id) queryParams.append('purchase_order_id', params.purchase_order_id);
 
     const url = `/wip/working-orders?${queryParams.toString()}`;
     return apiClient.get<WorkingOrder[]>(url);
@@ -170,5 +318,65 @@ export const wipApi = {
 
   cancelWorkingOrder: async (orderId: string): Promise<{ message: string }> => {
     return apiClient.delete<{ message: string }>(`/wip/working-orders/${orderId}`);
+  },
+
+  // ============================================
+  // WIP BOARD API (Module 6)
+  // ============================================
+
+  getWIPBoard: async (): Promise<WIPBoardResponse> => {
+    return apiClient.get<WIPBoardResponse>('/wip-board/board');
+  },
+
+  listWIPStages: async (includeInactive = false): Promise<WIPStage[]> => {
+    const query = includeInactive ? '?include_inactive=true' : '';
+    return apiClient.get<WIPStage[]>(`/wip-board/stages${query}`);
+  },
+
+  createWIPStage: async (payload: WIPStageCreatePayload): Promise<WIPStage> => {
+    return apiClient.post<WIPStage>('/wip-board/stages', payload);
+  },
+
+  updateWIPStage: async (stageId: string, payload: WIPStageUpdatePayload): Promise<WIPStage> => {
+    return apiClient.put<WIPStage>(`/wip-board/stages/${stageId}`, payload);
+  },
+
+  deleteWIPStage: async (stageId: string): Promise<{ message: string }> => {
+    return apiClient.delete<{ message: string }>(`/wip-board/stages/${stageId}`);
+  },
+
+  getStageOrders: async (stageId: string): Promise<StageOrdersResponse> => {
+    return apiClient.get<StageOrdersResponse>(`/wip-board/stages/${stageId}/orders`);
+  },
+
+  getStageMetricsDetail: async (stageId: string, days = 14): Promise<StageMetricsDetailResponse> => {
+    const params = new URLSearchParams({ days: days.toString() });
+    return apiClient.get<StageMetricsDetailResponse>(
+      `/wip-board/stages/${stageId}/metrics?${params.toString()}`
+    );
+  },
+
+  recordWIPTransfer: async (payload: WIPTransferCreatePayload): Promise<WIPTransferResponse> => {
+    return apiClient.post<WIPTransferResponse>('/wip-board/transfer', payload);
+  },
+
+  listWIPBottlenecks: async (): Promise<BottleneckResponse[]> => {
+    return apiClient.get<BottleneckResponse[]>('/wip-board/bottlenecks');
+  },
+
+  listWIPTrends: async (params?: { stage_id?: string; days?: number }): Promise<TrendResponse[]> => {
+    const query = new URLSearchParams();
+    if (params?.stage_id) {
+      query.append('stage_id', params.stage_id);
+    }
+    if (params?.days) {
+      query.append('days', params.days.toString());
+    }
+    const suffix = query.toString() ? `?${query.toString()}` : '';
+    return apiClient.get<TrendResponse[]>(`/wip-board/trends${suffix}`);
+  },
+
+  listWIPAlerts: async (): Promise<WIPAlertResponse[]> => {
+    return apiClient.get<WIPAlertResponse[]>('/wip-board/alerts');
   },
 };

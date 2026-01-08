@@ -13,7 +13,7 @@ class MaterialTransferBase(BaseModel):
     priority: str = Field(default="Normal", description="Low, Normal, High, Urgent")
     reason: Optional[str] = None
     notes: Optional[str] = None
-    reference_order_id: Optional[str] = Field(None, description="Link to production order")
+    reference_order_id: Optional[str] = Field(None, description="Link to purchase order")
 
 
 class MaterialTransferCreate(MaterialTransferBase):
@@ -103,7 +103,7 @@ class WIPStageResponse(WIPStageBase):
 
 
 class WIPStageTransferCreate(BaseModel):
-    order_id: str = Field(..., description="Production order ID")
+    order_id: str = Field(..., description="Purchase order ID")
     from_stage_id: Optional[str] = Field(None, description="Current stage (null if starting)")
     to_stage_id: str = Field(..., description="Next stage")
     quantity: Decimal = Field(..., gt=0, description="Quantity to move")

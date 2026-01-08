@@ -669,6 +669,13 @@ export function BOMPlanner({ language }: BOMPlannerProps) {
                 <div className="flex flex-col items-start">
                   <span className="font-semibold">{product.code}</span>
                   <span className="text-xs opacity-80">{product.name}</span>
+                  <datalist id="item-code-options">
+                    {inventoryItems.map((item) => (
+                      <option key={item.id} value={item.material_code}>
+                        {item.material_code}
+                      </option>
+                    ))}
+                  </datalist>
                 </div>
               </Button>
             ))}
@@ -954,7 +961,9 @@ export function BOMPlanner({ language }: BOMPlannerProps) {
                         {newBOM.materials.map((material, index) => (
                           <tr key={index} className="border-b border-zinc-200 last:border-b-0">
                             <td className="p-3">
-                              <select
+                              <Input
+                                type="text"
+                                list="item-code-options"
                                 value={material.itemCode || ''}
                                 onChange={(e) => {
                                   const newMaterials = [...newBOM.materials];
@@ -969,15 +978,9 @@ export function BOMPlanner({ language }: BOMPlannerProps) {
                                   }
                                   setNewBOM({ ...newBOM, materials: newMaterials });
                                 }}
-                                className="w-full p-2 border border-zinc-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                              >
-                                <option value="">{t.enterItemCode}</option>
-                                {inventoryItems.map((item) => (
-                                  <option key={item.id} value={item.material_code}>
-                                    {item.material_code}
-                                  </option>
-                                ))}
-                              </select>
+                                placeholder={t.enterItemCode}
+                                className="w-full"
+                              />
                             </td>
                             <td className="p-3">
                               <Input
@@ -990,7 +993,6 @@ export function BOMPlanner({ language }: BOMPlannerProps) {
                                 }}
                                 placeholder="e.g., Cotton Fabric"
                                 className="w-full"
-                                readOnly
                               />
                             </td>
                             <td className="p-3">
@@ -1083,7 +1085,9 @@ export function BOMPlanner({ language }: BOMPlannerProps) {
                       <div className="space-y-3">
                         <div>
                           <label className="block text-xs text-zinc-600 mb-1">{t.itemCode}</label>
-                          <select
+                          <Input
+                            type="text"
+                            list="item-code-options"
                             value={material.itemCode || ''}
                             onChange={(e) => {
                               const newMaterials = [...newBOM.materials];
@@ -1098,15 +1102,8 @@ export function BOMPlanner({ language }: BOMPlannerProps) {
                               }
                               setNewBOM({ ...newBOM, materials: newMaterials });
                             }}
-                            className="w-full p-2 border border-zinc-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                          >
-                            <option value="">{t.enterItemCode}</option>
-                            {inventoryItems.map((item) => (
-                              <option key={item.id} value={item.material_code}>
-                                {item.material_code}
-                              </option>
-                            ))}
-                          </select>
+                            placeholder={t.enterItemCode}
+                          />
                         </div>
                         
                         <div>
@@ -1120,7 +1117,6 @@ export function BOMPlanner({ language }: BOMPlannerProps) {
                               setNewBOM({ ...newBOM, materials: newMaterials });
                             }}
                             placeholder="e.g., Cotton Fabric"
-                            readOnly
                           />
                         </div>
                         

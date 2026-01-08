@@ -24,14 +24,12 @@ class WIPService:
         """Create a new working order"""
         db = get_db()
         
-        # Generate work order number
-        result = db.rpc('nextval', {'sequence_name': 'working_order_seq'}).execute()
-        seq_num = result.data
-        work_order_number = f"WO-{datetime.now().year}-{str(seq_num).zfill(4)}"
+        # Generate work order number (prefer server-side sequence RPC)
+        work_order_number = await WIPService._get_next_work_order_number(db)
         
         # Insert working order
         insert_data = {
-            **order_data.model_dump(),
+            **order_data.model_dump(mode="json"),
             'work_order_number': work_order_number,
             'created_by': created_by
         }
@@ -43,8 +41,44 @@ class WIPService:
         
         # Update WIP metrics
         await WIPService._update_stage_metrics()
-        
+
         return WorkingOrderResponse(**result.data[0])
+
+    @staticmethod
+    async def _get_next_work_order_number(db) -> str:
+        now = datetime.now()
+        year = now.year
+
+        try:
+            seq_result = db.rpc('next_working_order_seq').execute()
+            seq_num = int(seq_result.data) if seq_result.data is not None else None
+        except Exception:
+            seq_num = None
+
+        if seq_num is None:
+            latest = (
+                db.table('working_orders')
+                .select('work_order_number')
+                .order('created_at', desc=True)
+                .limit(1)
+                .execute()
+            )
+
+            next_seq = 1
+            if latest.data:
+                last_number = latest.data[0].get('work_order_number') or ''
+                parts = last_number.split('-')
+                if len(parts) == 3 and parts[0] == 'WO':
+                    try:
+                        last_year = int(parts[1])
+                        last_seq = int(parts[2])
+                        next_seq = last_seq + 1 if last_year == year else 1
+                    except ValueError:
+                        next_seq = 1
+
+            seq_num = next_seq
+
+        return f"WO-{year}-{str(seq_num).zfill(4)}"
     
     @staticmethod
     async def list_working_orders(
@@ -52,7 +86,7 @@ class WIPService:
         limit: int = 50,
         status: Optional[str] = None,
         operation: Optional[str] = None,
-        production_order_id: Optional[str] = None
+        purchase_order_id: Optional[str] = None
     ) -> List[WorkingOrderListItem]:
         """List working orders with filters"""
         db = get_db()
@@ -67,8 +101,8 @@ class WIPService:
         if operation:
             query = query.eq('operation', operation)
         
-        if production_order_id:
-            query = query.eq('production_order_id', production_order_id)
+        if purchase_order_id:
+            query = query.eq('purchase_order_id', purchase_order_id)
         
         result = query.order('created_at', desc=True).range(offset, offset + limit - 1).execute()
         
@@ -95,7 +129,11 @@ class WIPService:
         """Update working order"""
         db = get_db()
         
-        update_data = {k: v for k, v in order_data.model_dump(exclude_unset=True).items() if v is not None}
+        update_data = {
+            k: v
+            for k, v in order_data.model_dump(exclude_unset=True, mode="json").items()
+            if v is not None
+        }
         
         if not update_data:
             return await WIPService.get_working_order_by_id(order_id)

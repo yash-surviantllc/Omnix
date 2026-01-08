@@ -131,6 +131,8 @@ export interface ListOrdersParams {
 }
 
 // API Client
+const PURCHASE_ORDER_BASE = '/orders';
+
 export const productionOrdersApi = {
   // List purchase orders
   async listOrders(params?: ListOrdersParams): Promise<ProductionOrder[]> {
@@ -144,63 +146,63 @@ export const productionOrdersApi = {
     if (params?.due_date_from) queryParams.append('due_date_from', params.due_date_from);
     if (params?.due_date_to) queryParams.append('due_date_to', params.due_date_to);
 
-    const url = `/production-orders${queryParams.toString() ? '?' + queryParams.toString() : ''}`;
+    const url = `${PURCHASE_ORDER_BASE}${queryParams.toString() ? '?' + queryParams.toString() : ''}`;
     return await apiClient.get<ProductionOrder[]>(url);
   },
 
   // Get single purchase order
   async getOrder(orderId: string): Promise<ProductionOrder> {
-    return await apiClient.get<ProductionOrder>(`/production-orders/${orderId}`);
+    return await apiClient.get<ProductionOrder>(`${PURCHASE_ORDER_BASE}/${orderId}`);
   },
 
   // Create purchase order
   async createOrder(data: CreateProductionOrderData): Promise<ProductionOrder> {
-    return await apiClient.post<ProductionOrder>('/production-orders', data);
+    return await apiClient.post<ProductionOrder>(PURCHASE_ORDER_BASE, data);
   },
 
   // Duplicate purchase order
   async duplicateOrder(orderId: string): Promise<ProductionOrder> {
-    return await apiClient.post<ProductionOrder>(`/production-orders/${orderId}/duplicate`);
+    return await apiClient.post<ProductionOrder>(`${PURCHASE_ORDER_BASE}/${orderId}/duplicate`);
   },
 
   // Update purchase order
   async updateOrder(orderId: string, data: UpdateProductionOrderData): Promise<ProductionOrder> {
-    return await apiClient.put<ProductionOrder>(`/production-orders/${orderId}`, data);
+    return await apiClient.put<ProductionOrder>(`${PURCHASE_ORDER_BASE}/${orderId}`, data);
   },
 
   // Update order status
   async updateStatus(orderId: string, data: OrderStatusUpdate): Promise<ProductionOrder> {
-    return await apiClient.put<ProductionOrder>(`/production-orders/${orderId}/status`, data);
+    return await apiClient.put<ProductionOrder>(`${PURCHASE_ORDER_BASE}/${orderId}/status`, data);
   },
 
   // Archive order
   async archiveOrder(orderId: string): Promise<ProductionOrder> {
-    return await apiClient.post<ProductionOrder>(`/production-orders/${orderId}/archive`);
+    return await apiClient.post<ProductionOrder>(`${PURCHASE_ORDER_BASE}/${orderId}/archive`);
   },
 
   // Cancel/Delete order
   async cancelOrder(orderId: string): Promise<{ message: string }> {
-    return await apiClient.delete<{ message: string }>(`/production-orders/${orderId}`);
+    return await apiClient.delete<{ message: string }>(`${PURCHASE_ORDER_BASE}/${orderId}`);
   },
 
   // Get order materials
   async getOrderMaterials(orderId: string): Promise<MaterialRequirement[]> {
-    return await apiClient.get<MaterialRequirement[]>(`/production-orders/${orderId}/materials`);
+    return await apiClient.get<MaterialRequirement[]>(`${PURCHASE_ORDER_BASE}/${orderId}/materials`);
   },
 
   // Get order progress
   async getOrderProgress(orderId: string): Promise<OrderProgress> {
-    return await apiClient.get<OrderProgress>(`/production-orders/${orderId}/progress`);
+    return await apiClient.get<OrderProgress>(`${PURCHASE_ORDER_BASE}/${orderId}/progress`);
   },
 
   // Assign team to order
   async assignTeam(orderId: string, userIds: string[]): Promise<{ message: string }> {
-    return await apiClient.post<{ message: string }>(`/production-orders/${orderId}/assign`, { user_ids: userIds });
+    return await apiClient.post<{ message: string }>(`${PURCHASE_ORDER_BASE}/${orderId}/assign`, { user_ids: userIds });
   },
 
   // Get order team
   async getOrderTeam(orderId: string): Promise<TeamAssignment[]> {
-    return await apiClient.get<TeamAssignment[]>(`/production-orders/${orderId}/team`);
+    return await apiClient.get<TeamAssignment[]>(`${PURCHASE_ORDER_BASE}/${orderId}/team`);
   },
 
   // Validate production feasibility
@@ -214,7 +216,7 @@ export const productionOrdersApi = {
       queryParams.append('target_location_id', locationId);
     }
 
-    return await apiClient.post<ProductionValidation>(`/production-orders/validate-production?${queryParams.toString()}`);
+    return await apiClient.post<ProductionValidation>(`${PURCHASE_ORDER_BASE}/validate-production?${queryParams.toString()}`);
   },
 };
 

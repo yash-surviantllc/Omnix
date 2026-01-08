@@ -448,15 +448,15 @@ class MaterialTransferService:
         user_id: str
     ) -> WIPStageTransferResponse:
         """
-        Move production order between WIP stages.
+        Move purchase order between WIP stages.
         Creates material transfer + WIP tracking.
         """
         db = get_db()
         
         # Validate order exists
-        order = db.table('production_orders').select('*').eq('id', wip_transfer.order_id).execute()
+        order = db.table('purchase_orders').select('*').eq('id', wip_transfer.order_id).execute()
         if not order.data:
-            raise NotFoundException(detail="Production order not found")
+            raise NotFoundException(detail="Purchase order not found")
         
         # Validate stages
         to_stage = db.table('wip_stages').select('*').eq('id', wip_transfer.to_stage_id).execute()

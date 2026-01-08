@@ -1,7 +1,19 @@
 from fastapi import APIRouter
 from app.api.v1.endpoints import (
-    auth, users, dashboard, products, boms, 
-    inventory, inventory_items, production_orders, material_transfers, material_requests, wip, alerts, gate_entries
+    auth,
+    users,
+    dashboard,
+    products,
+    boms,
+    inventory,
+    inventory_items,
+    purchase_orders,
+    material_transfers,
+    material_requests,
+    wip,
+    wip_board,
+    alerts,
+    gate_entries,
 )
 
 api_router = APIRouter()
@@ -55,11 +67,11 @@ api_router.include_router(
     tags=["Inventory Items"]
 )
 
-# Production Orders routes
+# Purchase Orders routes
 api_router.include_router(
-    production_orders.router,
-    prefix="/production-orders",
-    tags=["Production Orders"]
+    purchase_orders.router,
+    prefix="/orders",
+    tags=["Purchase Orders"]
 )
 
 # Material Transfers routes
@@ -80,6 +92,13 @@ api_router.include_router(
     wip.router,
     prefix="/wip",
     tags=["WIP Live Board"]
+)
+
+# WIP board routes
+api_router.include_router(
+    wip_board.router,
+    prefix="/wip-board",
+    tags=["WIP Board"]
 )
 
 # Alert routes

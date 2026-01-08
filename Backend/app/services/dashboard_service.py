@@ -59,7 +59,7 @@ class DashboardService:
         
         try:
             # Count orders that are Planned or In Progress
-            orders = db.table('production_orders').select('id', count='exact').in_(
+            orders = db.table('purchase_orders').select('id', count='exact').in_(
                 'status', ['Planned', 'In Progress']
             ).execute()
             live_orders_count = orders.count if hasattr(orders, 'count') else len(orders.data)
@@ -147,7 +147,7 @@ class DashboardService:
             from datetime import timedelta
             thirty_days_ago = (datetime.utcnow() - timedelta(days=30)).isoformat()
             
-            completed_orders = db.table('production_orders').select(
+            completed_orders = db.table('purchase_orders').select(
                 'id', 'due_date', 'completion_date'
             ).eq('status', 'Completed').gte('completion_date', thirty_days_ago).execute()
             
@@ -204,7 +204,7 @@ class DashboardService:
         Get orders breakdown by status (REAL DATA!).
         """
         try:
-            orders = db.table('production_orders').select('status').execute()
+            orders = db.table('purchase_orders').select('status').execute()
             
             total = len(orders.data)
             planned = sum(1 for o in orders.data if o['status'] == 'Planned')

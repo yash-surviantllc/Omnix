@@ -31,7 +31,7 @@ class OrderMaterialResponse(OrderMaterialBase):
         from_attributes = True
 
 
-class ProductionOrderBase(BaseModel):
+class PurchaseOrderBase(BaseModel):
     product_id: str = Field(..., description="Finished goods product ID")
     quantity: Decimal = Field(..., gt=0, description="Order quantity")
     due_date: date = Field(..., description="Target completion date")
@@ -45,12 +45,12 @@ class ProductionOrderBase(BaseModel):
     end_time: Optional[datetime] = None
 
 
-class ProductionOrderCreate(ProductionOrderBase):
-    """Create production order - BOM will be fetched automatically"""
+class PurchaseOrderCreate(PurchaseOrderBase):
+    """Create purchase order - BOM will be fetched automatically"""
     pass
 
 
-class ProductionOrderUpdate(BaseModel):
+class PurchaseOrderUpdate(BaseModel):
     quantity: Optional[Decimal] = Field(None, gt=0)
     due_date: Optional[date] = None
     priority: Optional[str] = None
@@ -62,7 +62,7 @@ class ProductionOrderUpdate(BaseModel):
     production_stage: Optional[str] = None
 
 
-class ProductionOrderResponse(ProductionOrderBase):
+class PurchaseOrderResponse(PurchaseOrderBase):
     id: str
     order_number: str
     bom_id: Optional[str] = None
@@ -84,7 +84,7 @@ class ProductionOrderResponse(ProductionOrderBase):
         from_attributes = True
 
 
-class ProductionOrderListItem(BaseModel):
+class PurchaseOrderListItem(BaseModel):
     """Simplified order for list view"""
     id: str
     order_number: str
@@ -144,7 +144,7 @@ class OrderProgress(BaseModel):
     is_overdue: bool
 
 class MaterialRequirement(BaseModel):
-    """Material requirement for production order"""
+    """Material requirement for purchase order"""
     material_id: str
     material_code: str
     material_name: str
@@ -192,8 +192,8 @@ class OrderMaterialWithShortage(BaseModel):
         from_attributes = True
 
 
-class ProductionOrderValidation(BaseModel):
-    """Production order validation result"""
+class PurchaseOrderValidation(BaseModel):
+    """Purchase order validation result"""
     can_produce: bool
     product_id: str
     product_code: str
@@ -209,8 +209,8 @@ class ProductionOrderValidation(BaseModel):
         from_attributes = True
 
 
-class ProductionOrderWithShortages(ProductionOrderResponse):
-    """Production order response with shortage details"""
+class PurchaseOrderWithShortages(PurchaseOrderResponse):
+    """Purchase order response with shortage details"""
     shortage_summary: Optional[dict] = None
     has_shortages: bool = False
     can_produce: bool = True
