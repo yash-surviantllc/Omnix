@@ -1,12 +1,27 @@
+from collections import defaultdict
 from datetime import datetime
-from typing import List, Optional
+from typing import Dict, List, Optional
 from decimal import Decimal
+from postgrest.exceptions import APIError
 from app.database import get_db
 from app.schemas.material_transfer import (
-    MaterialTransferCreate, MaterialTransferUpdate, MaterialTransferResponse,
-    MaterialTransferListItem, TransferStatusUpdate, TransferApprovalRequest,
-    WIPStageTransferCreate, WIPStageTransferResponse, WIPStageResponse,
-    WIPStageWithUnits, OrderStageStatus
+    MaterialTransferCreate,
+    MaterialTransferUpdate,
+    MaterialTransferResponse,
+    MaterialTransferListItem,
+    TransferStatusUpdate,
+    TransferApprovalRequest,
+    MaterialTransferItemCreate,
+    MaterialTransferItemResponse,
+    MaterialTransferApprovalEntry,
+    MaterialTransferAuditEntry,
+    MaterialTransferSlipResponse,
+    MaterialTransferSlipItem,
+    WIPStageTransferCreate,
+    WIPStageTransferResponse,
+    WIPStageResponse,
+    WIPStageWithUnits,
+    OrderStageStatus,
 )
 from app.core.exceptions import NotFoundException, ValidationException
 
@@ -35,60 +50,37 @@ class MaterialTransferService:
         user_id: str
     ) -> MaterialTransferResponse:
         """
-        Create material transfer request.
+        Create material transfer request with one or more line items.
         Status starts as 'Pending'.
         """
         db = get_db()
         
-        # Validate product exists
-        product = db.table('products').select('id', 'unit').eq('id', transfer_data.product_id).execute()
-        if not product.data:
-            raise NotFoundException(detail="Product not found")
-        
-        # Validate locations exist
-        from_loc = db.table('locations').select('id').eq('id', transfer_data.from_location_id).execute()
-        to_loc = db.table('locations').select('id').eq('id', transfer_data.to_location_id).execute()
-        
-        if not from_loc.data:
-            raise NotFoundException(detail="Source location not found")
-        if not to_loc.data:
-            raise NotFoundException(detail="Destination location not found")
-        
         if transfer_data.from_location_id == transfer_data.to_location_id:
             raise ValidationException(detail="Source and destination locations cannot be the same")
         
-        # Check inventory availability at source
-        inv = db.table('inventory').select('available_qty', 'allocated_qty').eq(
-            'product_id', transfer_data.product_id
-        ).eq('location_id', transfer_data.from_location_id).execute()
-        
-        if not inv.data:
-            raise ValidationException(detail="No inventory found at source location")
-        
-        free_qty = Decimal(str(inv.data[0]['available_qty'])) - Decimal(str(inv.data[0]['allocated_qty']))
-        
-        if free_qty < transfer_data.quantity:
-            raise ValidationException(
-                detail=f"Insufficient free inventory. Available: {free_qty}, Requested: {transfer_data.quantity}"
-            )
-        
+        MaterialTransferService._ensure_location_exists(db, transfer_data.from_location_id, "Source location")
+        MaterialTransferService._ensure_location_exists(db, transfer_data.to_location_id, "Destination location")
+
+        prepared_items = MaterialTransferService._prepare_items(
+            db,
+            transfer_data.items,
+            transfer_data.from_location_id
+        )
+
         # Generate transfer number
         transfer_number = MaterialTransferService._generate_transfer_number()
         
         # Create transfer
         transfer_dict = {
             'transfer_number': transfer_number,
-            'product_id': transfer_data.product_id,
             'from_location_id': transfer_data.from_location_id,
             'to_location_id': transfer_data.to_location_id,
-            'quantity': float(transfer_data.quantity),
-            'unit': transfer_data.unit,
             'priority': transfer_data.priority,
             'reason': transfer_data.reason,
             'notes': transfer_data.notes,
             'reference_order_id': transfer_data.reference_order_id,
             'status': 'Pending',
-            'transfer_type': 'Standard',
+            'transfer_type': transfer_data.transfer_type,
             'requested_by': user_id
         }
         
@@ -97,7 +89,36 @@ class MaterialTransferService:
         if not result.data:
             raise Exception("Failed to create transfer")
         
-        return await MaterialTransferService.get_transfer_by_id(result.data[0]['id'])
+        transfer_id = result.data[0]['id']
+
+        items_payload = [
+            {
+                'transfer_id': transfer_id,
+                'product_id': item['product_id'],
+                'quantity': float(item['quantity']),
+                'unit': item['unit'],
+                'source_inventory_id': item['inventory_id'],
+                'notes': item.get('notes')
+            }
+            for item in prepared_items
+        ]
+
+        db.table('material_transfer_items').insert(items_payload).execute()
+
+        MaterialTransferService._log_audit(
+            db,
+            transfer_id,
+            'CREATED',
+            'Transfer created',
+            {
+                'item_count': len(items_payload),
+                'from_location_id': transfer_data.from_location_id,
+                'to_location_id': transfer_data.to_location_id
+            },
+            user_id
+        )
+        
+        return await MaterialTransferService.get_transfer_by_id(transfer_id)
     
     @staticmethod
     async def list_transfers(
@@ -126,49 +147,57 @@ class MaterialTransferService:
             query = query.eq('to_location_id', to_location_id)
         
         if product_id:
-            query = query.eq('product_id', product_id)
+            transfer_ids = MaterialTransferService._get_transfer_ids_for_product(db, product_id)
+            if not transfer_ids:
+                return []
+            query = query.in_('id', transfer_ids)
         
         result = query.order('requested_at', desc=True).range(offset, offset + limit - 1).execute()
-        
-        transfers = []
-        for transfer in result.data:
-            # Get product info
-            product = db.table('products').select('name').eq('id', transfer['product_id']).execute()
-            product_name = product.data[0]['name'] if product.data else 'Unknown'
-            
-            # Get location names
-            from_loc = db.table('locations').select('name').eq('id', transfer['from_location_id']).execute()
-            to_loc = db.table('locations').select('name').eq('id', transfer['to_location_id']).execute()
-            
-            from_location_name = from_loc.data[0]['name'] if from_loc.data else 'Unknown'
-            to_location_name = to_loc.data[0]['name'] if to_loc.data else 'Unknown'
-            
-            # Determine date to show based on status
+        records = result.data or []
+        if not records:
+            return []
+
+        transfer_ids = [row['id'] for row in records]
+        items_map = MaterialTransferService._fetch_items_grouped(db, transfer_ids)
+        location_names = MaterialTransferService._fetch_location_names(
+            db,
+            {row['from_location_id'] for row in records} | {row['to_location_id'] for row in records}
+        )
+
+        transfers: List[MaterialTransferListItem] = []
+        for transfer in records:
+            items = items_map.get(transfer['id'], [])
+            total_quantity = MaterialTransferService._compute_total_quantity(items)
+            material_summary = MaterialTransferService._build_material_summary(items)
+
+            if search:
+                search_lower = search.lower()
+                if (
+                    search_lower not in transfer['transfer_number'].lower()
+                    and search_lower not in material_summary.lower()
+                    and search_lower not in location_names.get(transfer['from_location_id'], 'Unknown').lower()
+                    and search_lower not in location_names.get(transfer['to_location_id'], 'Unknown').lower()
+                ):
+                    continue
+
             if transfer['status'] == 'Completed' and transfer.get('executed_at'):
                 date_to_show = datetime.fromisoformat(transfer['executed_at'].replace('Z', '+00:00'))
             else:
                 date_to_show = datetime.fromisoformat(transfer['requested_at'].replace('Z', '+00:00'))
-            
-            # Apply search filter
-            if search:
-                search_lower = search.lower()
-                if (search_lower not in transfer['transfer_number'].lower() and
-                    search_lower not in product_name.lower() and
-                    search_lower not in from_location_name.lower() and
-                    search_lower not in to_location_name.lower()):
-                    continue
-            
-            transfers.append(MaterialTransferListItem(
-                id=transfer['id'],
-                transfer_number=transfer['transfer_number'],
-                material=product_name,
-                quantity=Decimal(str(transfer['quantity'])),
-                unit=transfer['unit'],
-                from_location=from_location_name,
-                to_location=to_location_name,
-                status=transfer['status'],
-                date=date_to_show
-            ))
+
+            transfers.append(
+                MaterialTransferListItem(
+                    id=transfer['id'],
+                    transfer_number=transfer['transfer_number'],
+                    material_summary=material_summary,
+                    total_quantity=total_quantity,
+                    item_count=len(items),
+                    from_location=location_names.get(transfer['from_location_id'], 'Unknown'),
+                    to_location=location_names.get(transfer['to_location_id'], 'Unknown'),
+                    status=transfer['status'],
+                    date=date_to_show,
+                )
+            )
         
         return transfers
     
@@ -178,54 +207,42 @@ class MaterialTransferService:
         db = get_db()
         
         # Get transfer
-        transfer = db.table('material_transfers').select('*').eq('id', transfer_id).execute()
+        transfer = (
+            db.table('material_transfers')
+            .select('*')
+            .eq('id', transfer_id)
+            .single()
+            .execute()
+        )
         
         if not transfer.data:
             raise NotFoundException(detail="Transfer not found")
         
-        t = transfer.data[0]
+        if isinstance(transfer.data, list):
+            if not transfer.data:
+                raise NotFoundException(detail="Transfer not found")
+            t = transfer.data[0]
+        else:
+            t = transfer.data
         
-        # Get product info
-        product = db.table('products').select('code', 'name').eq('id', t['product_id']).execute()
-        product_code = product.data[0]['code'] if product.data else None
-        product_name = product.data[0]['name'] if product.data else None
+        location_names = MaterialTransferService._fetch_location_names(
+            db, {t['from_location_id'], t['to_location_id']}
+        )
+        requested_by_name = MaterialTransferService._get_user_display_name(db, t.get('requested_by'))
+        approved_by_name = MaterialTransferService._get_user_display_name(db, t.get('approved_by'))
+        executed_by_name = MaterialTransferService._get_user_display_name(db, t.get('executed_by'))
         
-        # Get location names
-        from_loc = db.table('locations').select('name').eq('id', t['from_location_id']).execute()
-        to_loc = db.table('locations').select('name').eq('id', t['to_location_id']).execute()
-        
-        from_location_name = from_loc.data[0]['name'] if from_loc.data else None
-        to_location_name = to_loc.data[0]['name'] if to_loc.data else None
-        
-        # Get user names
-        requested_by_name = None
-        approved_by_name = None
-        executed_by_name = None
-        
-        if t.get('requested_by'):
-            user = db.table('users').select('full_name', 'username').eq('id', t['requested_by']).execute()
-            requested_by_name = user.data[0].get('full_name') or user.data[0].get('username') if user.data else None
-        
-        if t.get('approved_by'):
-            user = db.table('users').select('full_name', 'username').eq('id', t['approved_by']).execute()
-            approved_by_name = user.data[0].get('full_name') or user.data[0].get('username') if user.data else None
-        
-        if t.get('executed_by'):
-            user = db.table('users').select('full_name', 'username').eq('id', t['executed_by']).execute()
-            executed_by_name = user.data[0].get('full_name') or user.data[0].get('username') if user.data else None
+        items = MaterialTransferService._fetch_transfer_items(db, transfer_id)
+        approvals = MaterialTransferService._fetch_transfer_approvals(db, transfer_id)
+        audit_log = MaterialTransferService._fetch_transfer_audit(db, transfer_id)
         
         return MaterialTransferResponse(
             id=t['id'],
             transfer_number=t['transfer_number'],
-            product_id=t['product_id'],
-            product_code=product_code,
-            product_name=product_name,
             from_location_id=t['from_location_id'],
-            from_location_name=from_location_name,
+            from_location_name=location_names.get(t['from_location_id']),
             to_location_id=t['to_location_id'],
-            to_location_name=to_location_name,
-            quantity=Decimal(str(t['quantity'])),
-            unit=t['unit'],
+            to_location_name=location_names.get(t['to_location_id']),
             status=t['status'],
             transfer_type=t.get('transfer_type', 'Standard'),
             priority=t['priority'],
@@ -241,8 +258,40 @@ class MaterialTransferService:
             requested_at=datetime.fromisoformat(t['requested_at'].replace('Z', '+00:00')),
             approved_at=datetime.fromisoformat(t['approved_at'].replace('Z', '+00:00')) if t.get('approved_at') else None,
             executed_at=datetime.fromisoformat(t['executed_at'].replace('Z', '+00:00')) if t.get('executed_at') else None,
+            cancelled_at=datetime.fromisoformat(t['cancelled_at'].replace('Z', '+00:00')) if t.get('cancelled_at') else None,
             created_at=datetime.fromisoformat(t['created_at'].replace('Z', '+00:00')),
-            updated_at=datetime.fromisoformat(t['updated_at'].replace('Z', '+00:00'))
+            updated_at=datetime.fromisoformat(t['updated_at'].replace('Z', '+00:00')),
+            items=[MaterialTransferItemResponse(**item) for item in items],
+            approvals=[MaterialTransferApprovalEntry(**entry) for entry in approvals],
+            audit_log=[MaterialTransferAuditEntry(**entry) for entry in audit_log],
+        )
+    
+    @staticmethod
+    async def generate_transfer_slip(transfer_id: str) -> MaterialTransferSlipResponse:
+        """Build slip payload for printing or PDF generation"""
+        transfer = await MaterialTransferService.get_transfer_by_id(transfer_id)
+
+        slip_items = [
+            MaterialTransferSlipItem(
+                product_code=item.product_code,
+                product_name=item.product_name,
+                quantity=item.quantity,
+                unit=item.unit,
+                notes=item.notes,
+            )
+            for item in transfer.items
+        ]
+
+        return MaterialTransferSlipResponse(
+            transfer_number=transfer.transfer_number,
+            barcode_value=transfer.transfer_number,
+            from_location=transfer.from_location_name or "",
+            to_location=transfer.to_location_name or "",
+            requested_by=transfer.requested_by_name,
+            approved_by=transfer.approved_by_name,
+            items=slip_items,
+            generated_at=datetime.utcnow(),
+            notes=transfer.notes,
         )
     
     @staticmethod
@@ -263,17 +312,37 @@ class MaterialTransferService:
         if transfer.data[0]['status'] != 'Pending':
             raise ValidationException(detail=f"Cannot approve transfer with status: {transfer.data[0]['status']}")
         
-        # Update transfer
+        action = 'APPROVED' if approval.approve else 'REJECTED'
+        now = datetime.utcnow().isoformat()
+
         update_dict = {
             'status': 'Approved' if approval.approve else 'Rejected',
             'approved_by': user_id,
-            'approved_at': datetime.utcnow().isoformat()
+            'approved_at': now
         }
-        
+
         if approval.notes:
             update_dict['notes'] = approval.notes
-        
+        if not approval.approve:
+            update_dict['rejection_reason'] = approval.notes or 'Rejected'
+
         db.table('material_transfers').update(update_dict).eq('id', transfer_id).execute()
+
+        db.table('material_transfer_approvals').insert({
+            'transfer_id': transfer_id,
+            'approver_id': user_id,
+            'action': action,
+            'notes': approval.notes
+        }).execute()
+
+        MaterialTransferService._log_audit(
+            db,
+            transfer_id,
+            action,
+            f"Transfer {action.lower()}",
+            {'notes': approval.notes} if approval.notes else None,
+            user_id
+        )
         
         return await MaterialTransferService.get_transfer_by_id(transfer_id)
     
@@ -299,69 +368,28 @@ class MaterialTransferService:
         if t['status'] != 'Approved':
             raise ValidationException(detail=f"Can only execute approved transfers. Current status: {t['status']}")
         
-        # Update inventory atomically
+        items = MaterialTransferService._fetch_transfer_item_rows(db, transfer_id)
+        if not items:
+            raise ValidationException(detail="Transfer has no line items to execute")
+        
         try:
-            # 1. Deduct from source location
-            source_inv = db.table('inventory').select('*').eq(
-                'product_id', t['product_id']
-            ).eq('location_id', t['from_location_id']).execute()
+            for item in items:
+                MaterialTransferService._apply_inventory_transfer(db, t, item, user_id)
             
-            if not source_inv.data:
-                raise ValidationException(detail="Source inventory not found")
-            
-            source = source_inv.data[0]
-            new_available = Decimal(str(source['available_qty'])) - Decimal(str(t['quantity']))
-            
-            if new_available < 0:
-                raise ValidationException(detail="Insufficient inventory at source")
-            
-            db.table('inventory').update({
-                'available_qty': float(new_available),
-                'updated_at': datetime.utcnow().isoformat()
-            }).eq('id', source['id']).execute()
-            
-            # 2. Add to destination location
-            dest_inv = db.table('inventory').select('*').eq(
-                'product_id', t['product_id']
-            ).eq('location_id', t['to_location_id']).execute()
-            
-            if dest_inv.data:
-                # Update existing
-                dest = dest_inv.data[0]
-                new_dest_qty = Decimal(str(dest['available_qty'])) + Decimal(str(t['quantity']))
-                
-                db.table('inventory').update({
-                    'available_qty': float(new_dest_qty),
-                    'updated_at': datetime.utcnow().isoformat()
-                }).eq('id', dest['id']).execute()
-            else:
-                # Insert new
-                db.table('inventory').insert({
-                    'product_id': t['product_id'],
-                    'location_id': t['to_location_id'],
-                    'available_qty': float(t['quantity']),
-                    'allocated_qty': 0
-                }).execute()
-            
-            # 3. Log inventory transaction
-            db.table('inventory_transactions').insert({
-                'product_id': t['product_id'],
-                'transaction_type': 'TRANSFER',
-                'quantity': float(t['quantity']),
-                'from_location_id': t['from_location_id'],
-                'to_location_id': t['to_location_id'],
-                'reference_id': transfer_id,
-                'reference_type': 'material_transfer',
-                'notes': f"Transfer {t['transfer_number']}",
-                'performed_by': user_id
-            }).execute()
-            
-            # 4. Update transfer status
             db.table('material_transfers').update({
                 'status': 'Completed',
                 'executed_by': user_id,
                 'executed_at': datetime.utcnow().isoformat()
             }).eq('id', transfer_id).execute()
+
+            MaterialTransferService._log_audit(
+                db,
+                transfer_id,
+                'COMPLETED',
+                'Transfer executed',
+                {'item_count': len(items)},
+                user_id
+            )
             
             return await MaterialTransferService.get_transfer_by_id(transfer_id)
             
@@ -383,15 +411,322 @@ class MaterialTransferService:
         
         db.table('material_transfers').update({
             'status': 'Cancelled',
+            'cancelled_at': datetime.utcnow().isoformat(),
             'updated_at': datetime.utcnow().isoformat()
         }).eq('id', transfer_id).execute()
+        
+        MaterialTransferService._log_audit(
+            db,
+            transfer_id,
+            'CANCELLED',
+            'Transfer cancelled',
+            None,
+            None
+        )
         
         return {"message": "Transfer cancelled successfully"}
     
     # =============================================
-    # WIP STAGE TRANSFER METHODS
+    # INTERNAL HELPERS
     # =============================================
-    
+
+    @staticmethod
+    def _ensure_location_exists(db, location_id: str, label: str) -> None:
+        try:
+            result = (
+                db.table('locations')
+                .select('id')
+                .eq('id', location_id)
+                .single()
+                .execute()
+            )
+        except APIError as exc:
+            # PostgREST raises PGRST116 when .single() receives 0 rows
+            if exc.code == 'PGRST116':
+                raise NotFoundException(detail=f"{label} not found")
+            raise
+
+        if not result.data:
+            raise NotFoundException(detail=f"{label} not found")
+
+    @staticmethod
+    def _prepare_items(db, items: List[MaterialTransferItemCreate], from_location_id: str) -> List[Dict]:
+        if not items:
+            raise ValidationException(detail="At least one line item is required")
+
+        prepared: List[Dict] = []
+        reserved_per_inventory: Dict[str, Decimal] = defaultdict(lambda: Decimal("0"))
+
+        for item in items:
+            product = (
+                db.table('products')
+                .select('id, unit, code, name')
+                .eq('id', item.product_id)
+                .single()
+                .execute()
+            )
+            if not product.data:
+                raise NotFoundException(detail=f"Product {item.product_id} not found")
+
+            inventory = (
+                db.table('inventory')
+                .select('id, available_qty, allocated_qty')
+                .eq('product_id', item.product_id)
+                .eq('location_id', from_location_id)
+                .single()
+                .execute()
+            )
+            if not inventory.data:
+                raise ValidationException(detail=f"No inventory found for product at source location")
+
+            available_qty = Decimal(str(inventory.data.get('available_qty') or 0))
+            allocated_qty = Decimal(str(inventory.data.get('allocated_qty') or 0))
+            free_qty = available_qty - allocated_qty
+
+            inventory_id = inventory.data['id']
+            reserved_per_inventory[inventory_id] += item.quantity
+
+            if free_qty < reserved_per_inventory[inventory_id]:
+                raise ValidationException(
+                    detail=f"Insufficient inventory for product {product.data.get('code') or item.product_id}"
+                )
+
+            prepared.append(
+                {
+                    'product_id': item.product_id,
+                    'quantity': item.quantity,
+                    'unit': item.unit or product.data.get('unit') or '',
+                    'inventory_id': inventory_id,
+                    'notes': item.notes,
+                }
+            )
+
+        return prepared
+
+    @staticmethod
+    def _fetch_products(db, product_ids: set) -> Dict[str, Dict]:
+        if not product_ids:
+            return {}
+        result = (
+            db.table('products')
+            .select('id, code, name, unit')
+            .in_('id', list(product_ids))
+            .execute()
+        )
+        return {row['id']: row for row in (result.data or [])}
+
+    @staticmethod
+    def _get_user_display_name(db, user_id: Optional[str]) -> Optional[str]:
+        if not user_id:
+            return None
+        user = db.table('users').select('full_name, username').eq('id', user_id).single().execute()
+        if not user.data:
+            return None
+        return user.data.get('full_name') or user.data.get('username')
+
+    @staticmethod
+    def _fetch_location_names(db, location_ids: set) -> Dict[str, str]:
+        result = (
+            db.table('locations')
+            .select('id, name')
+            .in_('id', list(location_ids))
+            .execute()
+        )
+        return {row['id']: row['name'] for row in (result.data or [])}
+
+    @staticmethod
+    def _fetch_transfer_items(db, transfer_id: str) -> List[Dict]:
+        result = (
+            db.table('material_transfer_items')
+            .select('*')
+            .eq('transfer_id', transfer_id)
+            .execute()
+        )
+        rows = result.data or []
+        product_map = MaterialTransferService._fetch_products(db, {row['product_id'] for row in rows})
+
+        items: List[Dict] = []
+        for row in rows:
+            product = product_map.get(row['product_id'], {})
+            items.append(
+                {
+                    'id': row['id'],
+                    'product_id': row['product_id'],
+                    'quantity': Decimal(str(row['quantity'])),
+                    'unit': row['unit'],
+                    'product_code': product.get('code'),
+                    'product_name': product.get('name'),
+                    'source_inventory_id': row.get('source_inventory_id'),
+                    'notes': row.get('notes'),
+                }
+            )
+        return items
+
+    @staticmethod
+    def _fetch_transfer_item_rows(db, transfer_id: str) -> List[Dict]:
+        result = (
+            db.table('material_transfer_items')
+            .select('*')
+            .eq('transfer_id', transfer_id)
+            .execute()
+        )
+        return result.data or []
+
+    @staticmethod
+    def _apply_inventory_transfer(db, transfer: Dict, item: Dict, user_id: str) -> None:
+        quantity = Decimal(str(item.get('quantity') or 0))
+        if quantity <= 0:
+            raise ValidationException(detail="Transfer item quantity must be greater than zero")
+
+        source_inventory_id = item.get('source_inventory_id')
+        if not source_inventory_id:
+            raise ValidationException(detail="Transfer item missing source inventory reference")
+
+        source_inventory = (
+            db.table('inventory')
+            .select('id, product_id, location_id, available_qty, allocated_qty')
+            .eq('id', source_inventory_id)
+            .single()
+            .execute()
+        )
+        if not source_inventory.data:
+            raise ValidationException(detail="Source inventory record not found for transfer item")
+
+        available_qty = Decimal(str(source_inventory.data.get('available_qty') or 0))
+        allocated_qty = Decimal(str(source_inventory.data.get('allocated_qty') or 0))
+        free_qty = available_qty - allocated_qty
+
+        if free_qty < quantity:
+            raise ValidationException(
+                detail=f"Insufficient stock for product {item.get('product_id')} at source location"
+            )
+
+        timestamp = datetime.utcnow().isoformat()
+
+        # Deduct from source location
+        db.table('inventory').update(
+            {
+                'available_qty': float(available_qty - quantity),
+                'updated_at': timestamp,
+                'last_transaction_at': timestamp,
+            }
+        ).eq('id', source_inventory_id).execute()
+
+        # Add to destination location
+        destination = (
+            db.table('inventory')
+            .select('id, available_qty')
+            .eq('product_id', item['product_id'])
+            .eq('location_id', transfer['to_location_id'])
+            .limit(1)
+            .execute()
+        )
+
+        if destination.data:
+            dest_row = destination.data[0]
+            dest_available = Decimal(str(dest_row.get('available_qty') or 0))
+            db.table('inventory').update(
+                {
+                    'available_qty': float(dest_available + quantity),
+                    'updated_at': timestamp,
+                    'last_transaction_at': timestamp,
+                }
+            ).eq('id', dest_row['id']).execute()
+        else:
+            db.table('inventory').insert(
+                {
+                    'product_id': item['product_id'],
+                    'location_id': transfer['to_location_id'],
+                    'available_qty': float(quantity),
+                    'allocated_qty': 0,
+                    'last_transaction_at': timestamp,
+                }
+            ).execute()
+
+        # Record inventory transaction
+        db.table('inventory_transactions').insert(
+            {
+                'product_id': item['product_id'],
+                'transaction_type': 'TRANSFER',
+                'quantity': float(quantity),
+                'from_location_id': transfer['from_location_id'],
+                'to_location_id': transfer['to_location_id'],
+                'reference_id': transfer['id'],
+                'reference_type': 'material_transfer',
+                'notes': item.get('notes') or transfer.get('reason'),
+                'performed_by': user_id,
+            }
+        ).execute()
+
+    @staticmethod
+    def _fetch_transfer_approvals(db, transfer_id: str) -> List[Dict]:
+        result = (
+            db.table('material_transfer_approvals')
+            .select('*')
+            .eq('transfer_id', transfer_id)
+            .order('created_at', desc=True)
+            .execute()
+        )
+        rows = result.data or []
+        approvals: List[Dict] = []
+        for row in rows:
+            approver_name = MaterialTransferService._get_user_display_name(db, row['approver_id'])
+            approvals.append(
+                {
+                    'id': row['id'],
+                    'approver_id': row['approver_id'],
+                    'approver_name': approver_name,
+                    'action': row['action'],
+                    'notes': row.get('notes'),
+                    'created_at': datetime.fromisoformat(row['created_at'].replace('Z', '+00:00')),
+                }
+            )
+        return approvals
+
+    @staticmethod
+    def _fetch_transfer_audit(db, transfer_id: str) -> List[Dict]:
+        result = (
+            db.table('material_transfer_audit_log')
+            .select('*')
+            .eq('transfer_id', transfer_id)
+            .order('created_at', desc=True)
+            .execute()
+        )
+
+        rows = result.data or []
+        audit: List[Dict] = []
+        for row in rows:
+            audit.append(
+                {
+                    'id': row['id'],
+                    'event_type': row['event_type'],
+                    'description': row.get('description'),
+                    'metadata': row.get('metadata'),
+                    'created_by': row.get('created_by'),
+                    'created_by_name': MaterialTransferService._get_user_display_name(db, row.get('created_by')),
+                    'created_at': datetime.fromisoformat(row['created_at'].replace('Z', '+00:00')),
+                }
+            )
+        return audit
+
+    @staticmethod
+    def _log_audit(
+        db,
+        transfer_id: str,
+        event_type: str,
+        description: Optional[str],
+        metadata: Optional[Dict],
+        user_id: Optional[str],
+    ) -> None:
+        payload = {
+            'transfer_id': transfer_id,
+            'event_type': event_type,
+            'description': description,
+            'metadata': metadata,
+            'created_by': user_id,
+        }
+        db.table('material_transfer_audit_log').insert(payload).execute()
+
     @staticmethod
     async def list_wip_stages() -> List[WIPStageResponse]:
         """Get all WIP stages in sequence"""

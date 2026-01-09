@@ -1,27 +1,27 @@
 -- =============================================
 -- BOM ENHANCEMENTS MIGRATION
--- Adds missing features: BOM version tracking in production orders
+-- Adds missing features: BOM version tracking in purchase orders
 -- and multi-level BOM support (sub-assemblies)
 -- =============================================
 
 -- =============================================
--- STEP 1: ADD BOM VERSION TRACKING TO PRODUCTION ORDERS
+-- STEP 1: ADD BOM VERSION TRACKING TO PURCHASE ORDERS
 -- =============================================
 
--- Add BOM version and snapshot columns to production_orders
-ALTER TABLE production_orders 
+-- Add BOM version and snapshot columns to purchase_orders
+ALTER TABLE purchase_orders 
 ADD COLUMN IF NOT EXISTS bom_id UUID REFERENCES boms(id),
 ADD COLUMN IF NOT EXISTS bom_version INTEGER,
 ADD COLUMN IF NOT EXISTS bom_snapshot JSONB;
 
 -- Create index for BOM tracking
-CREATE INDEX IF NOT EXISTS idx_prod_orders_bom_id ON production_orders(bom_id);
-CREATE INDEX IF NOT EXISTS idx_prod_orders_bom_version ON production_orders(bom_version);
+CREATE INDEX IF NOT EXISTS idx_purchase_orders_bom_id ON purchase_orders(bom_id);
+CREATE INDEX IF NOT EXISTS idx_purchase_orders_bom_version ON purchase_orders(bom_version);
 
 -- Add comment
-COMMENT ON COLUMN production_orders.bom_id IS 'Reference to the BOM used for this order';
-COMMENT ON COLUMN production_orders.bom_version IS 'Version of the BOM at the time of order creation';
-COMMENT ON COLUMN production_orders.bom_snapshot IS 'Full snapshot of BOM materials at order creation time';
+COMMENT ON COLUMN purchase_orders.bom_id IS 'Reference to the BOM used for this order';
+COMMENT ON COLUMN purchase_orders.bom_version IS 'Version of the BOM at the time of order creation';
+COMMENT ON COLUMN purchase_orders.bom_snapshot IS 'Full snapshot of BOM materials at order creation time';
 
 -- =============================================
 -- STEP 2: ADD MULTI-LEVEL BOM SUPPORT (SUB-ASSEMBLIES)
@@ -193,14 +193,14 @@ $$ LANGUAGE plpgsql;
 -- =============================================
 
 -- Set default values for existing records
-UPDATE production_orders 
+UPDATE purchase_orders 
 SET bom_version = 1 
 WHERE bom_version IS NULL AND product_id IN (
     SELECT product_id FROM boms WHERE is_active = true
 );
 
--- Update bom_id for existing production orders
-UPDATE production_orders po
+-- Update bom_id for existing purchase orders
+UPDATE purchase_orders po
 SET bom_id = b.id
 FROM boms b
 WHERE po.product_id = b.product_id 
@@ -211,7 +211,7 @@ WHERE po.product_id = b.product_id
 -- STEP 8: VERIFY DATA
 -- =============================================
 
--- Check production orders with BOM tracking
+-- Check purchase orders with BOM tracking
 SELECT 
     po.order_number,
     p.name as product_name,
@@ -222,7 +222,7 @@ SELECT
         WHEN po.bom_version < b.version THEN 'Outdated'
         ELSE 'Unknown'
     END as bom_status
-FROM production_orders po
+FROM purchase_orders po
 JOIN products p ON po.product_id = p.id
 LEFT JOIN boms b ON po.bom_id = b.id
 WHERE po.bom_id IS NOT NULL

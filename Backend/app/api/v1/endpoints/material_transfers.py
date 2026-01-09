@@ -1,10 +1,16 @@
 from fastapi import APIRouter, Depends, Query, status
 from typing import List, Optional
 from app.schemas.material_transfer import (
-    MaterialTransferCreate, MaterialTransferUpdate, MaterialTransferResponse,
-    MaterialTransferListItem, TransferApprovalRequest,
-    WIPStageTransferCreate, WIPStageTransferResponse, WIPStageResponse,
-    WIPStageWithUnits
+    MaterialTransferCreate,
+    MaterialTransferUpdate,
+    MaterialTransferResponse,
+    MaterialTransferListItem,
+    TransferApprovalRequest,
+    MaterialTransferSlipResponse,
+    WIPStageTransferCreate,
+    WIPStageTransferResponse,
+    WIPStageResponse,
+    WIPStageWithUnits,
 )
 from app.schemas.user import UserResponse
 from app.services.material_transfer_service import material_transfer_service
@@ -89,6 +95,19 @@ async def get_transfer(
     Includes product info, location names, user names, and timestamps.
     """
     return await material_transfer_service.get_transfer_by_id(transfer_id)
+
+
+@router.get("/{transfer_id}/slip", response_model=MaterialTransferSlipResponse)
+async def get_transfer_slip(
+    transfer_id: str,
+    current_user: UserResponse = Depends(get_current_user)
+):
+    """
+    Generate slip payload (used for PDF/print).
+    
+    Includes header metadata plus line items with product codes.
+    """
+    return await material_transfer_service.generate_transfer_slip(transfer_id)
 
 
 @router.post("/{transfer_id}/approve", response_model=MaterialTransferResponse)

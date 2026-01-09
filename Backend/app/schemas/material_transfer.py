@@ -1,42 +1,38 @@
 from pydantic import BaseModel, Field
-from typing import List, Optional
+from typing import Dict, List, Optional
 from datetime import datetime
 from decimal import Decimal
 
 
 class MaterialTransferBase(BaseModel):
-    product_id: str = Field(..., description="Material/product to transfer")
     from_location_id: str = Field(..., description="Source location")
     to_location_id: str = Field(..., description="Destination location")
-    quantity: Decimal = Field(..., gt=0, description="Transfer quantity")
-    unit: str
     priority: str = Field(default="Normal", description="Low, Normal, High, Urgent")
     reason: Optional[str] = None
     notes: Optional[str] = None
     reference_order_id: Optional[str] = Field(None, description="Link to purchase order")
+    transfer_type: str = Field(default="Standard", description="Standard, Request, Shortage, etc.")
 
 
 class MaterialTransferCreate(MaterialTransferBase):
-    pass
+    items: List["MaterialTransferItemCreate"] = Field(..., min_length=1)
 
 
 class MaterialTransferUpdate(BaseModel):
-    quantity: Optional[Decimal] = Field(None, gt=0)
     priority: Optional[str] = None
     reason: Optional[str] = None
     notes: Optional[str] = None
     status: Optional[str] = None
+    items: Optional[List["MaterialTransferItemCreate"]] = None
 
 
 class MaterialTransferResponse(MaterialTransferBase):
     id: str
     transfer_number: str
-    product_code: Optional[str] = None
-    product_name: Optional[str] = None
     from_location_name: Optional[str] = None
     to_location_name: Optional[str] = None
     status: str
-    transfer_type: str
+    rejection_reason: Optional[str] = None
     requested_by: Optional[str] = None
     requested_by_name: Optional[str] = None
     approved_by: Optional[str] = None
@@ -46,8 +42,12 @@ class MaterialTransferResponse(MaterialTransferBase):
     requested_at: datetime
     approved_at: Optional[datetime] = None
     executed_at: Optional[datetime] = None
+    cancelled_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
+    items: List["MaterialTransferItemResponse"] = Field(default_factory=list)
+    approvals: List["MaterialTransferApprovalEntry"] = Field(default_factory=list)
+    audit_log: List["MaterialTransferAuditEntry"] = Field(default_factory=list)
     
     class Config:
         from_attributes = True
@@ -57,9 +57,9 @@ class MaterialTransferListItem(BaseModel):
     """Simplified transfer for list/history view"""
     id: str
     transfer_number: str
-    material: str  # Product name
-    quantity: Decimal
-    unit: str
+    material_summary: str
+    total_quantity: Decimal
+    item_count: int
     from_location: str  # Location name
     to_location: str  # Location name
     status: str
@@ -76,6 +76,67 @@ class TransferStatusUpdate(BaseModel):
 
 class TransferApprovalRequest(BaseModel):
     approve: bool = Field(..., description="True to approve, False to reject")
+    notes: Optional[str] = None
+
+
+class MaterialTransferItemBase(BaseModel):
+    product_id: str = Field(..., description="Material/product to transfer")
+    quantity: Decimal = Field(..., gt=0, description="Transfer quantity")
+    unit: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class MaterialTransferItemCreate(MaterialTransferItemBase):
+    pass
+
+
+class MaterialTransferItemResponse(MaterialTransferItemBase):
+    id: str
+    unit: str
+    product_code: Optional[str] = None
+    product_name: Optional[str] = None
+    source_inventory_id: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class MaterialTransferApprovalEntry(BaseModel):
+    id: str
+    approver_id: str
+    approver_name: Optional[str] = None
+    action: str
+    notes: Optional[str] = None
+    created_at: datetime
+
+
+class MaterialTransferAuditEntry(BaseModel):
+    id: str
+    event_type: str
+    description: Optional[str] = None
+    metadata: Optional[Dict] = None
+    created_by: Optional[str] = None
+    created_by_name: Optional[str] = None
+    created_at: datetime
+
+
+class MaterialTransferSlipItem(BaseModel):
+    product_code: Optional[str]
+    product_name: Optional[str]
+    quantity: Decimal
+    unit: str
+    notes: Optional[str] = None
+
+
+class MaterialTransferSlipResponse(BaseModel):
+    transfer_number: str
+    barcode_value: str
+    from_location: str
+    to_location: str
+    requested_by: Optional[str]
+    approved_by: Optional[str]
+    items: List[MaterialTransferSlipItem]
+    generated_at: datetime
     notes: Optional[str] = None
 
 

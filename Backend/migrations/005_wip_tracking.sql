@@ -10,7 +10,7 @@
 CREATE TABLE IF NOT EXISTS working_orders (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     work_order_number VARCHAR(50) UNIQUE NOT NULL,
-    production_order_id UUID NOT NULL REFERENCES production_orders(id) ON DELETE CASCADE,
+    purchase_order_id UUID NOT NULL REFERENCES purchase_orders(id) ON DELETE CASCADE,
     operation VARCHAR(100) NOT NULL,  -- Cutting, Sewing, Quality Check, etc.
     workstation VARCHAR(100),
     assigned_team VARCHAR(100),
@@ -31,7 +31,7 @@ CREATE TABLE IF NOT EXISTS working_orders (
 );
 
 CREATE INDEX IF NOT EXISTS idx_working_orders_number ON working_orders(work_order_number);
-CREATE INDEX IF NOT EXISTS idx_working_orders_prod_order ON working_orders(production_order_id);
+CREATE INDEX IF NOT EXISTS idx_working_orders_purchase_order ON working_orders(purchase_order_id);
 CREATE INDEX IF NOT EXISTS idx_working_orders_operation ON working_orders(operation);
 CREATE INDEX IF NOT EXISTS idx_working_orders_status ON working_orders(status);
 CREATE INDEX IF NOT EXISTS idx_working_orders_workstation ON working_orders(workstation);
@@ -120,15 +120,15 @@ DECLARE
     v_prod_order_id UUID;
     v_user_id UUID;
 BEGIN
-    -- Get first production order
-    SELECT id INTO v_prod_order_id FROM production_orders WHERE status = 'In Progress' LIMIT 1;
+    -- Get first purchase order
+    SELECT id INTO v_prod_order_id FROM purchase_orders WHERE status = 'In Progress' LIMIT 1;
     
     -- Get first user
     SELECT id INTO v_user_id FROM users LIMIT 1;
     
     IF v_prod_order_id IS NOT NULL THEN
         INSERT INTO working_orders (
-            work_order_number, production_order_id, operation, workstation, 
+            work_order_number, purchase_order_id, operation, workstation, 
             assigned_team, target_qty, completed_qty, unit, status, priority,
             scheduled_start, scheduled_end, created_by
         )
@@ -167,7 +167,7 @@ BEGIN
     FROM (
         SELECT 
             operation,
-            COUNT(DISTINCT production_order_id) as order_count,
+            COUNT(DISTINCT purchase_order_id) as order_count,
             SUM(target_qty) as total_units,
             AVG(EXTRACT(EPOCH FROM (COALESCE(actual_end, CURRENT_TIMESTAMP) - COALESCE(actual_start, scheduled_start))) / 60) as avg_duration
         FROM working_orders
