@@ -1,8 +1,14 @@
 import { Clock, Package, TrendingUp, AlertCircle, BarChart3, X } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { useState, useEffect } from 'react';
-import { wipApi, WIPStageMetrics } from '@/lib/api/wip';
+import { useEffect, useMemo, useState } from 'react';
+import {
+  wipApi,
+  WIPAlertResponse,
+  WIPBoardResponse,
+  WIPBoardStageMetrics,
+} from '@/lib/api/wip';
+import { wipBoardWebsocket, WIPBoardEvent } from '@/lib/websocket/wipBoard';
 import { StageHistoryChart } from './StageHistoryChart';
 
 type WIPBoardProps = {
@@ -10,39 +16,109 @@ type WIPBoardProps = {
 };
 
 export function WIPBoard({ language }: WIPBoardProps) {
-  const [stages, setStages] = useState<WIPStageMetrics[]>([]);
-  const [totalOrders, setTotalOrders] = useState(0);
-  const [totalUnits, setTotalUnits] = useState(0);
-  const [avgCycleTime, setAvgCycleTime] = useState(0);
-  const [bottleneckStage, setBottleneckStage] = useState<string | null>(null);
+  const [board, setBoard] = useState<WIPBoardResponse | null>(null);
+  const [stages, setStages] = useState<WIPBoardStageMetrics[]>([]);
+  const [alerts, setAlerts] = useState<WIPAlertResponse[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedStage, setSelectedStage] = useState<string | null>(null);
+  const [selectedStage, setSelectedStage] = useState<WIPBoardStageMetrics | null>(null);
   const [showChartModal, setShowChartModal] = useState(false);
 
   useEffect(() => {
-    fetchWIPDashboard();
-    
-    // Auto-refresh every 3 seconds for near real-time updates
-    const interval = setInterval(fetchWIPDashboard, 3000);
-    return () => clearInterval(interval);
+    let unsubscribe: (() => void) | undefined;
+
+    const initialize = async () => {
+      await refreshBoardAndAlerts();
+      wipBoardWebsocket.connect();
+      unsubscribe = wipBoardWebsocket.subscribe(handleWebsocketEvent);
+    };
+
+    initialize();
+
+    return () => {
+      unsubscribe?.();
+      wipBoardWebsocket.disconnect();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const fetchWIPDashboard = async () => {
+  const refreshBoardAndAlerts = async () => {
     try {
       setError(null);
-      const data = await wipApi.getDashboard();
-      setStages(data.stages);
-      setTotalOrders(data.total_orders);
-      setTotalUnits(data.total_units);
-      setAvgCycleTime(data.avg_cycle_time);
-      setBottleneckStage(data.bottleneck_stage);
+      const [snapshot, alertData] = await Promise.all([
+        wipApi.getWIPBoard(),
+        wipApi.listWIPAlerts(),
+      ]);
+      setBoard(snapshot);
+      setStages(snapshot.stages);
+      setAlerts(alertData);
     } catch (err: any) {
-      console.error('Error fetching WIP dashboard:', err);
+      console.error('Error fetching WIP board data:', err);
       setError(err?.detail || err?.message || 'Failed to load WIP data');
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleWebsocketEvent = (event: WIPBoardEvent) => {
+    if (event.event_type === 'stage_update') {
+      setStages((prev) => {
+        const next = updateStageMetrics(prev, event.data);
+        setBoard((current) => (current ? recomputeBoard(current, next) : current));
+        return next;
+      });
+    } else if (event.event_type === 'transfer_recorded') {
+      refreshBoardAndAlerts();
+    } else if (event.event_type === 'alert') {
+      setAlerts((prev) => [event.data, ...prev].slice(0, 20));
+    }
+  };
+
+  const updateStageMetrics = (
+    current: WIPBoardStageMetrics[],
+    updated: WIPBoardStageMetrics,
+  ): WIPBoardStageMetrics[] => {
+    const exists = current.some((stage) => stage.stage_id === updated.stage_id);
+    if (!exists) {
+      return [...current, updated].sort((a, b) => a.sequence_number - b.sequence_number);
+    }
+    return current.map((stage) =>
+      stage.stage_id === updated.stage_id ? updated : stage,
+    );
+  };
+
+  const recomputeBoard = (
+    snapshot: WIPBoardResponse,
+    updatedStages: WIPBoardStageMetrics[],
+  ): WIPBoardResponse => {
+    const total_orders = updatedStages.reduce((sum, stage) => sum + stage.orders_count, 0);
+    const total_units = updatedStages.reduce((sum, stage) => sum + stage.units_count, 0);
+    const avg_cycle_time =
+      updatedStages.length > 0
+        ? updatedStages.reduce((sum, stage) => sum + Number(stage.avg_time_minutes), 0) /
+          updatedStages.length
+        : 0;
+
+    const bottleneckCandidates = updatedStages.filter(
+      (stage) => stage.health_status !== 'green',
+    );
+
+    const bottleneck_stage =
+      bottleneckCandidates.length > 0
+        ? bottleneckCandidates.reduce((prev, current) =>
+            current.utilization_percentage > prev.utilization_percentage ? current : prev,
+          ).stage_name
+        : null;
+
+    return {
+      ...snapshot,
+      stages: updatedStages,
+      total_orders,
+      total_units,
+      avg_cycle_time,
+      bottleneck_stage,
+      last_updated: new Date().toISOString(),
+    };
   };
 
   const translations = {
@@ -202,20 +278,50 @@ export function WIPBoard({ language }: WIPBoardProps) {
 
   const t = translations[language];
 
+  const summary = useMemo(
+    () => ({
+      totalOrders: board?.total_orders ?? 0,
+      totalUnits: board?.total_units ?? 0,
+      avgCycleTime: board?.avg_cycle_time ?? 0,
+      bottleneckStage: board?.bottleneck_stage ?? null,
+    }),
+    [board],
+  );
+
+  const bottleneckStageData = useMemo(
+    () =>
+      summary.bottleneckStage
+        ? stages.find((stage) => stage.stage_name === summary.bottleneckStage)
+        : null,
+    [summary.bottleneckStage, stages],
+  );
+
+  const recentAlerts = useMemo(() => alerts.slice(0, 5), [alerts]);
+  const stageForModal = selectedStage;
+
   const getHealthBadge = (health: string) => {
     switch (health) {
-      case 'healthy':
+      case 'green':
         return <Badge className="bg-emerald-500">{t.healthy}</Badge>;
-      case 'warning':
+      case 'yellow':
         return <Badge className="bg-yellow-500">{t.warning}</Badge>;
-      case 'delayed':
+      case 'red':
         return <Badge className="bg-red-500">{t.delayed}</Badge>;
       default:
         return <Badge>{health}</Badge>;
     }
   };
 
-  const bottleneckStageData = stages.find((s) => s.health === 'delayed');
+  const getSeverityBadgeClass = (severity: string) => {
+    switch (severity) {
+      case 'critical':
+        return 'bg-red-100 text-red-700';
+      case 'warning':
+        return 'bg-yellow-100 text-yellow-700';
+      default:
+        return 'bg-blue-100 text-blue-700';
+    }
+  };
 
   if (isLoading) {
     return (
@@ -235,7 +341,7 @@ export function WIPBoard({ language }: WIPBoardProps) {
         <Card className="p-8 text-center">
           <p className="text-red-500">{error}</p>
           <button 
-            onClick={fetchWIPDashboard}
+            onClick={refreshBoardAndAlerts}
             className="mt-4 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
           >
             {language === 'en' ? 'Retry' : 'पुनः प्रयास करें'}
@@ -262,8 +368,12 @@ export function WIPBoard({ language }: WIPBoardProps) {
               </h3>
               <p className="text-red-700 text-sm mb-2">
                 {language === 'en'
-                  ? `${bottleneckStageData.name} is delayed - ${bottleneckStageData.utilization}% capacity utilization`
-                  : `${bottleneckStageData.name} विलंबित है - ${bottleneckStageData.utilization}% क्षमता उपयोग`}
+                  ? `${bottleneckStageData.stage_name} is delayed - ${Math.round(
+                      bottleneckStageData.utilization_percentage,
+                    )}% capacity utilization`
+                  : `${bottleneckStageData.stage_name} विलंबित है - ${Math.round(
+                      bottleneckStageData.utilization_percentage,
+                    )}% क्षमता उपयोग`}
               </p>
               <button className="text-sm text-red-900 underline">{t.askBot}</button>
             </div>
@@ -274,57 +384,61 @@ export function WIPBoard({ language }: WIPBoardProps) {
       {/* Stage Cards - Mobile View */}
       <div className="lg:hidden space-y-3">
         {stages.map((stage) => (
-          <Card key={stage.id} className="p-4">
+          <Card key={stage.stage_id} className="p-4">
             <div className="flex items-start justify-between mb-3">
               <div>
-                <h3 className="mb-1">{stage.name}</h3>
-                {getHealthBadge(stage.health)}
+                <h3 className="mb-1">{stage.stage_name}</h3>
+                {getHealthBadge(stage.health_status)}
               </div>
               <div className="text-right">
                 <div className="text-sm text-zinc-600">{t.utilization}</div>
-                <div className="text-lg">{stage.utilization}%</div>
+                <div className="text-lg">
+                  {Math.round(stage.utilization_percentage)}%
+                </div>
               </div>
             </div>
 
             <div className="grid grid-cols-2 gap-3 text-sm">
               <div className="p-3 bg-zinc-50 rounded-lg">
                 <div className="text-zinc-600 mb-1">{t.orders}</div>
-                <div>{stage.orders}</div>
+                <div>{stage.orders_count}</div>
               </div>
               <div className="p-3 bg-zinc-50 rounded-lg">
                 <div className="text-zinc-600 mb-1">{t.units}</div>
-                <div>{stage.units}</div>
+                <div>{stage.units_count}</div>
               </div>
             </div>
 
             <div className="mt-3 space-y-2">
               <div className="flex justify-between text-sm">
                 <span className="text-zinc-600">{t.avgTime}</span>
-                <span>{Math.round(stage.avgTime)} {t.min}</span>
+                <span>
+                  {Math.round(Number(stage.avg_time_minutes))} {t.min}
+                </span>
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-zinc-600">{t.targetAvgTime}</span>
-                <span className="text-emerald-600">{Math.round(stage.targetAvgTime)} {t.min}</span>
+                <span className="text-emerald-600">
+                  {Math.round(Number(stage.target_avg_time_minutes))} {t.min}
+                </span>
               </div>
               <div className="h-2 bg-zinc-200 rounded-full overflow-hidden">
                 <div
                   className={`h-full transition-all ${
-                    stage.utilization >= 90 && stage.utilization <= 110
-                      ? 'bg-emerald-500'
-                      : stage.utilization >= 80 && stage.utilization < 90
+                    stage.health_status === 'red'
+                      ? 'bg-red-500'
+                      : stage.health_status === 'yellow'
                       ? 'bg-yellow-500'
-                      : stage.utilization > 110 && stage.utilization <= 120
-                      ? 'bg-yellow-500'
-                      : 'bg-red-500'
+                      : 'bg-emerald-500'
                   }`}
-                  style={{ width: `${Math.min(stage.utilization, 100)}%` }}
+                  style={{ width: `${Math.min(stage.utilization_percentage, 150)}%` }}
                 />
               </div>
             </div>
 
             <button
               onClick={() => {
-                setSelectedStage(stage.name);
+                setSelectedStage(stage);
                 setShowChartModal(true);
               }}
               className="mt-3 w-full flex items-center justify-center gap-2 px-3 py-2 text-sm bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-lg transition-colors"
@@ -354,38 +468,44 @@ export function WIPBoard({ language }: WIPBoardProps) {
             </thead>
             <tbody>
               {stages.map((stage) => (
-                <tr key={stage.id} className="border-b hover:bg-zinc-50">
-                  <td className="p-4">{stage.name}</td>
-                  <td className="p-4">{stage.orders}</td>
-                  <td className="p-4">{stage.units}</td>
-                  <td className="p-4">{Math.round(stage.avgTime)} {t.min}</td>
+                <tr key={stage.stage_id} className="border-b hover:bg-zinc-50">
+                  <td className="p-4">{stage.stage_name}</td>
+                  <td className="p-4">{stage.orders_count}</td>
+                  <td className="p-4">{stage.units_count}</td>
                   <td className="p-4">
-                    <span className="text-emerald-600">{Math.round(stage.targetAvgTime)} {t.min}</span>
+                    {Math.round(Number(stage.avg_time_minutes))} {t.min}
+                  </td>
+                  <td className="p-4">
+                    <span className="text-emerald-600">
+                      {Math.round(Number(stage.target_avg_time_minutes))} {t.min}
+                    </span>
                   </td>
                   <td className="p-4">
                     <div className="flex items-center gap-2">
                       <div className="flex-1 h-2 bg-zinc-200 rounded-full overflow-hidden max-w-[100px]">
                         <div
                           className={`h-full transition-all ${
-                            stage.utilization >= 90 && stage.utilization <= 110
-                              ? 'bg-emerald-500'
-                              : stage.utilization >= 80 && stage.utilization < 90
+                            stage.health_status === 'red'
+                              ? 'bg-red-500'
+                              : stage.health_status === 'yellow'
                               ? 'bg-yellow-500'
-                              : stage.utilization > 110 && stage.utilization <= 120
-                              ? 'bg-yellow-500'
-                              : 'bg-red-500'
+                              : 'bg-emerald-500'
                           }`}
-                          style={{ width: `${Math.min(stage.utilization, 100)}%` }}
+                          style={{
+                            width: `${Math.min(stage.utilization_percentage, 150)}%`,
+                          }}
                         />
                       </div>
-                      <span className="text-sm text-zinc-600 min-w-[3rem]">{stage.utilization}%</span>
+                      <span className="text-sm text-zinc-600 min-w-[3rem]">
+                        {Math.round(stage.utilization_percentage)}%
+                      </span>
                     </div>
                   </td>
-                  <td className="p-4">{getHealthBadge(stage.health)}</td>
+                  <td className="p-4">{getHealthBadge(stage.health_status)}</td>
                   <td className="p-4">
                     <button
                       onClick={() => {
-                        setSelectedStage(stage.name);
+                        setSelectedStage(stage);
                         setShowChartModal(true);
                       }}
                       className="flex items-center gap-2 px-3 py-1.5 text-sm bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-lg transition-colors"
@@ -401,6 +521,39 @@ export function WIPBoard({ language }: WIPBoardProps) {
         </div>
       </Card>
 
+      {/* Live Alerts */}
+      {recentAlerts.length > 0 && (
+        <Card className="p-4 border border-orange-200 bg-orange-50">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-orange-900 font-semibold">
+              {language === 'en' ? 'Live Alerts' : 'लाइव अलर्ट्स'}
+            </h3>
+            <Badge className="bg-orange-600 text-white">{recentAlerts.length}</Badge>
+          </div>
+          <div className="space-y-3">
+            {recentAlerts.map((alert) => (
+              <div
+                key={`${alert.stage_id}-${alert.detected_at}-${alert.alert_type}`}
+                className="flex items-start gap-3 border border-orange-200 rounded-lg bg-white p-3"
+              >
+                <Badge className={getSeverityBadgeClass(alert.severity)}>
+                  {alert.severity.toUpperCase()}
+                </Badge>
+                <div className="flex-1">
+                  <p className="font-medium text-orange-900">
+                    {alert.stage_name} • {alert.alert_type.replace('_', ' ')}
+                  </p>
+                  <p className="text-sm text-orange-800">{alert.message}</p>
+                  <p className="text-xs text-orange-600 mt-1">
+                    {new Date(alert.detected_at).toLocaleString()}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+
       {/* Summary Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
         <Card className="p-4">
@@ -410,7 +563,7 @@ export function WIPBoard({ language }: WIPBoardProps) {
             </div>
             <div>
               <p className="text-sm text-zinc-600">{language === 'en' ? 'Total Orders' : 'कुल ऑर्डर'}</p>
-              <h3>{totalOrders}</h3>
+              <h3>{summary.totalOrders}</h3>
             </div>
           </div>
         </Card>
@@ -421,7 +574,7 @@ export function WIPBoard({ language }: WIPBoardProps) {
             </div>
             <div>
               <p className="text-sm text-zinc-600">{language === 'en' ? 'Total Units' : 'कुल यूनिट'}</p>
-              <h3>{totalUnits}</h3>
+              <h3>{summary.totalUnits}</h3>
             </div>
           </div>
         </Card>
@@ -432,7 +585,7 @@ export function WIPBoard({ language }: WIPBoardProps) {
             </div>
             <div>
               <p className="text-sm text-zinc-600">{language === 'en' ? 'Avg Cycle Time' : 'औसत चक्र समय'}</p>
-              <h3>{Math.round(avgCycleTime)} {t.min}</h3>
+              <h3>{Math.round(summary.avgCycleTime)} {t.min}</h3>
             </div>
           </div>
         </Card>
@@ -443,18 +596,22 @@ export function WIPBoard({ language }: WIPBoardProps) {
             </div>
             <div>
               <p className="text-sm text-zinc-600">{t.bottleneck}</p>
-              <h3 className="text-sm">{bottleneckStage || (language === 'en' ? 'None' : 'कोई नहीं')}</h3>
+              <h3 className="text-sm">
+                {summary.bottleneckStage || (language === 'en' ? 'None' : 'कोई नहीं')}
+              </h3>
             </div>
           </div>
         </Card>
       </div>
 
       {/* Trend Chart Modal */}
-      {showChartModal && selectedStage && (
+      {showChartModal && stageForModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto">
             <div className="sticky top-0 bg-white border-b p-4 flex items-center justify-between">
-              <h2 className="text-xl font-semibold">{selectedStage} - {t.viewTrend}</h2>
+              <h2 className="text-xl font-semibold">
+                {stageForModal.stage_name} - {t.viewTrend}
+              </h2>
               <button
                 onClick={() => {
                   setShowChartModal(false);
@@ -466,7 +623,12 @@ export function WIPBoard({ language }: WIPBoardProps) {
               </button>
             </div>
             <div className="p-6">
-              <StageHistoryChart stageName={selectedStage} days={7} language={language} />
+              <StageHistoryChart
+                stageId={stageForModal.stage_id}
+                stageName={stageForModal.stage_name}
+                days={7}
+                language={language}
+              />
             </div>
           </div>
         </div>

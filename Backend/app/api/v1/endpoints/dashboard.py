@@ -66,7 +66,7 @@ async def get_orders_summary(
     
     Drill-down from Orders KPI card.
     """
-    # TODO: Implement when production_orders table exists
+    # TODO: Implement when purchase_orders table exists
     return {
         "total": 0,
         "by_status": {

@@ -25,7 +25,7 @@ interface WorkOrderOperation {
 
 interface WorkOrder {
   id: string;
-  productionOrderId: string;
+  purchaseOrderId: string;
   product: string;
   operations: WorkOrderOperation[];
   assignedTo: string;
@@ -53,7 +53,7 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
   const [showNewWorkOrderModal, setShowNewWorkOrderModal] = useState(false);
   const [productionOrders, setProductionOrders] = useState<PurchaseOrder[]>([]);
   const [newWorkOrderData, setNewWorkOrderData] = useState({
-    production_order_id: '',
+    purchase_order_id: '',
     operation: '',
     workstation: '',
     assigned_team: '',
@@ -87,7 +87,7 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
       const data = await wipApi.listWorkingOrders({ limit: 100 });
       const poData = await purchaseOrdersApi.listOrders({ limit: 100 });
       
-      // Create a map of production order ID to product name
+      // Create a map of purchase order ID to product name
       const poProductMap = new Map<string, { productName: string; quantity: number }>();
       poData.forEach(po => {
         poProductMap.set(po.id, { 
@@ -96,21 +96,21 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
         });
       });
       
-      // Group work orders by production_order_id
+      // Group work orders by purchase_order_id
       const groupedByPO = new Map<string, typeof data>();
       data.forEach(wo => {
-        const existing = groupedByPO.get(wo.production_order_id) || [];
+        const existing = groupedByPO.get(wo.purchase_order_id) || [];
         existing.push(wo);
-        groupedByPO.set(wo.production_order_id, existing);
+        groupedByPO.set(wo.purchase_order_id, existing);
       });
       
       // Transform grouped data into WorkOrder format with all standard operations
       const transformedOrders: WorkOrder[] = [];
       let workOrderCounter = 1;
       
-      groupedByPO.forEach((operations, productionOrderId) => {
+      groupedByPO.forEach((operations, purchaseOrderId) => {
         // Get product info from PO
-        const poInfo = poProductMap.get(productionOrderId);
+        const poInfo = poProductMap.get(purchaseOrderId);
         const productName = poInfo?.productName || 'Unknown Product';
         const targetQty = poInfo?.quantity || operations[0]?.target_qty || 0;
         
@@ -167,7 +167,7 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
         
         transformedOrders.push({
           id: `WO-${String(workOrderCounter).padStart(4, '0')}`,
-          productionOrderId: productionOrderId,
+          purchaseOrderId,
           product: productName,
           operations: allOperations,
           assignedTo: firstOp?.assigned_team || 'Multiple Teams',
@@ -207,7 +207,7 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
   }, []);
 
   // Get unique purchase order IDs for filter dropdown
-  const uniquePOs = [...new Set(workOrders.map(wo => wo.productionOrderId))];
+  const uniquePOs = [...new Set(workOrders.map(wo => wo.purchaseOrderId))];
 
   const translations = {
     en: {
@@ -511,10 +511,10 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
       order.product.toLowerCase().includes(searchQuery.toLowerCase()) ||
       order.operations.some(op => op.name.toLowerCase().includes(searchQuery.toLowerCase())) ||
       order.assignedTo.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      order.productionOrderId.toLowerCase().includes(searchQuery.toLowerCase());
+      order.purchaseOrderId.toLowerCase().includes(searchQuery.toLowerCase());
     
     const matchesStatus = statusFilter === 'all' || order.status === statusFilter;
-    const matchesPO = poFilter === 'all' || order.productionOrderId === poFilter;
+    const matchesPO = poFilter === 'all' || order.purchaseOrderId === poFilter;
     
     return matchesSearch && matchesStatus && matchesPO;
   });
@@ -552,11 +552,11 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
       }
 
       // Update each operation in the work order
-      // Since we grouped operations by production_order_id, we need to update all operations
+      // Since we grouped operations by purchase_order_id, we need to update all operations
       const updatePromises = order.operations.map(async (op) => {
         // Find the actual working order ID for this operation
         const allWorkingOrders = await wipApi.listWorkingOrders({ 
-          production_order_id: order.productionOrderId,
+          purchase_order_id: order.purchaseOrderId,
           operation: op.name
         });
         
@@ -585,7 +585,7 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
 
   // Create new work order
   const handleCreateWorkOrder = async () => {
-    if (!newWorkOrderData.production_order_id || !newWorkOrderData.operation || !newWorkOrderData.target_qty) {
+    if (!newWorkOrderData.purchase_order_id || !newWorkOrderData.operation || !newWorkOrderData.target_qty) {
       alert(language === 'en' 
         ? '⚠️ Please fill in required fields (Purchase Order, Operation, Target Quantity)' 
         : '⚠️ कृपया आवश्यक फ़ील्ड भरें (खरीद आदेश, ऑपरेशन, लक्ष्य मात्रा)');
@@ -595,7 +595,7 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
     setIsCreating(true);
     try {
       const payload: WorkingOrderCreate = {
-        production_order_id: newWorkOrderData.production_order_id,
+        purchase_order_id: newWorkOrderData.purchase_order_id,
         operation: newWorkOrderData.operation,
         workstation: newWorkOrderData.workstation || undefined,
         assigned_team: newWorkOrderData.assigned_team || undefined,
@@ -613,7 +613,7 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
       
       setShowNewWorkOrderModal(false);
       setNewWorkOrderData({
-        production_order_id: '',
+        purchase_order_id: '',
         operation: '',
         workstation: '',
         assigned_team: '',
@@ -714,7 +714,7 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
                     
                     {/* Production Order Reference */}
                     <p className="text-sm text-zinc-500 hidden sm:block">
-                      {t.productionOrder}: {order.productionOrderId.slice(0, 8)}...
+                      {t.productionOrder}: {order.purchaseOrderId.slice(0, 8)}...
                     </p>
                     
                     {/* Product Name */}
@@ -765,7 +765,7 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
                       <span className="font-medium">{order.product}</span>
                     </div>
                     <span className="text-zinc-400">|</span>
-                    <span className="text-zinc-500">{t.productionOrder}: {order.productionOrderId}</span>
+                    <span className="text-zinc-500">{t.productionOrder}: {order.purchaseOrderId}</span>
                   </div>
 
                   {/* Operation Progress - All 5 Operations */}
@@ -947,8 +947,8 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
                   {t.productionOrder} <span className="text-red-500">*</span>
                 </label>
                 <select
-                  value={newWorkOrderData.production_order_id}
-                  onChange={(e) => setNewWorkOrderData(prev => ({ ...prev, production_order_id: e.target.value }))}
+                  value={newWorkOrderData.purchase_order_id}
+                  onChange={(e) => setNewWorkOrderData(prev => ({ ...prev, purchase_order_id: e.target.value }))}
                   className="w-full p-2 border border-zinc-300 rounded-md"
                 >
                   <option value="">{language === 'en' ? 'Select Purchase Order...' : 'खरीद आदेश चुनें...'}</option>

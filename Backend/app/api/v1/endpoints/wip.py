@@ -25,7 +25,7 @@ async def create_working_order(
     Create a new working order.
     
     - Auto-generates work order number (WO-YYYY-XXXX)
-    - Links to production order
+    - Links to purchase order
     - Assigns to workstation/team
     - Sets target quantity and schedule
     """
@@ -38,7 +38,7 @@ async def list_working_orders(
     limit: int = Query(50, ge=1, le=100),
     status: Optional[str] = None,
     operation: Optional[str] = None,
-    production_order_id: Optional[str] = None,
+    purchase_order_id: Optional[str] = None,
     current_user: UserResponse = Depends(get_current_user)
 ):
     """
@@ -46,9 +46,9 @@ async def list_working_orders(
     
     - **status**: Pending/In Progress/Completed/On Hold/Cancelled
     - **operation**: Filter by operation (Cutting, Sewing, etc.)
-    - **production_order_id**: Filter by production order
+    - **purchase_order_id**: Filter by purchase order
     """
-    return await wip_service.list_working_orders(page, limit, status, operation, production_order_id)
+    return await wip_service.list_working_orders(page, limit, status, operation, purchase_order_id)
 
 
 @router.get("/working-orders/{order_id}", response_model=WorkingOrderResponse)

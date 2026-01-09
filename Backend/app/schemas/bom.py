@@ -94,7 +94,7 @@ class BOMListItem(BaseModel):
 
 
 class BOMCalculation(BaseModel):
-    """Material requirements calculation for production order"""
+    """Material requirements calculation for purchase order"""
     material_id: str
     material_code: str
     material_name: str

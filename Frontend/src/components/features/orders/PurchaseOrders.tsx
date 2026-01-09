@@ -2760,7 +2760,7 @@ export function PurchaseOrders({ language }: PurchaseOrdersProps) {
                     try {
                       // Prepare working order data for API
                       const workingOrderPayload: WorkingOrderCreate = {
-                        production_order_id: selectedOrder.id,
+                        purchase_order_id: selectedOrder.id,
                         operation: workingOrderData.operation,
                         workstation: workingOrderData.workstation,
                         assigned_team: workingOrderData.assignedTeam,
