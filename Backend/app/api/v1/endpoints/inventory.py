@@ -92,6 +92,7 @@ async def get_stock_by_product(
 
 @router.get("/by-location", response_model=InventoryResponse)
 async def get_inventory_by_location(
+    reference_type: str = Query(..., description="Reference type (e.g., purchase_order, sales_order)"),
     product_id: str = Query(..., description="Product ID"),
     location_id: str = Query(..., description="Location ID"),
     lot_number: Optional[str] = None,
@@ -129,9 +130,33 @@ async def record_transaction(
     
     Updates inventory levels automatically.
     """
-    return await inventory_service.record_transaction(
+    result = await inventory_service.record_transaction(
         transaction_data, current_user.id
     )
+    
+    # Broadcast stock updates based on transaction type
+    if transaction_data.transaction_type == 'RECEIPT':
+        inv = await inventory_service.get_inventory_by_product_location(transaction_data.product_id, transaction_data.to_location_id)
+        if inv:
+            asyncio.create_task(inventory_service.broadcast_stock_updated(transaction_data.product_id, transaction_data.to_location_id, inv.available_qty, inv.allocated_qty))
+    elif transaction_data.transaction_type == 'ISSUE':
+        inv = await inventory_service.get_inventory_by_product_location(transaction_data.product_id, transaction_data.from_location_id)
+        if inv:
+            asyncio.create_task(inventory_service.broadcast_stock_updated(transaction_data.product_id, transaction_data.from_location_id, inv.available_qty, inv.allocated_qty))
+    elif transaction_data.transaction_type == 'TRANSFER':
+        inv_from = await inventory_service.get_inventory_by_product_location(transaction_data.product_id, transaction_data.from_location_id)
+        if inv_from:
+            asyncio.create_task(inventory_service.broadcast_stock_updated(transaction_data.product_id, transaction_data.from_location_id, inv_from.available_qty, inv_from.allocated_qty))
+        inv_to = await inventory_service.get_inventory_by_product_location(transaction_data.product_id, transaction_data.to_location_id)
+        if inv_to:
+            asyncio.create_task(inventory_service.broadcast_stock_updated(transaction_data.product_id, transaction_data.to_location_id, inv_to.available_qty, inv_to.allocated_qty))
+    elif transaction_data.transaction_type == 'ADJUSTMENT':
+        location = transaction_data.to_location_id or transaction_data.from_location_id
+        inv = await inventory_service.get_inventory_by_product_location(transaction_data.product_id, location)
+        if inv:
+            asyncio.create_task(inventory_service.broadcast_stock_updated(transaction_data.product_id, location, inv.available_qty, inv.allocated_qty))
+    
+    return result
 
 
 @router.get("/transactions", response_model=List[InventoryTransactionResponse])
@@ -379,7 +404,7 @@ async def adjust_inventory(
     - Negative adjustment_qty: Decrease stock
     - Requires Store Manager role
     """
-    return await inventory_service.adjust_inventory(
+    result = await inventory_service.adjust_inventory(
         product_id=adjustment.product_id,
         location_id=adjustment.location_id,
         adjustment_qty=adjustment.adjustment_qty,
@@ -387,6 +412,11 @@ async def adjust_inventory(
         user_id=current_user.id,
         notes=adjustment.notes
     )
+    
+    if result:
+        asyncio.create_task(inventory_service.broadcast_stock_updated(result.product_id, result.location_id, result.available_qty, result.allocated_qty))
+    
+    return result
 
 
 # ========================================
@@ -430,7 +460,7 @@ async def allocate_inventory(
     - Moves from free to allocated
     - Prevents over-allocation
     """
-    return await inventory_service.allocate_inventory(
+    result = await inventory_service.allocate_inventory(
         product_id=product_id,
         location_id=location_id,
         quantity=quantity,
@@ -438,6 +468,13 @@ async def allocate_inventory(
         reference_type=reference_type,
         user_id=current_user.id
     )
+    
+    # Broadcast allocation change
+    inv = await inventory_service.get_inventory_by_product_location(product_id, location_id)
+    if inv:
+        asyncio.create_task(inventory_service.broadcast_allocation_changed(product_id, location_id, inv.allocated_qty))
+    
+    return result
 
 
 @router.post("/release", response_model=dict)

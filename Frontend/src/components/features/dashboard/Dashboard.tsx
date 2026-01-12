@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Package, AlertTriangle, TrendingUp, Clock, ArrowRight, RefreshCw } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -14,6 +14,8 @@ export function Dashboard({ onNavigate, language }: DashboardProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
+  const wsRef = useRef<WebSocket | null>(null);
+  const [wsConnected, setWsConnected] = useState(false);
 
   // Fetch dashboard data
   const fetchDashboard = async () => {
@@ -36,13 +38,66 @@ export function Dashboard({ onNavigate, language }: DashboardProps) {
     fetchDashboard();
   }, []);
 
-  // Auto-refresh every 30 seconds
+  // WebSocket for real-time updates
   useEffect(() => {
-    const interval = setInterval(() => {
-      fetchDashboard();
-    }, 30000);
+    const token = localStorage.getItem('access_token'); // Adjust if stored elsewhere
+    if (!token) return;
 
-    return () => clearInterval(interval);
+    // Connect to WebSocket
+    const wsUrl = `ws://localhost:8000/ws/dashboard?token=${token}`;
+    wsRef.current = new WebSocket(wsUrl);
+
+    wsRef.current.onopen = () => {
+      console.log('WebSocket connected');
+      setWsConnected(true);
+    };
+
+    wsRef.current.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.type === 'dashboard_update') {
+          setDashboardData(prev => {
+            if (!prev) return prev;
+            switch (data.update_type) {
+              case 'kpis':
+                return { ...prev, kpis: data.data };
+              case 'orders':
+                return { ...prev, orders_summary: data.data };
+              case 'shortages':
+                return { ...prev, shortages: data.data };
+              case 'activities':
+                return { ...prev, recent_activities: data.data };
+              default:
+                return prev;
+            }
+          });
+          setLastRefresh(new Date());
+        }
+      } catch (error) {
+        console.error('WebSocket message parse error:', error);
+      }
+    };
+
+    wsRef.current.onerror = (error) => {
+      console.error('WebSocket error:', error);
+      setWsConnected(false);
+    };
+
+    wsRef.current.onclose = () => {
+      console.log('WebSocket disconnected');
+      setWsConnected(false);
+      // Optional: Auto-reconnect logic
+      setTimeout(() => {
+        // Reconnect after delay if needed
+      }, 5000);
+    };
+
+    // Cleanup on unmount
+    return () => {
+      if (wsRef.current) {
+        wsRef.current.close();
+      }
+    };
   }, []);
 
   const translations = {

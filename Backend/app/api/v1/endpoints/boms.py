@@ -23,6 +23,7 @@ from app.schemas.bom import (
 from app.schemas.user import UserResponse
 from app.services.bom_service import bom_service
 from app.api.deps import get_current_user, require_role
+import asyncio
 
 router = APIRouter()
 

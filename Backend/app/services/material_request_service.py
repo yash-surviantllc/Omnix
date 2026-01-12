@@ -9,7 +9,7 @@ from app.schemas.material_request import (
     StockAvailabilityCheck, StockAvailabilityResponse
 )
 from app.core.exceptions import NotFoundException, ValidationException
-
+from app.services.websocket_manager import manager  # Import the global manager
 
 class MaterialRequestService:
     
@@ -553,6 +553,56 @@ class MaterialRequestService:
         
         return result
 
+
+# Broadcast methods for real-time Purchase Order updates
+@staticmethod
+async def broadcast_request_status_updated(request_id: str, status: str):
+    """
+    Broadcast material request status update.
+    """
+    try:
+        message = {
+            "type": "purchase_order_update",
+            "request_id": request_id,
+            "action": "status_updated",
+            "status": status,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        await manager.broadcast(message)
+    except Exception as e:
+        print(f"Failed to broadcast request status update: {e}")
+
+@staticmethod
+async def broadcast_request_approved(request_id: str):
+    """
+    Broadcast material request approval.
+    """
+    try:
+        message = {
+            "type": "purchase_order_update",
+            "request_id": request_id,
+            "action": "approved",
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        await manager.broadcast(message)
+    except Exception as e:
+        print(f"Failed to broadcast request approval: {e}")
+
+@staticmethod
+async def broadcast_request_rejected(request_id: str):
+    """
+    Broadcast material request rejection.
+    """
+    try:
+        message = {
+            "type": "purchase_order_update",
+            "request_id": request_id,
+            "action": "rejected",
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        await manager.broadcast(message)
+    except Exception as e:
+        print(f"Failed to broadcast request rejection: {e}")
 
 # Singleton instance
 material_request_service = MaterialRequestService()

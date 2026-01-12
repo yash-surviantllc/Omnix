@@ -14,6 +14,7 @@ from app.api.v1.endpoints import (
     wip_board,
     alerts,
     gate_entries,
+    websockets
 )
 
 api_router = APIRouter()
@@ -113,4 +114,11 @@ api_router.include_router(
     gate_entries.router,
     prefix="/gate-entries",
     tags=["Gate Entry"]
+)
+
+# WebSocket routes
+api_router.include_router(
+    websockets.router,
+    prefix="/ws",
+    tags=["WebSockets"]
 )

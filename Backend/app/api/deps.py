@@ -78,3 +78,48 @@ def require_role(required_role: str):
         return current_user
     
     return role_checker
+
+
+async def get_current_user_ws(token: str) -> UserResponse:
+    """
+    Get current authenticated user for WebSocket connections.
+    Token passed as query parameter.
+    """
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token required",
+        )
+    
+    # Decode token
+    payload = decode_token(token)
+    
+    if not payload:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials",
+        )
+    
+    if payload.get('type') != 'access':
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token type",
+        )
+    
+    user_id = payload.get('sub')
+    if not user_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token payload",
+        )
+    
+    # Get user from database
+    user = await auth_service.get_current_user(user_id)
+    
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Inactive user"
+        )
+    
+    return user

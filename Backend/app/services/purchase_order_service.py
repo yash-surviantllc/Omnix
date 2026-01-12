@@ -85,7 +85,7 @@ class PurchaseOrderService:
             customer_name=order.get('customer_name'),
             assigned_team=order.get('assigned_team'),
             shift_number=order.get('shift_number'),
-            production_stage=order.get('production_stage')
+            purchase_order_stage=order.get('purchase_order_stage')
         )
         
         # Create the new order using existing create method
@@ -156,7 +156,7 @@ class PurchaseOrderService:
             'customer_name': order_data.customer_name,
             'assigned_team': order_data.assigned_team,
             'shift_number': order_data.shift_number,
-            'production_stage': order_data.production_stage,
+            'purchase_order_stage': order_data.purchase_order_stage,
             'start_time': order_data.start_time.isoformat() if order_data.start_time else None,
             'end_time': order_data.end_time.isoformat() if order_data.end_time else None,
             'qr_code': qr_code,
@@ -423,8 +423,8 @@ class PurchaseOrderService:
         if update_data.shift_number is not None:
             update_dict['shift_number'] = update_data.shift_number
         
-        if update_data.production_stage is not None:
-            update_dict['production_stage'] = update_data.production_stage
+        if update_data.purchase_order_stage is not None:
+            update_dict['purchase_order_stage'] = update_data.purchase_order_stage
         
         db.table('purchase_orders').update(update_dict).eq('id', order_id).execute()
         

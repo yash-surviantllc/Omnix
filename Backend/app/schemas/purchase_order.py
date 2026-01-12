@@ -40,7 +40,7 @@ class PurchaseOrderBase(BaseModel):
     customer_name: Optional[str] = None
     assigned_team: Optional[str] = None
     shift_number: Optional[str] = None
-    production_stage: Optional[str] = None
+    purchase_order_stage: Optional[str] = None
     start_time: Optional[datetime] = None
     end_time: Optional[datetime] = None
 
@@ -59,7 +59,7 @@ class PurchaseOrderUpdate(BaseModel):
     customer_name: Optional[str] = None
     assigned_team: Optional[str] = None
     shift_number: Optional[str] = None
-    production_stage: Optional[str] = None
+    purchase_order_stage: Optional[str] = None
 
 
 class PurchaseOrderResponse(PurchaseOrderBase):

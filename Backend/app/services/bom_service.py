@@ -21,7 +21,7 @@ from app.schemas.bom import (
     BOMCreateWithProduct
 )
 from app.core.exceptions import NotFoundException, ValidationException
-
+from app.services.websocket_manager import manager  # Import the global manager
 
 class BOMService:
     
@@ -1135,6 +1135,57 @@ class BOMService:
             ))
         
         return result
+
+# Broadcast methods for real-time BOM updates
+@staticmethod
+async def broadcast_bom_updated(bom_id: str):
+    """
+    Broadcast BOM update notification.
+    """
+    try:
+        message = {
+            "type": "bom_update",
+            "bom_id": bom_id,
+            "action": "updated",
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        await manager.broadcast(message)
+    except Exception as e:
+        print(f"Failed to broadcast BOM update: {e}")
+
+@staticmethod
+async def broadcast_material_added(bom_id: str, material_id: str):
+    """
+    Broadcast material addition to BOM.
+    """
+    try:
+        message = {
+            "type": "bom_update",
+            "bom_id": bom_id,
+            "action": "material_added",
+            "material_id": material_id,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        await manager.broadcast(message)
+    except Exception as e:
+        print(f"Failed to broadcast material addition: {e}")
+
+@staticmethod
+async def broadcast_shortage_alert(bom_id: str, shortages: list):
+    """
+    Broadcast shortage alert for BOM materials.
+    """
+    try:
+        message = {
+            "type": "bom_update",
+            "bom_id": bom_id,
+            "action": "shortage_alert",
+            "shortages": shortages,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        await manager.broadcast(message)
+    except Exception as e:
+        print(f"Failed to broadcast shortage alert: {e}")
 
 # Singleton instance
 bom_service = BOMService()
