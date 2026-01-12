@@ -27,14 +27,47 @@ class WIPService:
         # Generate work order number (prefer server-side sequence RPC)
         work_order_number = await WIPService._get_next_work_order_number(db)
         
+        # Fetch product_id from purchase order
+        po_result = db.table('purchase_orders').select('product_id').eq('id', order_data.purchase_order_id).execute()
+        if not po_result.data:
+            raise Exception(f"Purchase Order {order_data.purchase_order_id} not found")
+            
+        product_id = po_result.data[0]['product_id']
+        
         # Insert working order
         insert_data = {
             **order_data.model_dump(mode="json"),
             'work_order_number': work_order_number,
-            'created_by': created_by
+            'created_by': created_by,
+            'product_id': product_id
         }
         
-        result = db.table('working_orders').insert(insert_data).execute()
+        # Fix DB column mismatches
+        if 'target_qty' in insert_data:
+            insert_data['target_quantity'] = insert_data.pop('target_qty')
+            insert_data['quantity'] = insert_data['target_quantity']
+            
+        # Fix DB column mismatches
+        if 'target_qty' in insert_data:
+            insert_data['target_quantity'] = insert_data.pop('target_qty')
+            insert_data['quantity'] = insert_data['target_quantity']
+            
+        if 'purchase_order_id' in insert_data:
+            insert_data['production_order_id'] = insert_data['purchase_order_id']
+            
+        # Default shift (required constraint)
+        if 'shift' not in insert_data:
+            insert_data['shift'] = 'Morning'
+            
+        # Map priority Normal -> Medium, and normalize case
+        if 'priority' in insert_data:
+            p = insert_data['priority']
+            if p == 'Normal':
+                insert_data['priority'] = 'Medium'
+            elif p.upper() in ['LOW', 'MEDIUM', 'HIGH', 'URGENT']:
+                insert_data['priority'] = p.title()
+        
+        result = db.table('work_orders').insert(insert_data).execute()
         
         if not result.data:
             raise Exception("Failed to create working order")
@@ -42,7 +75,8 @@ class WIPService:
         # Update WIP metrics
         await WIPService._update_stage_metrics()
 
-        return WorkingOrderResponse(**result.data[0])
+        row = WIPService._map_db_row(result.data[0])
+        return WorkingOrderResponse(**row)
 
     @staticmethod
     async def _get_next_work_order_number(db) -> str:
@@ -57,7 +91,7 @@ class WIPService:
 
         if seq_num is None:
             latest = (
-                db.table('working_orders')
+                db.table('work_orders')
                 .select('work_order_number')
                 .order('created_at', desc=True)
                 .limit(1)
@@ -93,7 +127,7 @@ class WIPService:
         
         offset = (page - 1) * limit
         
-        query = db.table('working_orders').select('*')
+        query = db.table('work_orders').select('*')
         
         if status:
             query = query.eq('status', status)
@@ -102,23 +136,25 @@ class WIPService:
             query = query.eq('operation', operation)
         
         if purchase_order_id:
-            query = query.eq('purchase_order_id', purchase_order_id)
+            # Check both possible columns
+            query = query.or_(f"purchase_order_id.eq.{purchase_order_id},production_order_id.eq.{purchase_order_id}")
         
         result = query.order('created_at', desc=True).range(offset, offset + limit - 1).execute()
         
-        return [WorkingOrderListItem(**wo) for wo in result.data]
+        return [WorkingOrderListItem(**WIPService._map_db_row(wo)) for wo in result.data]
     
     @staticmethod
     async def get_working_order_by_id(order_id: str) -> WorkingOrderResponse:
         """Get working order by ID"""
         db = get_db()
         
-        result = db.table('working_orders').select('*').eq('id', order_id).execute()
+        result = db.table('work_orders').select('*').eq('id', order_id).execute()
         
         if not result.data:
             raise Exception(f"Working order {order_id} not found")
         
-        return WorkingOrderResponse(**result.data[0])
+        row = WIPService._map_db_row(result.data[0])
+        return WorkingOrderResponse(**row)
     
     @staticmethod
     async def update_working_order(
@@ -137,8 +173,16 @@ class WIPService:
         
         if not update_data:
             return await WIPService.get_working_order_by_id(order_id)
+            
+        # Fix DB column mismatches
+        if 'target_qty' in update_data:
+            update_data['target_quantity'] = update_data.pop('target_qty')
+            
+        # Map purchase_order_id if present (though unlikely in update)
+        if 'purchase_order_id' in update_data:
+             update_data['production_order_id'] = update_data['purchase_order_id']
         
-        result = db.table('working_orders').update(update_data).eq('id', order_id).execute()
+        result = db.table('work_orders').update(update_data).eq('id', order_id).execute()
         
         if not result.data:
             raise Exception(f"Working order {order_id} not found")
@@ -147,14 +191,15 @@ class WIPService:
         if 'status' in update_data or 'completed_qty' in update_data:
             await WIPService._update_stage_metrics()
         
-        return WorkingOrderResponse(**result.data[0])
+        row = WIPService._map_db_row(result.data[0])
+        return WorkingOrderResponse(**row)
     
     @staticmethod
     async def delete_working_order(order_id: str) -> dict:
         """Delete/cancel working order"""
         db = get_db()
         
-        result = db.table('working_orders').update({'status': 'Cancelled'}).eq('id', order_id).execute()
+        result = db.table('work_orders').update({'status': 'Cancelled'}).eq('id', order_id).execute()
         
         if not result.data:
             raise Exception(f"Working order {order_id} not found")
@@ -162,7 +207,22 @@ class WIPService:
         await WIPService._update_stage_metrics()
         
         return {"message": "Working order cancelled successfully"}
-    
+
+    @staticmethod
+    def _map_db_row(row: dict) -> dict:
+        """Map database columns to schema fields"""
+        if row:
+            if 'target_quantity' in row:
+                row['target_qty'] = row['target_quantity']
+            if 'completed_quantity' in row:
+                row['completed_qty'] = row['completed_quantity']
+            if 'rejected_quantity' in row:
+                row['rejected_qty'] = row['rejected_quantity']
+                
+            # If purchase_order_id missing/null, try production_order_id
+            if not row.get('purchase_order_id') and row.get('production_order_id'):
+                row['purchase_order_id'] = row['production_order_id']
+        return row    
     # ============================================
     # WIP STAGE METRICS
     # ============================================

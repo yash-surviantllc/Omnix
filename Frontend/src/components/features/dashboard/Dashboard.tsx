@@ -15,7 +15,7 @@ export function Dashboard({ onNavigate, language }: DashboardProps) {
   const [error, setError] = useState<string | null>(null);
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
   const wsRef = useRef<WebSocket | null>(null);
-  const [wsConnected, setWsConnected] = useState(false);
+  const [, setWsConnected] = useState(false);
 
   // Fetch dashboard data
   const fetchDashboard = async () => {
@@ -40,57 +40,68 @@ export function Dashboard({ onNavigate, language }: DashboardProps) {
 
   // WebSocket for real-time updates
   useEffect(() => {
-    const token = localStorage.getItem('access_token'); // Adjust if stored elsewhere
+    const token = localStorage.getItem('access_token');
     if (!token) return;
 
-    // Connect to WebSocket
-    const wsUrl = `ws://localhost:8000/ws/dashboard?token=${token}`;
-    wsRef.current = new WebSocket(wsUrl);
+    const connectWebSocket = () => {
+      // Use window.location.hostname to work in different environments
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const wsUrl = `${protocol}//${window.location.hostname}:8000/ws/dashboard?token=${token}`;
+      
+      wsRef.current = new WebSocket(wsUrl);
 
-    wsRef.current.onopen = () => {
-      console.log('WebSocket connected');
-      setWsConnected(true);
-    };
+      wsRef.current.onopen = () => {
+        console.log('WebSocket connected');
+        setWsConnected(true);
+      };
 
-    wsRef.current.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        if (data.type === 'dashboard_update') {
-          setDashboardData(prev => {
-            if (!prev) return prev;
-            switch (data.update_type) {
-              case 'kpis':
-                return { ...prev, kpis: data.data };
-              case 'orders':
-                return { ...prev, orders_summary: data.data };
-              case 'shortages':
-                return { ...prev, shortages: data.data };
-              case 'activities':
-                return { ...prev, recent_activities: data.data };
-              default:
-                return prev;
-            }
-          });
-          setLastRefresh(new Date());
+      wsRef.current.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.type === 'dashboard_update') {
+            setDashboardData(prev => {
+              if (!prev) return prev;
+              switch (data.update_type) {
+                case 'kpis':
+                  return { ...prev, kpis: data.data };
+                case 'orders':
+                  return { ...prev, orders_summary: data.data };
+                case 'shortages':
+                  return { ...prev, shortages: data.data };
+                case 'activities':
+                  return { ...prev, recent_activities: data.data };
+                default:
+                  return prev;
+              }
+            });
+            setLastRefresh(new Date());
+          } else if (data.type === 'error') {
+            console.error('WebSocket server error:', data.message);
+          }
+        } catch (error) {
+          console.error('WebSocket message parse error:', error);
         }
-      } catch (error) {
-        console.error('WebSocket message parse error:', error);
-      }
+      };
+
+      wsRef.current.onerror = (error) => {
+        console.error('WebSocket error:', error);
+        setWsConnected(false);
+      };
+
+      wsRef.current.onclose = () => {
+        console.log('WebSocket disconnected');
+        setWsConnected(false);
+        // Attempt to reconnect after a delay
+        setTimeout(() => {
+          if (!wsRef.current || wsRef.current.readyState === WebSocket.CLOSED) {
+            console.log('Attempting to reconnect WebSocket...');
+            connectWebSocket();
+          }
+        }, 5000);
+      };
     };
 
-    wsRef.current.onerror = (error) => {
-      console.error('WebSocket error:', error);
-      setWsConnected(false);
-    };
-
-    wsRef.current.onclose = () => {
-      console.log('WebSocket disconnected');
-      setWsConnected(false);
-      // Optional: Auto-reconnect logic
-      setTimeout(() => {
-        // Reconnect after delay if needed
-      }, 5000);
-    };
+    connectWebSocket();
 
     // Cleanup on unmount
     return () => {
@@ -304,26 +315,46 @@ export function Dashboard({ onNavigate, language }: DashboardProps) {
       <div className="flex items-center justify-center h-96">
         <div className="text-center">
           <RefreshCw className="h-8 w-8 animate-spin text-emerald-600 mx-auto mb-4" />
-          <p className="text-zinc-600">{language === 'en' ? 'Loading dashboard...' : 'डैशबोर्ड लोड हो रहा है...'}</p>
+          <p className="text-zinc-600">
+            {language === 'en' 
+              ? 'Loading dashboard...' 
+              : language === 'hi' 
+                ? 'डैशबोर्ड लोड हो रहा है...' 
+                : 'Loading...'}
+          </p>
         </div>
       </div>
     );
   }
 
   // Error state
-  if (error && !dashboardData) {
+  if (error) {
     return (
-      <div className="flex items-center justify-center h-96">
-        <Card className="p-8 max-w-md">
-          <div className="text-center">
-            <AlertTriangle className="h-12 w-12 text-red-500 mx-auto mb-4" />
-            <h3 className="text-lg font-semibold text-zinc-900 mb-2">
-              {language === 'en' ? 'Failed to load dashboard' : 'डैशबोर्ड लोड करने में विफल'}
-            </h3>
-            <p className="text-zinc-600 mb-4">{error}</p>
-            <Button onClick={fetchDashboard} className="bg-emerald-600 hover:bg-emerald-700">
+      <div className="p-6 max-w-2xl mx-auto">
+        <Card className="border-red-200 bg-red-50">
+          <div className="p-6">
+            <div className="flex items-center mb-4">
+              <AlertTriangle className="h-5 w-5 text-red-600 mr-2" />
+              <h3 className="text-lg font-medium text-red-800">
+                {language === 'en' 
+                  ? 'Failed to load dashboard' 
+                  : language === 'hi' 
+                    ? 'डैशबोर्ड लोड करने में विफल' 
+                    : 'Error loading dashboard'}
+              </h3>
+            </div>
+            <p className="text-red-700 mb-4">{error}</p>
+            <Button 
+              variant="outline" 
+              onClick={fetchDashboard}
+              className="border-red-300 text-red-700 hover:bg-red-100"
+            >
               <RefreshCw className="h-4 w-4 mr-2" />
-              {language === 'en' ? 'Retry' : 'पुनः प्रयास करें'}
+              {language === 'en' 
+                ? 'Retry' 
+                : language === 'hi' 
+                  ? 'पुनः प्रयास करें' 
+                  : 'Retry'}
             </Button>
           </div>
         </Card>

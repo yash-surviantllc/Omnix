@@ -1,57 +1,186 @@
-import { useState, useEffect } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { ArrowLeftRight, X, Check, AlertCircle, History, Search, ArrowRight, MapPin, Package } from 'lucide-react';
+
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { MaterialCard } from './components/MaterialCard';
-import { wipApi, type WorkingOrder } from '@/lib/api/wip';
+import { apiClient } from '@/lib/api/client';
+import { Language } from '@/types/inventory';
+import { InventoryItemResponse } from '@/services/inventoryItemsApi';
+
+const translations = {
+  en: {
+    title: 'Material Transfer',
+    subtitle: 'Transfer materials between warehouses and production floors',
+    newTransfer: 'New Transfer',
+    history: 'Transfer History',
+    selectMaterial: 'Select Material to Transfer',
+    transferMaterial: 'Transfer Material',
+    availableStock: 'Available Stock',
+    currentLocation: 'Current Location',
+    transferQuantity: 'Transfer Quantity',
+    enterQuantity: 'Enter quantity',
+    fromLocation: 'From Location',
+    toLocation: 'To Location',
+    selectDestination: 'Select destination',
+    transferReason: 'Transfer Reason',
+    selectReason: 'Select reason',
+    cancel: 'Cancel',
+    confirmTransfer: 'Confirm Transfer',
+    searchMaterial: 'Search materials...',
+    wipStageTransfer: 'WIP Stage Transfer',
+    stageTransferSubtitle: 'Move materials between production stages',
+    newStageTransfer: 'New Stage Transfer',
+    fromStage: 'From Stage',
+    toStage: 'To Stage',
+    selectFromStage: 'Select source stage',
+    selectToStage: 'Select destination stage',
+    orderReference: 'Work Order',
+    enterOrderRef: 'Enter Work Order number',
+    productCode: 'Product Code',
+    enterProductCode: 'Enter product code (e.g., TS-001)',
+    addMaterial: 'Add Material',
+    materialName: 'Material Name',
+    enterMaterialName: 'Enter material name',
+    initiateTransfer: 'Initiate Transfer',
+    stageTransferHistory: 'Stage Transfer History',
+    pending: 'Pending',
+    inProgress: 'In Progress',
+    completed: 'Completed',
+    reasons: {
+      production: 'Production Requirement',
+      restocking: 'Restocking',
+      quality: 'Quality Issue',
+      maintenance: 'Maintenance',
+      emergency: 'Emergency',
+      other: 'Other'
+    },
+    transferId: 'Transfer ID',
+    material: 'Material',
+    quantity: 'Quantity',
+    completedQty: 'Completed Qty',
+    pendingQty: 'Pending Qty',
+    unit: 'Unit',
+    location: 'Location',
+    status: 'Status',
+    date: 'Date',
+    viewDetails: 'View Details',
+    noTransfers: 'No transfers yet',
+    createFirst: 'Create your first material transfer above',
+    validationErrors: {
+      noQuantity: 'Please enter quantity',
+      invalidQuantity: 'Quantity must be greater than 0',
+      exceedsStock: 'Quantity exceeds available stock',
+      noDestination: 'Please select destination',
+      noReason: 'Please select transfer reason',
+      sameLocation: 'Source and destination cannot be the same'
+    },
+    locations: {
+      warehouse_a: 'Warehouse A',
+      warehouse_b: 'Warehouse B',
+      production_floor_1: 'Production Floor 1',
+      production_floor_2: 'Production Floor 2',
+      quality_control: 'Quality Control',
+      shipping: 'Shipping'
+    }
+  },
+  hi: {
+    title: 'सामग्री स्थानांतरण',
+    subtitle: 'गोदामों और उत्पादन मंजिलों के बीच सामग्री स्थानांतरित करें',
+    newTransfer: 'नया स्थानांतरण',
+    history: 'स्थानांतरण इतिहास',
+    selectMaterial: 'स्थानांतरण के लिए सामग्री चुनें',
+    transferMaterial: 'सामग्री स्थानांतरण',
+    availableStock: 'उपलब्ध स्टॉक',
+    currentLocation: 'वर्तमान स्थान',
+    transferQuantity: 'स्थानांतरण मात्रा',
+    enterQuantity: 'मात्रा दर्ज करें',
+    fromLocation: 'स्थान से',
+    toLocation: 'स्थान तक',
+    selectDestination: 'गंतव्य चुनें',
+    transferReason: 'स्थानांतरण कारण',
+    selectReason: 'कारण चुनें',
+    cancel: 'रद्द करें',
+    confirmTransfer: 'स्थानांतरण की पुष्टि करें',
+    searchMaterial: 'सामग्री खोजें...',
+    wipStageTransfer: 'WIP स्टेज ट्रांसफर',
+    stageTransferSubtitle: 'उत्पादन चरणों के बीच सामग्री स्थानांतरित करें',
+    newStageTransfer: 'नया स्टेज ट्रांसफर',
+    fromStage: 'स्टेज से',
+    toStage: 'स्टेज तक',
+    selectFromStage: 'स्रोत स्टेज चुनें',
+    selectToStage: 'गंतव्य स्टेज चुनें',
+    orderReference: 'वर्क ऑर्डर',
+    enterOrderRef: 'वर्क ऑर्डर नंबर दर्ज करें',
+    productCode: 'उत्पाद कोड',
+    enterProductCode: 'उत्पाद कोड दर्ज करें (जैसे, TS-001)',
+    addMaterial: 'सामग्री जोड़ें',
+    materialName: 'सामग्री का नाम',
+    enterMaterialName: 'सामग्री का नाम दर्ज करें',
+    initiateTransfer: 'ट्रांसफर शुरू करें',
+    stageTransferHistory: 'स्टेज ट्रांसफर इतिहास',
+    pending: 'लंबित',
+    inProgress: 'प्रगति में',
+    completed: 'पूर्ण',
+    reasons: {
+      production: 'उत्पादन आवश्यकता',
+      restocking: 'पुनः भंडारण',
+      quality: 'गुणवत्ता समस्या',
+      maintenance: 'रखरखाव',
+      emergency: 'आपातकाल',
+      other: 'अन्य'
+    },
+    transferId: 'स्थानांतरण ID',
+    material: 'सामग्री',
+    quantity: 'मात्रा',
+    completedQty: 'पूर्ण मात्रा',
+    pendingQty: 'लंबित मात्रा',
+    unit: 'यूनिट',
+    location: 'स्थान',
+    status: 'स्थिति',
+    date: 'तारीख',
+    viewDetails: 'विवरण देखें',
+    noTransfers: 'अभी तक कोई स्थानांतरण नहीं',
+    createFirst: 'ऊपर अपना पहला सामग्री स्थानांतरण बनाएं',
+    validationErrors: {
+      noQuantity: 'कृपया मात्रा दर्ज करें',
+      invalidQuantity: 'मात्रा 0 से अधिक होनी चाहिए',
+      exceedsStock: 'मात्रा उपलब्ध स्टॉक से अधिक है',
+      noDestination: 'कृपया गंतव्य चुनें',
+      noReason: 'कृपया स्थानांतरण कारण चुनें',
+      sameLocation: 'स्रोत और गंतव्य समान नहीं हो सकते'
+    },
+    locations: {
+      warehouse_a: 'गोदाम A',
+      warehouse_b: 'गोदाम B',
+      production_floor_1: 'उत्पादन मंजिल 1',
+      production_floor_2: 'उत्पादन मंजिल 2',
+      quality_control: 'गुणवत्ता नियंत्रण',
+      shipping: 'शिपिंग'
+    }
+  }
+};
 
 type MaterialTransferProps = {
-  language: 'en' | 'hi' | 'kn' | 'ta' | 'te' | 'mr' | 'gu' | 'pa';
+  language: Language;
+  refreshMaterialTransferData: (showSuccess?: boolean) => void;
 };
 
-type TransferData = {
-  material: string;
-  materialCode: string;
-  availableStock: number;
-  currentLocation: string;
-  quantity: number;
-  fromLocation: string;
-  toLocation: string;
-  transferReason: string;
-  uom: string;
-};
-
-export function MaterialTransfer({ language }: MaterialTransferProps) {
-  const [showTransferModal, setShowTransferModal] = useState(false);
-  const [transferData, setTransferData] = useState<Partial<TransferData>>({});
-  const [errors, setErrors] = useState<Record<string, string>>({});
-  const [searchQuery, setSearchQuery] = useState('');
+export function MaterialTransfer({ language, refreshMaterialTransferData }: MaterialTransferProps) {
   const [activeTab, setActiveTab] = useState<'new' | 'history'>('new');
-  const [inventoryStock, setInventoryStock] = useState<Record<string, any>>({});
+  const [inventoryItems, setInventoryItems] = useState<InventoryItemResponse[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [transferData, setTransferData] = useState<any>({});
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [showTransferModal, setShowTransferModal] = useState(false);
+  const [, setIsSubmittingTransfer] = useState(false);
+  const [, setSubmitError] = useState<string | null>(null);
+  const [, setSuccessMessage] = useState<string | null>(null);
+  const [transferHistory, setTransferHistory] = useState<any[]>([]);
   const [wipStages, setWipStages] = useState<any[]>([]);
-  const [workingOrders, setWorkingOrders] = useState<WorkingOrder[]>([]);
-  
-  // Fetch data from backend API
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        // Fetch working orders
-        const orders = await wipApi.listWorkingOrders({ limit: 100 });
-        setWorkingOrders(orders);
-      } catch (error) {
-        console.error('Error fetching working orders:', error);
-      }
-    };
-    
-    fetchData();
-    // TODO: Implement API calls to fetch inventory and WIP stages
-    // Example: fetchInventory().then(data => setInventoryStock(data));
-    // Example: fetchWIPStages().then(data => setWipStages(data));
-  }, []);
-  
-  // Stage transfer state
+  const [workingOrders, setWorkingOrders] = useState<any[]>([]);
   const [showStageTransferModal, setShowStageTransferModal] = useState(false);
   const [stageTransferData, setStageTransferData] = useState({
     fromStage: '',
@@ -61,209 +190,79 @@ export function MaterialTransfer({ language }: MaterialTransferProps) {
     materials: [{ name: '', quantity: '', uom: 'pcs' }]
   });
 
-  const translations = {
-    en: {
-      title: 'Material Transfer',
-      subtitle: 'Transfer materials between warehouses and production floors',
-      newTransfer: 'New Transfer',
-      history: 'Transfer History',
-      selectMaterial: 'Select Material to Transfer',
-      transferMaterial: 'Transfer Material',
-      availableStock: 'Available Stock',
-      currentLocation: 'Current Location',
-      transferQuantity: 'Transfer Quantity',
-      enterQuantity: 'Enter quantity',
-      fromLocation: 'From Location',
-      toLocation: 'To Location',
-      selectDestination: 'Select destination',
-      transferReason: 'Transfer Reason',
-      selectReason: 'Select reason',
-      cancel: 'Cancel',
-      confirmTransfer: 'Confirm Transfer',
-      searchMaterial: 'Search materials...',
-      wipStageTransfer: 'WIP Stage Transfer',
-      stageTransferSubtitle: 'Move materials between production stages',
-      newStageTransfer: 'New Stage Transfer',
-      fromStage: 'From Stage',
-      toStage: 'To Stage',
-      selectFromStage: 'Select source stage',
-      selectToStage: 'Select destination stage',
-      orderReference: 'Work Order',
-      enterOrderRef: 'Enter Work Order number',
-      productCode: 'Product Code',
-      enterProductCode: 'Enter product code (e.g., TS-001)',
-      addMaterial: 'Add Material',
-      removeMaterial: 'Remove',
-      materialName: 'Material Name',
-      enterMaterialName: 'Enter material name',
-      initiateTransfer: 'Initiate Transfer',
-      stageTransferHistory: 'Stage Transfer History',
-      pending: 'Pending',
-      inProgress: 'In Progress',
-      completed: 'Completed',
-      reasons: {
-        production: 'Production Requirement',
-        restocking: 'Restocking',
-        quality: 'Quality Issue',
-        maintenance: 'Maintenance',
-        emergency: 'Emergency',
-        other: 'Other'
-      },
-      locations: {
-        rmStoreA: 'RM Store A',
-        rmStoreB: 'RM Store B',
-        cutting: 'Cutting Floor',
-        sewing: 'Sewing Floor',
-        finishing: 'Finishing Floor',
-        qc: 'QC Floor',
-        packing: 'Packing Floor',
-        fgWarehouse: 'FG Warehouse'
-      },
-      transferId: 'Transfer ID',
-      material: 'Material',
-      quantity: 'Quantity',
-      completedQty: 'Completed Qty',
-      pendingQty: 'Pending Qty',
-      unit: 'Unit',
-      location: 'Location',
-      status: 'Status',
-      date: 'Date',
-      viewDetails: 'View Details',
-      noTransfers: 'No transfers yet',
-      createFirst: 'Create your first material transfer above',
-      validationErrors: {
-        noQuantity: 'Please enter quantity',
-        invalidQuantity: 'Quantity must be greater than 0',
-        exceedsStock: 'Quantity exceeds available stock',
-        noDestination: 'Please select destination',
-        noReason: 'Please select transfer reason',
-        sameLocation: 'Source and destination cannot be the same'
-      }
-    },
-    hi: {
-      title: 'सामग्री स्थानांतरण',
-      subtitle: 'गोदामों और उत्पादन मंजिलों के बीच सामग्री स्थानांतरित करें',
-      newTransfer: 'नया स्थानांतरण',
-      history: 'स्थानांतरण इतिहास',
-      selectMaterial: 'स्थानांतरण के लिए सामग्री चुनें',
-      transferMaterial: 'सामग्री स्थानांतरण',
-      availableStock: 'उपलब्ध स्टॉक',
-      currentLocation: 'वर्तमान स्थान',
-      transferQuantity: 'स्थानांतरण मात्रा',
-      enterQuantity: 'मात्रा दर्ज करें',
-      fromLocation: 'स्थान से',
-      toLocation: 'स्थान तक',
-      selectDestination: 'गंतव्य चुनें',
-      transferReason: 'स्थानांतरण कारण',
-      selectReason: 'कारण चुनें',
-      cancel: 'रद्द करें',
-      confirmTransfer: 'स्थानांतरण की पुष्टि करें',
-      searchMaterial: 'सामग्री खोजें...',
-      wipStageTransfer: 'WIP स्टेज ट्रांसफर',
-      stageTransferSubtitle: 'उत्पादन चरणों के बीच सामग्री स्थानांतरित करें',
-      newStageTransfer: 'नया स्टेज ट्रांसफर',
-      fromStage: 'स्टेज से',
-      toStage: 'स्टेज तक',
-      selectFromStage: 'स्रोत स्टेज चुनें',
-      selectToStage: 'गंतव्य स्टेज चुनें',
-      orderReference: 'वर्क ऑर्डर',
-      enterOrderRef: 'वर्क ऑर्डर नंबर दर्ज करें',
-      productCode: 'उत्पाद कोड',
-      enterProductCode: 'उत्पाद कोड दर्ज करें (जैसे, TS-001)',
-      addMaterial: 'सामग्री जोड़ें',
-      removeMaterial: 'हटाएं',
-      materialName: 'सामग्री का नाम',
-      enterMaterialName: 'सामग्री का नाम दर्ज करें',
-      initiateTransfer: 'ट्रांसफर शुरू करें',
-      stageTransferHistory: 'स्टेज ट्रांसफर इतिहास',
-      pending: 'लंबित',
-      inProgress: 'प्रगति में',
-      completed: 'पूर्ण',
-      reasons: {
-        production: 'उत्पादन आवश्यकता',
-        restocking: 'पुनः भंडारण',
-        quality: 'गुणवत्ता समस्या',
-        maintenance: 'रखरखाव',
-        emergency: 'आपातकाल',
-        other: 'अन्य'
-      },
-      locations: {
-        rmStoreA: 'RM स्टोर A',
-        rmStoreB: 'RM स्टोर B',
-        cutting: 'कटिंग फ्लोर',
-        sewing: 'सिलाई फ्लोर',
-        finishing: 'फिनिशिंग फ्लोर',
-        qc: 'QC फ्लोर',
-        packing: 'पैकिंग फ्लोर',
-        fgWarehouse: 'FG वेयरहाउस'
-      },
-      transferId: 'स्थानांतरण ID',
-      material: 'सामग्री',
-      quantity: 'मात्रा',
-      completedQty: 'पूर्ण मात्रा',
-      pendingQty: 'लंबित मात्रा',
-      unit: 'यूनिट',
-      location: 'स्थान',
-      status: 'स्थिति',
-      date: 'तारीख',
-      viewDetails: 'विवरण देखें',
-      noTransfers: 'अभी तक कोई स्थानांतरण नहीं',
-      createFirst: 'ऊपर अपना पहला सामग्री स्थानांतरण बनाएं',
-      validationErrors: {
-        noQuantity: 'कृपया मात्रा दर्ज करें',
-        invalidQuantity: 'मात्रा 0 से अधिक होनी चाहिए',
-        exceedsStock: 'मात्रा उपलब्ध स्टॉक से अधिक है',
-        noDestination: 'कृपया गंतव्य चुनें',
-        noReason: 'कृपया स्थानांतरण कारण चुनें',
-        sameLocation: 'स्रोत और गंतव्य समान नहीं हो सकते'
-      }
+  // Fetch inventory data on component mount
+  useEffect(() => {
+    fetchInventoryData();
+    fetchTransferHistory();
+    fetchWipStages();
+    fetchWorkingOrders();
+  }, [])
+
+  async function fetchInventoryData() {
+    try {
+      const response = await apiClient.get<InventoryItemResponse[]>('/inventory-items');
+      setInventoryItems(response);
+    } catch (error) {
+      console.error('Failed to fetch inventory data:', error);
+    }
+  }
+
+  const fetchTransferHistory = async () => {
+    try {
+      const response = await apiClient.get<any[]>('/material-transfers');
+      setTransferHistory(response);
+    } catch (error) {
+      console.error('Failed to fetch transfer history:', error);
+    }
+  };
+
+  const fetchWipStages = async () => {
+    try {
+      const response = await apiClient.get<any[]>('/wip-stages');
+      setWipStages(response);
+    } catch (error) {
+      console.error('Failed to fetch WIP stages:', error);
+    }
+  };
+
+  const fetchWorkingOrders = async () => {
+    try {
+      const response = await apiClient.get<any[]>('/working-orders');
+      setWorkingOrders(response);
+    } catch (error) {
+      console.error('Failed to fetch working orders:', error);
     }
   };
 
   const t = translations[language as keyof typeof translations] || translations.en;
 
-  // Transfer history - now comes from backend API
-  const transferHistory: Array<{id: string; material: string; quantity: string; from: string; to: string; status: string; date: string; reason: string; completed_qty: number}> = [];
-
-  // Get materials from inventory
-  const materials = Object.entries(inventoryStock).map(([name, data], index) => {
-    // Generate RM/BOP codes based on material type
-    let rmCode = '';
-    if (name.toLowerCase().includes('fabric')) {
-      rmCode = 'RM-FAB-' + (1001 + index).toString();
-    } else if (name.toLowerCase().includes('thread') || name.toLowerCase().includes('sewing')) {
-      rmCode = 'RM-THD-' + (2001 + index).toString();
-    } else if (name.toLowerCase().includes('zipper')) {
-      rmCode = 'RM-ZIP-' + (3001 + index).toString();
-    } else if (name.toLowerCase().includes('elastic') || name.toLowerCase().includes('drawcord')) {
-      rmCode = 'RM-TRM-' + (4001 + index).toString();
-    } else if (name.toLowerCase().includes('label') || name.toLowerCase().includes('polybag') || name.toLowerCase().includes('box')) {
-      rmCode = 'BOP-PKG-' + (5001 + index).toString();
-    } else {
-      rmCode = 'RM-ACC-' + (6001 + index).toString();
-    }
-
-    return {
-      name,
-      code: rmCode,
-      stock: data.qty || 0,
-      location: data.location || 'RM Store A',
-      uom: data.unit || 'kg',
-      completed_qty: data.completed_qty || 0
-    };
-  });
-
-  // Filter materials based on search query
-  const filteredMaterials = materials.filter((material) =>
-    material.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    material.location.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    material.code.toLowerCase().includes(searchQuery.toLowerCase())
+  const materialOptions = useMemo(
+    () =>
+      inventoryItems.map((item) => ({
+        name: item.material_name,
+        code: item.material_code,
+        stock: item.quantity,
+        location: item.location || '',
+        uom: item.unit,
+        productId: item.id,
+      })),
+    [inventoryItems]
   );
 
-  const handleMaterialSelect = (material: typeof materials[0]) => {
+  const filteredMaterials = useMemo(() =>
+    materialOptions.filter((material) =>
+      material.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      material.location.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      material.code.toLowerCase().includes(searchQuery.toLowerCase())
+    ),
+    [materialOptions, searchQuery]
+  );
+
+  const handleMaterialSelect = (material: typeof materialOptions[number]) => {
     setTransferData({
       material: material.name,
       materialCode: material.code,
+      productId: material.productId,
       availableStock: material.stock,
       currentLocation: material.location,
       fromLocation: material.location,
@@ -285,7 +284,7 @@ export function MaterialTransfer({ language }: MaterialTransferProps) {
       newErrors.quantity = t.validationErrors.exceedsStock;
     }
 
-    if (!transferData.toLocation) {
+    if (!transferData.toLocation || !transferData.toLocation.trim()) {
       newErrors.toLocation = t.validationErrors.noDestination;
     } else if (transferData.toLocation === transferData.fromLocation) {
       newErrors.toLocation = t.validationErrors.sameLocation;
@@ -299,13 +298,37 @@ export function MaterialTransfer({ language }: MaterialTransferProps) {
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleConfirmTransfer = () => {
-    if (validateTransfer()) {
-      // Process transfer
-      setShowTransferModal(false);
-      setTransferData({});
-      // Show success message
-      alert(`✅ Transfer initiated: ${transferData.quantity} ${transferData.uom} ${transferData.material} from ${transferData.fromLocation} to ${transferData.toLocation}`);
+  const resetTransferState = () => {
+    setShowTransferModal(false);
+    setTransferData({});
+    setErrors({});
+  };
+
+  const handleConfirmTransfer = async () => {
+    if (!validateTransfer() || !transferData.productId || !transferData.fromLocation || !transferData.toLocation) {
+      return;
+    }
+
+    setIsSubmittingTransfer(true);
+    setSubmitError(null);
+
+    try {
+      await apiClient.post('/material-transfers', {
+        product_id: transferData.productId,
+        from_location: transferData.fromLocation,
+        to_location: transferData.toLocation,
+        quantity: transferData.quantity,
+        unit: transferData.uom,
+        reason: transferData.transferReason,
+      });
+
+      setSuccessMessage('Transfer created successfully.');
+      resetTransferState();
+      refreshMaterialTransferData(false);
+    } catch (error: any) {
+      setSubmitError(error?.detail || 'Failed to create transfer. Please try again.');
+    } finally {
+      setIsSubmittingTransfer(false);
     }
   };
 

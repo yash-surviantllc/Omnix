@@ -419,6 +419,67 @@ These provide interactive API documentation with the ability to test endpoints d
 
 ---
 
+## 🔌 WebSocket API
+
+OMNIX supports real-time updates through WebSocket connections for live dashboard updates and notifications.
+
+### WebSocket Endpoints
+
+All WebSocket endpoints require authentication via JWT token in query parameter: `?token=<jwt_token>`
+
+#### Dashboard Updates (`/ws/dashboard`)
+- **Purpose**: Real-time dashboard KPI and metrics updates
+- **Authentication**: Required (JWT token in query)
+- **Message Format**: JSON
+- **Events**: `dashboard_update` with types: `kpis`, `orders`, `shortages`, `rework`, `activities`
+
+#### BOM Updates (`/ws/boms`)
+- **Purpose**: Real-time BOM changes and validation updates
+- **Authentication**: Required (JWT token in query)
+- **Message Format**: JSON
+- **Events**: BOM modifications, material updates, validation results
+
+#### Purchase Order Updates (`/ws/purchase-orders`)
+- **Purpose**: Real-time purchase order status changes and notifications
+- **Authentication**: Required (JWT token in query)
+- **Message Format**: JSON
+- **Events**: Order status updates, approvals, stock changes
+
+#### Inventory Updates (`/ws/inventory`)
+- **Purpose**: Real-time inventory changes and alerts
+- **Authentication**: Required (JWT token in query)
+- **Message Format**: JSON
+- **Events**: Stock updates, alerts, allocations, deallocations
+
+### Connection Example
+
+```javascript
+// Frontend connection example
+const ws = new WebSocket('ws://localhost:8000/ws/dashboard?token=' + jwtToken);
+
+ws.onopen = function(event) {
+    console.log('WebSocket connected');
+};
+
+ws.onmessage = function(event) {
+    const data = JSON.parse(event.data);
+    console.log('Received:', data);
+};
+
+ws.onclose = function(event) {
+    console.log('WebSocket disconnected');
+};
+```
+
+### Error Handling
+
+WebSocket connections include error handling for:
+- Authentication failures (closes with code 1008)
+- Unexpected errors (sends error message with reconnection advice)
+- Connection timeouts and disconnections
+
+---
+
 ## 🤝 Contributing
 
 1. Fork the repository

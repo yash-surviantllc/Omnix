@@ -1,34 +1,64 @@
-import { Search, Plus, MoreVertical, Eye, Edit, XCircle, Printer, CheckCircle2, AlertCircle, Minus, RefreshCw, Package, Clock, FileText, Download, Archive, Users, MessageSquare, Send, Calendar, Star, Trash2 } from 'lucide-react';
+import { Search, Plus, XCircle, Printer, CheckCircle2, AlertCircle, Minus, RefreshCw, Package, Clock, FileText, Download, Archive, Users, MessageSquare, Send, Calendar, Star, Trash2 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { OrderActionsDropdown } from './components/OrderActionsDropdown';
-import { purchaseOrdersApi, type PurchaseOrder, type CreatePurchaseOrderData } from '@/lib/api/production-orders';
+import { purchaseOrdersApi, type PurchaseOrder } from '@/lib/api/production-orders';
 import { productsApi } from '@/lib/api/bom';
 import { wipApi, type WorkingOrderCreate } from '@/lib/api/wip';
+import { useAuthStore } from '@/stores/authStore';
+import { NewOrderModal } from './components/NewOrderModal';
 
 type PurchaseOrdersProps = {
   language: 'en' | 'hi' | 'kn' | 'ta' | 'te' | 'mr' | 'gu' | 'pa';
 };
 
 export function PurchaseOrders({ language }: PurchaseOrdersProps) {
+  // Get auth status
+  const { isAuthenticated } = useAuthStore();
+
+  if (!isAuthenticated) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <Card className="p-8 text-center max-w-md">
+          <AlertCircle className="h-12 w-12 text-yellow-500 mx-auto mb-4" />
+          <h3 className="text-lg font-semibold text-zinc-900 mb-2">
+            {language === 'en' ? 'Authentication Required' : 'प्रमाणीकरण आवश्यक'}
+          </h3>
+          <p className="text-zinc-600 mb-4">
+            {language === 'en'
+              ? 'Please log in to view purchase orders.'
+              : 'खरीद आदेश देखने के लिए कृपया लॉग इन करें।'}
+          </p>
+          <Button
+            onClick={() => window.location.href = '/'}
+            className="bg-emerald-600 hover:bg-emerald-700"
+          >
+            {language === 'en' ? 'Go to Login' : 'लॉग इन पर जाएं'}
+          </Button>
+        </Card>
+      </div>
+    );
+  }
+
   // API Data State
   const [orders, setOrders] = useState<PurchaseOrder[]>([]);
   const [products, setProducts] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  
+
+  // WebSocket for real-time updates
+  const wsRef = useRef<WebSocket | null>(null);
+
   // UI State
-  const [openDropdown, setOpenDropdown] = useState<string | null>(null);
   const [activeModal, setActiveModal] = useState<string | null>(null);
   const [selectedOrder, setSelectedOrder] = useState<PurchaseOrder | null>(null);
   const [noteText, setNoteText] = useState('');
   const [selectedTeam, setSelectedTeam] = useState('');
   const [newDueDate, setNewDueDate] = useState('');
-  const [isEditingTimeline, setIsEditingTimeline] = useState(false);
   const [showNewOrderModal, setShowNewOrderModal] = useState(false);
   const [showCreateWorkingOrderModal, setShowCreateWorkingOrderModal] = useState(false);
   const [workingOrderData, setWorkingOrderData] = useState({
@@ -47,37 +77,15 @@ export function PurchaseOrders({ language }: PurchaseOrdersProps) {
     priority: '',
     notes: ''
   });
-  const [newOrderData, setNewOrderData] = useState({
-    product: '',
-    quantity: '',
+  const [newOrderData, setNewOrderData] = useState<any>({
+    items: [{ id: '1', product: '', quantity: '' }],
     dueDate: '',
-    priority: 'Medium',
-    customerName: '',
-    stage: 'Material Planning',
-    assignedTeam: '',
+    priority: 'normal',
     notes: '',
-    shiftNumber: 'Shift 1',
     startTime: '',
     endTime: ''
   });
-  const [timelineData, setTimelineData] = useState({
-    stage1Start: '2024-12-01T09:00',
-    stage1End: '2024-12-01T14:00',
-    stage1Team: 'Planning Team',
-    stage2Start: '2024-12-02T08:00',
-    stage2End: '2024-12-02T16:00',
-    stage2Team: 'Team A - Cutting Department',
-    stage3Start: '2024-12-03T07:00',
-    stage3End: '2024-12-04T18:00',
-    stage3Team: 'Team B - Sewing Department',
-    stage4Start: '2024-12-04T18:30',
-    stage4End: '2024-12-05T12:00',
-    stage4Team: 'Team C - Quality Control',
-    stage5Start: '2024-12-05T13:00',
-    stage5End: '2024-12-05T17:00',
-    stage5Team: 'Team D - Packaging',
-    stage6Start: '2024-12-05T17:30',
-  });
+  const [associatedWorkOrders, setAssociatedWorkOrders] = useState<any[]>([]);
 
   const translations = {
     en: {
@@ -665,11 +673,65 @@ export function PurchaseOrders({ language }: PurchaseOrdersProps) {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  const handleAction = (action: string, orderId: string) => {
+  // WebSocket for real-time purchase order updates
+  useEffect(() => {
+    const token = localStorage.getItem('access_token');
+    if (!token) return;
+
+    // Connect to WebSocket
+    const wsUrl = `ws://localhost:8000/ws/purchase-orders?token=${token}`;
+    wsRef.current = new WebSocket(wsUrl);
+
+    wsRef.current.onopen = () => {
+      console.log('Purchase Orders WebSocket connected');
+    };
+
+    wsRef.current.onmessage = (event) => {
+      try {
+        const message = JSON.parse(event.data);
+        if (message.type === 'purchase_order_update') {
+          // Refetch orders on any update
+          fetchOrders();
+        }
+      } catch (error) {
+        console.error('Purchase Orders WebSocket message parse error:', error);
+      }
+    };
+
+    wsRef.current.onerror = (error) => {
+      console.error('Purchase Orders WebSocket error:', error);
+    };
+
+    wsRef.current.onclose = () => {
+      console.log('Purchase Orders WebSocket disconnected');
+      // Auto-reconnect after 5 seconds
+      setTimeout(() => {
+        // Reconnection will happen on next component mount or manual trigger
+      }, 5000);
+    };
+
+    // Cleanup on unmount
+    return () => {
+      if (wsRef.current) {
+        wsRef.current.close();
+      }
+    };
+  }, []);
+
+  const handleAction = async (action: string, orderId: string) => {
     const order = orders.find(o => o.id === orderId);
     setSelectedOrder(order || null);
-    setOpenDropdown(null);
-    
+
+    // Fetch associated work orders for production plan or tracking
+    if (action === 'productionPlan' || action === 'trackProgress' || action === 'view') {
+      try {
+        const wos = await wipApi.listWorkingOrders({ purchase_order_id: orderId });
+        setAssociatedWorkOrders(wos || []);
+      } catch (err) {
+        console.error('Failed to fetch associated work orders:', err);
+      }
+    }
+
     if (action === 'createWorkingOrder') {
       setWorkingOrderData({
         operation: '',
@@ -693,77 +755,73 @@ export function PurchaseOrders({ language }: PurchaseOrdersProps) {
     setNoteText('');
     setSelectedTeam('');
     setNewDueDate('');
-    setIsEditingTimeline(false);
   };
 
   const closeNewOrderModal = () => {
     setShowNewOrderModal(false);
     setNewOrderData({
-      product: '',
-      quantity: '',
+      items: [{ id: '1', product: '', quantity: '' }],
       dueDate: '',
-      priority: 'Medium',
-      customerName: '',
-      stage: 'Material Planning',
-      assignedTeam: '',
+      priority: 'normal',
       notes: '',
-      shiftNumber: 'Shift 1',
       startTime: '',
       endTime: ''
     });
   };
 
-  const handleNewOrderChange = (field: string, value: string) => {
-    setNewOrderData(prev => ({ ...prev, [field]: value }));
-  };
-
   const createNewOrder = async () => {
     // Validate required fields
-    if (!newOrderData.product || !newOrderData.quantity || !newOrderData.dueDate) {
-      alert(language === 'en' 
-        ? '⚠️ Please fill in all required fields (Product, Quantity, Due Date)' 
+    if (!newOrderData.items || newOrderData.items.length === 0 || !newOrderData.dueDate) {
+      alert(language === 'en'
+        ? '⚠️ Please fill in all required fields (Product, Quantity, Due Date)'
         : '⚠️ कृपया सभी आवश्यक फ़ील्ड भरें (उत्पाद, मात्रा, नियत तारीख)');
       return;
     }
 
     try {
-      const orderData: CreatePurchaseOrderData = {
-        product_id: newOrderData.product,
-        quantity: parseFloat(newOrderData.quantity),
+      setIsLoading(true);
+      const itemsToCreate = newOrderData.items
+        .filter((item: any) => item.product && item.quantity)
+        .map((item: any) => ({
+          product_id: item.product,
+          quantity: parseFloat(item.quantity),
+          unit: 'pcs', // Default unit
+          notes: item.notes || undefined
+        }));
+
+      if (itemsToCreate.length === 0) {
+        alert(language === 'en' ? '⚠️ Please add at least one product with quantity' : '⚠️ कृपया कम से कम एक उत्पाद मात्रा के साथ जोड़ें');
+        setIsLoading(false);
+        return;
+      }
+
+      await purchaseOrdersApi.createMultiSkuOrder({
         due_date: newOrderData.dueDate,
         priority: newOrderData.priority,
         notes: newOrderData.notes || undefined,
-        customer_name: newOrderData.customerName || undefined,
-        assigned_team: newOrderData.assignedTeam || undefined,
-        shift_number: newOrderData.shiftNumber || undefined,
-        production_stage: newOrderData.stage || undefined,
         start_time: newOrderData.startTime || undefined,
-        end_time: newOrderData.endTime || undefined
-      };
+        end_time: newOrderData.endTime || undefined,
+        items: itemsToCreate
+      });
 
-      const createdOrder = await purchaseOrdersApi.createOrder(orderData);
-      
-      alert(`✅ ${language === 'en' ? 'New Order Created!' : 'नया ऑर्डर बनाया गया!'}\n\n${language === 'en' ? 'Order Number' : 'ऑर्डर नंबर'}: ${createdOrder.order_number}\n${language === 'en' ? 'Product' : 'उत्पाद'}: ${createdOrder.product_name}\n${language === 'en' ? 'Quantity' : 'मात्रा'}: ${createdOrder.quantity} ${createdOrder.unit}`);
-      
+      alert(language === 'en'
+        ? `✅ Success! New multi-SKU order created.`
+        : `✅ सफलता! नया मल्टी-SKU ऑर्डर बनाया गया।`);
+
+      fetchOrders();
       closeNewOrderModal();
-      fetchOrders(); // Refresh list
     } catch (err: any) {
-      setError(err?.detail || err?.message || 'Unknown error');
+      console.error('Error creating order:', err);
+      alert(language === 'en' ? '❌ Failed to create order(s)' : '❌ ऑर्डर बनाने में विफल');
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const handleTimelineUpdate = (field: string, value: string) => {
-    setTimelineData(prev => ({ ...prev, [field]: value }));
-  };
-
-  const saveTimeline = () => {
-    alert(`✅ Production timeline updated for ${selectedOrder?.id}`);
-    setIsEditingTimeline(false);
-  };
 
   const handleSubmit = async (action: string) => {
     if (!selectedOrder) return;
-    
+
     try {
       switch (action) {
         case 'edit':
@@ -772,12 +830,12 @@ export function PurchaseOrders({ language }: PurchaseOrdersProps) {
           if (editOrderData.due_date) updateData.due_date = editOrderData.due_date;
           if (editOrderData.priority) updateData.priority = editOrderData.priority;
           if (editOrderData.notes !== undefined) updateData.notes = editOrderData.notes;
-          
+
           await purchaseOrdersApi.updateOrder(selectedOrder.id, updateData);
           alert(`✅ ${language === 'en' ? 'Order updated successfully' : 'ऑर्डर सफलतापूर्वक अपडेट किया गया'}`);
           fetchOrders(); // Refresh list
           break;
-          
+
         case 'cancel':
           if (confirm(`${language === 'en' ? 'Are you sure you want to cancel this order?' : 'क्या आप वाकई इस ऑर्डर को रद्द करना चाहते हैं?'}\n${selectedOrder.order_number}`)) {
             await purchaseOrdersApi.updateStatus(selectedOrder.id, { status: 'Cancelled' });
@@ -785,7 +843,7 @@ export function PurchaseOrders({ language }: PurchaseOrdersProps) {
             fetchOrders();
           }
           break;
-          
+
         case 'delete':
           if (confirm(`${language === 'en' ? 'Are you sure you want to delete this order? This cannot be undone.' : 'क्या आप वाकई इस ऑर्डर को हटाना चाहते हैं? यह पूर्ववत नहीं किया जा सकता।'}\n${selectedOrder.order_number}`)) {
             await purchaseOrdersApi.cancelOrder(selectedOrder.id);
@@ -793,7 +851,7 @@ export function PurchaseOrders({ language }: PurchaseOrdersProps) {
             fetchOrders();
           }
           break;
-          
+
         case 'print':
           alert(`✅ ${language === 'en' ? 'Order sheet printed for' : 'ऑर्डर शीट प्रिंट की गई'} ${selectedOrder.order_number}`);
           break;
@@ -807,10 +865,10 @@ export function PurchaseOrders({ language }: PurchaseOrdersProps) {
         case 'addNotes':
           if (noteText.trim()) {
             const currentNotes = selectedOrder.notes || '';
-            const updatedNotes = currentNotes 
+            const updatedNotes = currentNotes
               ? `${currentNotes}\n\n[${new Date().toLocaleString()}]\n${noteText}`
               : `[${new Date().toLocaleString()}]\n${noteText}`;
-            
+
             await purchaseOrdersApi.updateOrder(selectedOrder.id, { notes: updatedNotes });
             alert(`✅ ${language === 'en' ? 'Note added to' : 'नोट जोड़ा गया'} ${selectedOrder.order_number}`);
             fetchOrders();
@@ -856,61 +914,14 @@ export function PurchaseOrders({ language }: PurchaseOrdersProps) {
           fetchOrders();
           break;
       }
-      
+
       closeModal();
     } catch (err: any) {
       setError(err?.detail || err?.message || 'Unknown error');
     }
   };
 
-  const ActionDropdown = ({ orderId }: { orderId: string }) => {
-    const isOpen = openDropdown === orderId;
-    
-    return (
-      <div className="relative">
-        <Button 
-          variant="ghost" 
-          size="sm"
-          onClick={(e) => {
-            e.stopPropagation();
-            setOpenDropdown(isOpen ? null : orderId);
-          }}
-        >
-          <MoreVertical className="h-4 w-4" />
-        </Button>
 
-        <OrderActionsDropdown
-          orderId={orderId}
-          isOpen={isOpen}
-          onClose={() => setOpenDropdown(null)}
-          onAction={handleAction}
-          translations={{
-            viewDetails: (t as any).viewDetails || 'View Details',
-            editOrder: (t as any).editOrder || 'Edit Order',
-            duplicateOrder: (t as any).duplicateOrder || 'Duplicate Order',
-            printOrder: (t as any).printOrder || 'Print Order',
-            trackProgress: (t as any).trackProgress || 'Track Progress',
-            productionPlan: (t as any).productionPlan || 'Production Plan',
-            assignTeam: (t as any).assignTeam || 'Assign Team',
-            addNotes: (t as any).addNotes || 'Add Notes',
-            downloadBOM: (t as any).downloadBOM || 'Download BOM',
-            exportExcel: (t as any).exportExcel || 'Export Excel',
-            generateQR: (t as any).generateQR || 'Generate QR',
-            sendToProduction: (t as any).sendToProduction || 'Send to Production',
-            requestMaterials: (t as any).requestMaterials || 'Request Materials',
-            reschedule: (t as any).reschedule || 'Reschedule',
-            shareOrder: (t as any).shareOrder || 'Share Order',
-            viewHistory: (t as any).viewHistory || 'View History',
-            archiveOrder: (t as any).archiveOrder || 'Archive Order',
-            markPriority: (t as any).markPriority || 'Mark Priority',
-            cancelOrder: (t as any).cancelOrder || 'Cancel Order',
-            deleteOrder: (t as any).deleteOrder || 'Delete Order',
-            createWorkingOrder: (t as any).createWorkingOrder || 'Create Working Order',
-          }}
-        />
-      </div>
-    );
-  };
 
   const getStatusBadge = (status: string) => {
     switch (status.toLowerCase()) {
@@ -933,16 +944,18 @@ export function PurchaseOrders({ language }: PurchaseOrdersProps) {
   const ModalWrapper = ({ children, title }: { children: React.ReactNode; title: string }) => (
     <>
       <div className="fixed inset-0 bg-black/50 z-40" onClick={closeModal} />
-      <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-full max-w-lg">
-        <Card className="p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl">{title}</h2>
-            <Button variant="ghost" size="sm" onClick={closeModal}>
-              <XCircle className="h-5 w-5" />
-            </Button>
-          </div>
-          {children}
-        </Card>
+      <div className="fixed inset-0 z-50 overflow-y-auto">
+        <div className="min-h-full flex items-center justify-center p-4">
+          <Card className="w-full max-w-lg p-6 shadow-2xl border-none">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-bold">{title}</h2>
+              <Button variant="ghost" size="sm" onClick={closeModal}>
+                <XCircle className="h-5 w-5" />
+              </Button>
+            </div>
+            {children}
+          </Card>
+        </div>
       </div>
     </>
   );
@@ -1019,16 +1032,16 @@ export function PurchaseOrders({ language }: PurchaseOrdersProps) {
               </div>
               <div>
                 <label className="text-sm text-zinc-600 block mb-1">{t.quantity}</label>
-                <Input 
-                  type="number" 
+                <Input
+                  type="number"
                   value={editOrderData.quantity || selectedOrder.quantity}
                   onChange={(e) => setEditOrderData(prev => ({ ...prev, quantity: e.target.value }))}
                 />
               </div>
               <div>
                 <label className="text-sm text-zinc-600 block mb-1">{t.dueDate}</label>
-                <Input 
-                  type="date" 
+                <Input
+                  type="date"
                   value={editOrderData.due_date || selectedOrder.due_date}
                   onChange={(e) => setEditOrderData(prev => ({ ...prev, due_date: e.target.value }))}
                 />
@@ -1101,33 +1114,51 @@ export function PurchaseOrders({ language }: PurchaseOrdersProps) {
           <ModalWrapper title={`${t.trackProgress}: ${selectedOrder.order_number}`}>
             <div className="space-y-4">
               <div className="space-y-3">
-                {[
-                  { stage: 'Material Planning', progress: 100, status: 'complete' },
-                  { stage: 'Cutting', progress: 100, status: 'complete' },
-                  { stage: 'Sewing', progress: (selectedOrder as any).progress || 0, status: 'active' },
-                  { stage: 'Quality Check', progress: 0, status: 'pending' },
-                  { stage: 'Packaging', progress: 0, status: 'pending' }
-                ].map((item, idx) => (
-                  <div key={idx} className="flex items-center gap-3">
-                    <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                      item.status === 'complete' ? 'bg-emerald-500 text-white' :
-                      item.status === 'active' ? 'bg-blue-500 text-white' :
-                      'bg-zinc-200 text-zinc-500'
-                    }`}>
-                      {item.status === 'complete' ? '✓' : idx + 1}
-                    </div>
-                    <div className="flex-1">
-                      <p className="text-sm">{item.stage}</p>
-                      <div className="h-2 bg-zinc-200 rounded-full overflow-hidden mt-1">
-                        <div 
-                          className={`h-full ${item.status === 'complete' ? 'bg-emerald-500' : item.status === 'active' ? 'bg-blue-500' : 'bg-zinc-300'}`}
-                          style={{ width: `${item.progress}%` }}
-                        />
+                {associatedWorkOrders.length > 0 ? (
+                  associatedWorkOrders.map((wo, idx) => {
+                    const progress = wo.target_quantity > 0 ? (wo.completed_quantity / wo.target_quantity) * 100 : 0;
+                    const status = wo.status.toLowerCase();
+                    const isComplete = status === 'completed';
+                    const isActive = status === 'in_progress';
+
+                    return (
+                      <div key={wo.id} className="flex items-center gap-3">
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center ${isComplete ? 'bg-emerald-500 text-white' :
+                          isActive ? 'bg-blue-500 text-white' :
+                            'bg-zinc-200 text-zinc-500'
+                          }`}>
+                          {isComplete ? '✓' : idx + 1}
+                        </div>
+                        <div className="flex-1">
+                          <p className="text-sm font-medium">{wo.operation}</p>
+                          <div className="h-2 bg-zinc-200 rounded-full overflow-hidden mt-1">
+                            <div
+                              className={`h-full ${isComplete ? 'bg-emerald-500' : isActive ? 'bg-blue-500' : 'bg-zinc-300'}`}
+                              style={{ width: `${progress}%` }}
+                            />
+                          </div>
+                        </div>
+                        <span className="text-sm text-zinc-600">{Math.round(progress)}%</span>
                       </div>
-                    </div>
-                    <span className="text-sm text-zinc-600">{item.progress}%</span>
+                    );
+                  })
+                ) : (
+                  <div className="text-center py-8 bg-zinc-50 rounded-lg">
+                    <AlertCircle className="h-10 w-10 text-zinc-300 mx-auto mb-2" />
+                    <p className="text-zinc-500 text-sm">
+                      {language === 'en' ? 'No work orders created for this order yet.' : 'इस ऑर्डर के लिए अभी तक कोई वर्किंग ऑर्डर नहीं बनाया गया है।'}
+                    </p>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="mt-4"
+                      onClick={() => handleAction('createWorkingOrder', selectedOrder.id)}
+                    >
+                      <Plus className="h-4 w-4 mr-2" />
+                      {t.createWorkingOrder}
+                    </Button>
                   </div>
-                ))}
+                )}
               </div>
               <Button onClick={closeModal} className="w-full">
                 {language === 'en' ? 'Close' : 'बंद करें'}
@@ -1137,33 +1168,18 @@ export function PurchaseOrders({ language }: PurchaseOrdersProps) {
         );
 
       case 'productionPlan':
+        const completedCount = associatedWorkOrders.filter(wo => wo.status.toLowerCase() === 'completed').length;
+        const activeCount = associatedWorkOrders.filter(wo => wo.status.toLowerCase() === 'in_progress').length;
+        const pendingCount = associatedWorkOrders.length - completedCount - activeCount;
+
         return (
           <>
             <div className="fixed inset-0 bg-black/50 z-40" onClick={closeModal} />
             <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-full max-w-2xl max-h-[90vh] overflow-hidden">
               <Card className="p-6">
                 <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-xl">{`${t.productionPlan}: ${selectedOrder.id}`}</h2>
+                  <h2 className="text-xl">{`${t.productionPlan}: ${selectedOrder.order_number}`}</h2>
                   <div className="flex gap-2">
-                    {!isEditingTimeline ? (
-                      <Button 
-                        variant="outline" 
-                        size="sm"
-                        onClick={() => setIsEditingTimeline(true)}
-                      >
-                        <Edit className="h-4 w-4 mr-2" />
-                        {language === 'en' ? 'Edit Timeline' : 'समयरेखा संपादित करें'}
-                      </Button>
-                    ) : (
-                      <Button 
-                        variant="outline" 
-                        size="sm"
-                        onClick={() => setIsEditingTimeline(false)}
-                      >
-                        <Eye className="h-4 w-4 mr-2" />
-                        {language === 'en' ? 'View Mode' : 'देखें मोड'}
-                      </Button>
-                    )}
                     <Button variant="ghost" size="sm" onClick={closeModal}>
                       <XCircle className="h-5 w-5" />
                     </Button>
@@ -1183,7 +1199,7 @@ export function PurchaseOrders({ language }: PurchaseOrdersProps) {
                       </div>
                       <div>
                         <p className="text-zinc-600">{language === 'en' ? 'Start Date' : 'प्रारंभ तिथि'}</p>
-                        <p className="font-medium">Dec 1, 2024</p>
+                        <p className="font-medium">{(selectedOrder as any).start_time ? new Date((selectedOrder as any).start_time).toLocaleDateString() : 'TBD'}</p>
                       </div>
                       <div>
                         <p className="text-zinc-600">{t.dueDate}</p>
@@ -1192,467 +1208,102 @@ export function PurchaseOrders({ language }: PurchaseOrdersProps) {
                     </div>
                   </div>
 
-                  {/* Edit Mode Notice */}
-                  {isEditingTimeline && (
-                    <div className="bg-amber-50 border border-amber-200 p-3 rounded-lg flex items-start gap-2">
-                      <Edit className="h-5 w-5 text-amber-600 mt-0.5" />
-                      <div>
-                        <p className="font-medium text-amber-900">
-                          {language === 'en' ? 'Edit Mode Active' : 'संपादन मोड सक्रिय'}
-                        </p>
-                        <p className="text-sm text-amber-700">
-                          {language === 'en' 
-                            ? 'Modify schedules, teams, and dates below. Click Save Changes when done.' 
-                            : 'नीचे शेड्यूल, टीम और तारीखें संशोधित करें। पूर्ण होने पर परिवर्तन सहेजें पर क्लिक करें।'}
-                        </p>
-                      </div>
-                    </div>
-                  )}
-
                   {/* Timeline Stages */}
                   <div className="space-y-4">
-                    {/* Stage 1 - Material Planning */}
-                    <div className="relative border-l-4 border-emerald-500 pl-4 pb-6">
-                      <div className="absolute -left-[13px] top-0 w-6 h-6 rounded-full bg-emerald-500 flex items-center justify-center">
-                        <CheckCircle2 className="h-4 w-4 text-white" />
-                      </div>
-                      <div className="bg-white border border-zinc-200 rounded-lg p-4">
-                        <div className="flex items-start justify-between mb-2">
-                          <div>
-                            <h3 className="font-medium">{language === 'en' ? '1. Material Planning' : '1. सामग्री योजना'}</h3>
-                            <p className="text-sm text-emerald-600">{language === 'en' ? 'Completed' : 'पूर्ण'}</p>
-                          </div>
-                          <Badge className="bg-emerald-500">{language === 'en' ? 'Done' : 'हो गया'}</Badge>
-                        </div>
-                        {isEditingTimeline ? (
-                          <div className="grid grid-cols-2 gap-3 mt-3">
-                            <div>
-                              <label className="text-xs text-zinc-600 mb-1 block">{language === 'en' ? 'Start Time' : 'प्रारंभ समय'}</label>
-                              <Input 
-                                type="datetime-local" 
-                                value={timelineData.stage1Start}
-                                onChange={(e) => handleTimelineUpdate('stage1Start', e.target.value)}
-                                className="text-sm h-8"
-                              />
-                            </div>
-                            <div>
-                              <label className="text-xs text-zinc-600 mb-1 block">{language === 'en' ? 'End Time' : 'समाप्ति समय'}</label>
-                              <Input 
-                                type="datetime-local" 
-                                value={timelineData.stage1End}
-                                onChange={(e) => handleTimelineUpdate('stage1End', e.target.value)}
-                                className="text-sm h-8"
-                              />
-                            </div>
-                            <div className="col-span-2">
-                              <label className="text-xs text-zinc-600 mb-1 block">{language === 'en' ? 'Team' : 'टीम'}</label>
-                              <select
-                                value={timelineData.stage1Team}
-                                onChange={(e) => handleTimelineUpdate('stage1Team', e.target.value)}
-                                className="w-full p-1.5 text-sm border border-zinc-300 rounded-md"
-                              >
-                                <option value="Planning Team">Planning Team</option>
-                                <option value="Team A - Cutting Department">Team A - Cutting Department</option>
-                                <option value="Team B - Sewing Department">Team B - Sewing Department</option>
-                                <option value="Team C - Quality Control">Team C - Quality Control</option>
-                                <option value="Team D - Packaging">Team D - Packaging</option>
-                              </select>
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="grid grid-cols-2 gap-2 text-sm mt-3">
-                            <div>
-                              <p className="text-zinc-600">{language === 'en' ? 'Start' : 'शुरू'}</p>
-                              <p>Dec 1, 9:00 AM</p>
-                            </div>
-                            <div>
-                              <p className="text-zinc-600">{language === 'en' ? 'Completed' : 'पूर्ण'}</p>
-                              <p>Dec 1, 2:00 PM</p>
-                            </div>
-                            <div>
-                              <p className="text-zinc-600">{language === 'en' ? 'Team' : 'टीम'}</p>
-                              <p>{timelineData.stage1Team}</p>
-                            </div>
-                            <div>
-                              <p className="text-zinc-600">{language === 'en' ? 'Duration' : 'अवधि'}</p>
-                              <p>5 {language === 'en' ? 'hours' : 'घंटे'}</p>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </div>
+                    {associatedWorkOrders.length > 0 ? (
+                      associatedWorkOrders.map((wo, idx) => {
+                        const status = wo.status.toLowerCase();
+                        const isComplete = status === 'completed';
+                        const isActive = status === 'in_progress';
 
-                    {/* Stage 2 - Cutting */}
-                    <div className="relative border-l-4 border-emerald-500 pl-4 pb-6">
-                      <div className="absolute -left-[13px] top-0 w-6 h-6 rounded-full bg-emerald-500 flex items-center justify-center">
-                        <CheckCircle2 className="h-4 w-4 text-white" />
+                        return (
+                          <div key={wo.id} className={`relative border-l-4 ${isComplete ? 'border-emerald-500' : isActive ? 'border-blue-500' : 'border-zinc-200'} pl-4 pb-6 last:pb-2`}>
+                            <div className={`absolute -left-[13px] top-0 w-6 h-6 rounded-full flex items-center justify-center ${isComplete ? 'bg-emerald-500' : isActive ? 'bg-blue-500' : 'bg-zinc-200'}`}>
+                              {isComplete ? <CheckCircle2 className="h-4 w-4 text-white" /> :
+                                isActive ? <Minus className="h-4 w-4 text-white" /> :
+                                  <AlertCircle className="h-4 w-4 text-zinc-500" />
+                              }
+                            </div>
+                            <div className={`bg-white border ${isActive ? 'border-blue-200 bg-blue-50/30' : 'border-zinc-200'} rounded-lg p-4`}>
+                              <div className="flex items-start justify-between mb-2">
+                                <div>
+                                  <h3 className="font-medium">{idx + 1}. {wo.operation}</h3>
+                                  <p className={`text-sm ${isComplete ? 'text-emerald-600' : isActive ? 'text-blue-600' : 'text-zinc-500'}`}>
+                                    {isComplete ? (language === 'en' ? 'Completed' : 'पूर्ण') :
+                                      isActive ? (language === 'en' ? 'In Progress' : 'प्रगति में') :
+                                        (language === 'en' ? 'Planned' : 'योजनित')}
+                                  </p>
+                                </div>
+                                <Badge className={isComplete ? 'bg-emerald-500' : isActive ? 'bg-blue-500' : 'bg-zinc-400'}>
+                                  {wo.status}
+                                </Badge>
+                              </div>
+                              <div className="grid grid-cols-2 gap-2 text-sm mt-3">
+                                <div>
+                                  <p className="text-zinc-600 font-normal uppercase text-[10px] tracking-wider">{language === 'en' ? 'Start' : 'शुरू'}</p>
+                                  <p>{wo.scheduled_start ? new Date(wo.scheduled_start).toLocaleString() : 'TBD'}</p>
+                                </div>
+                                <div>
+                                  <p className="text-zinc-600 font-normal uppercase text-[10px] tracking-wider">{language === 'en' ? 'End' : 'समाप्ति'}</p>
+                                  <p>{wo.scheduled_end ? new Date(wo.scheduled_end).toLocaleString() : 'TBD'}</p>
+                                </div>
+                                {wo.assigned_team && (
+                                  <div className="col-span-2 mt-2">
+                                    <p className="text-zinc-600 font-normal uppercase text-[10px] tracking-wider">{language === 'en' ? 'Team' : 'टीम'}</p>
+                                    <p className="flex items-center gap-1"><Users className="h-3 w-3" /> {wo.assigned_team}</p>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })
+                    ) : (
+                      <div className="text-center py-12 bg-zinc-50 rounded-xl border border-dashed border-zinc-300">
+                        <Package className="h-12 w-12 text-zinc-300 mx-auto mb-3" />
+                        <p className="text-zinc-500 font-medium">
+                          {language === 'en' ? 'No production stages defined.' : 'कोई उत्पादन चरण परिभाषित नहीं हैं।'}
+                        </p>
+                        <p className="text-zinc-400 text-xs mt-1">
+                          {language === 'en' ? 'Create working orders to see the timeline.' : 'समयरेखा देखने के लिए वर्किंग ऑर्डर बनाएं।'}
+                        </p>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="mt-4"
+                          onClick={() => handleAction('createWorkingOrder', selectedOrder.id)}
+                        >
+                          <Plus className="h-4 w-4 mr-2" />
+                          {t.createWorkingOrder}
+                        </Button>
                       </div>
-                      <div className="bg-white border border-zinc-200 rounded-lg p-4">
-                        <div className="flex items-start justify-between mb-2">
-                          <div>
-                            <h3 className="font-medium">{language === 'en' ? '2. Fabric Cutting' : '2. कपड़ा कटाई'}</h3>
-                            <p className="text-sm text-emerald-600">{language === 'en' ? 'Completed' : 'पूर्ण'}</p>
-                          </div>
-                          <Badge className="bg-emerald-500">{language === 'en' ? 'Done' : 'हो गया'}</Badge>
-                        </div>
-                        {isEditingTimeline ? (
-                          <div className="grid grid-cols-2 gap-3 mt-3">
-                            <div>
-                              <label className="text-xs text-zinc-600 mb-1 block">{language === 'en' ? 'Start Time' : 'प्रारंभ समय'}</label>
-                              <Input 
-                                type="datetime-local" 
-                                value={timelineData.stage2Start}
-                                onChange={(e) => handleTimelineUpdate('stage2Start', e.target.value)}
-                                className="text-sm h-8"
-                              />
-                            </div>
-                            <div>
-                              <label className="text-xs text-zinc-600 mb-1 block">{language === 'en' ? 'End Time' : 'समाप्ति समय'}</label>
-                              <Input 
-                                type="datetime-local" 
-                                value={timelineData.stage2End}
-                                onChange={(e) => handleTimelineUpdate('stage2End', e.target.value)}
-                                className="text-sm h-8"
-                              />
-                            </div>
-                            <div className="col-span-2">
-                              <label className="text-xs text-zinc-600 mb-1 block">{language === 'en' ? 'Team' : 'टीम'}</label>
-                              <select
-                                value={timelineData.stage2Team}
-                                onChange={(e) => handleTimelineUpdate('stage2Team', e.target.value)}
-                                className="w-full p-1.5 text-sm border border-zinc-300 rounded-md"
-                              >
-                                <option value="Planning Team">Planning Team</option>
-                                <option value="Team A - Cutting Department">Team A - Cutting Department</option>
-                                <option value="Team B - Sewing Department">Team B - Sewing Department</option>
-                                <option value="Team C - Quality Control">Team C - Quality Control</option>
-                                <option value="Team D - Packaging">Team D - Packaging</option>
-                              </select>
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="grid grid-cols-2 gap-2 text-sm mt-3">
-                            <div>
-                              <p className="text-zinc-600">{language === 'en' ? 'Start' : 'शुरू'}</p>
-                              <p>Dec 2, 8:00 AM</p>
-                            </div>
-                            <div>
-                              <p className="text-zinc-600">{language === 'en' ? 'Completed' : 'पूर्ण'}</p>
-                              <p>Dec 2, 4:00 PM</p>
-                            </div>
-                            <div>
-                              <p className="text-zinc-600">{language === 'en' ? 'Team' : 'टीम'}</p>
-                              <p>{timelineData.stage2Team}</p>
-                            </div>
-                            <div>
-                              <p className="text-zinc-600">{language === 'en' ? 'Duration' : 'अवधि'}</p>
-                              <p>8 {language === 'en' ? 'hours' : 'घंटे'}</p>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Stage 3 - Sewing (Active) */}
-                    <div className="relative border-l-4 border-blue-500 pl-4 pb-6">
-                      <div className="absolute -left-[13px] top-0 w-6 h-6 rounded-full bg-blue-500 flex items-center justify-center animate-pulse">
-                        <Minus className="h-4 w-4 text-white" />
-                      </div>
-                      <div className="bg-blue-50 border-2 border-blue-300 rounded-lg p-4">
-                        <div className="flex items-start justify-between mb-2">
-                          <div>
-                            <h3 className="font-medium text-blue-900">{language === 'en' ? '3. Sewing & Assembly' : '3. सिलाई और असेंबली'}</h3>
-                            <p className="text-sm text-blue-600">{language === 'en' ? 'In Progress' : 'प्रगति में'}</p>
-                          </div>
-                          <Badge className="bg-blue-500">{language === 'en' ? 'Active' : 'सक्रिय'}</Badge>
-                        </div>
-                        {isEditingTimeline ? (
-                          <div className="grid grid-cols-2 gap-3 mt-3 mb-3">
-                            <div>
-                              <label className="text-xs text-zinc-600 mb-1 block">{language === 'en' ? 'Start Time' : 'प्रारंभ समय'}</label>
-                              <Input 
-                                type="datetime-local" 
-                                value={timelineData.stage3Start}
-                                onChange={(e) => handleTimelineUpdate('stage3Start', e.target.value)}
-                                className="text-sm h-8"
-                              />
-                            </div>
-                            <div>
-                              <label className="text-xs text-zinc-600 mb-1 block">{language === 'en' ? 'Est. Complete' : 'अनुमानित पूर्ण'}</label>
-                              <Input 
-                                type="datetime-local" 
-                                value={timelineData.stage3End}
-                                onChange={(e) => handleTimelineUpdate('stage3End', e.target.value)}
-                                className="text-sm h-8"
-                              />
-                            </div>
-                            <div className="col-span-2">
-                              <label className="text-xs text-zinc-600 mb-1 block">{language === 'en' ? 'Team' : 'टीम'}</label>
-                              <select
-                                value={timelineData.stage3Team}
-                                onChange={(e) => handleTimelineUpdate('stage3Team', e.target.value)}
-                                className="w-full p-1.5 text-sm border border-zinc-300 rounded-md"
-                              >
-                                <option value="Planning Team">Planning Team</option>
-                                <option value="Team A - Cutting Department">Team A - Cutting Department</option>
-                                <option value="Team B - Sewing Department">Team B - Sewing Department</option>
-                                <option value="Team C - Quality Control">Team C - Quality Control</option>
-                                <option value="Team D - Packaging">Team D - Packaging</option>
-                              </select>
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="grid grid-cols-2 gap-2 text-sm mt-3 mb-3">
-                            <div>
-                              <p className="text-zinc-600">{language === 'en' ? 'Started' : 'शुरू किया'}</p>
-                              <p>Dec 3, 7:00 AM</p>
-                            </div>
-                            <div>
-                              <p className="text-zinc-600">{language === 'en' ? 'Est. Complete' : 'अनुमानित पूर्ण'}</p>
-                              <p>Dec 4, 6:00 PM</p>
-                            </div>
-                            <div>
-                              <p className="text-zinc-600">{language === 'en' ? 'Team' : 'टीम'}</p>
-                              <p>{timelineData.stage3Team}</p>
-                            </div>
-                            <div>
-                              <p className="text-zinc-600">{language === 'en' ? 'Progress' : 'प्रगति'}</p>
-                              <p>{(selectedOrder as any).progress || 0}%</p>
-                            </div>
-                          </div>
-                        )}
-                        <div className="bg-white rounded-lg p-2">
-                          <div className="flex justify-between text-xs mb-1">
-                            <span>{language === 'en' ? 'Current Progress' : 'वर्तमान प्रगति'}</span>
-                            <span className="font-medium">{(selectedOrder as any).progress || 0}%</span>
-                          </div>
-                          <div className="h-3 bg-zinc-200 rounded-full overflow-hidden">
-                            <div 
-                              className="h-full bg-gradient-to-r from-blue-500 to-blue-600"
-                              style={{ width: `${(selectedOrder as any).progress || 0}%` }}
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Stage 4 - Quality Check */}
-                    <div className="relative border-l-4 border-zinc-300 pl-4 pb-6">
-                      <div className="absolute -left-[13px] top-0 w-6 h-6 rounded-full bg-zinc-300 flex items-center justify-center">
-                        <AlertCircle className="h-4 w-4 text-zinc-600" />
-                      </div>
-                      <div className="bg-white border border-zinc-200 rounded-lg p-4 opacity-75">
-                        <div className="flex items-start justify-between mb-2">
-                          <div>
-                            <h3 className="font-medium">{language === 'en' ? '4. Quality Check' : '4. गुणवत्ता जांच'}</h3>
-                            <p className="text-sm text-zinc-500">{language === 'en' ? 'Pending' : 'लंबित'}</p>
-                          </div>
-                          <Badge className="bg-zinc-400">{language === 'en' ? 'Queued' : 'कतारबद्ध'}</Badge>
-                        </div>
-                        {isEditingTimeline ? (
-                          <div className="grid grid-cols-2 gap-3 mt-3">
-                            <div>
-                              <label className="text-xs text-zinc-600 mb-1 block">{language === 'en' ? 'Scheduled Start' : 'निर्धारित प्रारंभ'}</label>
-                              <Input 
-                                type="datetime-local" 
-                                value={timelineData.stage4Start}
-                                onChange={(e) => handleTimelineUpdate('stage4Start', e.target.value)}
-                                className="text-sm h-8"
-                              />
-                            </div>
-                            <div>
-                              <label className="text-xs text-zinc-600 mb-1 block">{language === 'en' ? 'Est. Complete' : 'अनुमानित पूर्ण'}</label>
-                              <Input 
-                                type="datetime-local" 
-                                value={timelineData.stage4End}
-                                onChange={(e) => handleTimelineUpdate('stage4End', e.target.value)}
-                                className="text-sm h-8"
-                              />
-                            </div>
-                            <div className="col-span-2">
-                              <label className="text-xs text-zinc-600 mb-1 block">{language === 'en' ? 'Team' : 'टीम'}</label>
-                              <select
-                                value={timelineData.stage4Team}
-                                onChange={(e) => handleTimelineUpdate('stage4Team', e.target.value)}
-                                className="w-full p-1.5 text-sm border border-zinc-300 rounded-md"
-                              >
-                                <option value="Planning Team">Planning Team</option>
-                                <option value="Team A - Cutting Department">Team A - Cutting Department</option>
-                                <option value="Team B - Sewing Department">Team B - Sewing Department</option>
-                                <option value="Team C - Quality Control">Team C - Quality Control</option>
-                                <option value="Team D - Packaging">Team D - Packaging</option>
-                              </select>
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="grid grid-cols-2 gap-2 text-sm mt-3">
-                            <div>
-                              <p className="text-zinc-600">{language === 'en' ? 'Scheduled' : 'निर्धारित'}</p>
-                              <p>Dec 4, 6:30 PM</p>
-                            </div>
-                            <div>
-                              <p className="text-zinc-600">{language === 'en' ? 'Est. Complete' : 'अनुमानित पूर्ण'}</p>
-                              <p>Dec 5, 12:00 PM</p>
-                            </div>
-                            <div>
-                              <p className="text-zinc-600">{language === 'en' ? 'Team' : 'टीम'}</p>
-                              <p>{timelineData.stage4Team}</p>
-                            </div>
-                            <div>
-                              <p className="text-zinc-600">{language === 'en' ? 'Est. Duration' : 'अनुमानित अवधि'}</p>
-                              <p>6 {language === 'en' ? 'hours' : 'घंटे'}</p>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Stage 5 - Packaging */}
-                    <div className="relative border-l-4 border-zinc-300 pl-4 pb-2">
-                      <div className="absolute -left-[13px] top-0 w-6 h-6 rounded-full bg-zinc-300 flex items-center justify-center">
-                        <AlertCircle className="h-4 w-4 text-zinc-600" />
-                      </div>
-                      <div className="bg-white border border-zinc-200 rounded-lg p-4 opacity-75">
-                        <div className="flex items-start justify-between mb-2">
-                          <div>
-                            <h3 className="font-medium">{language === 'en' ? '5. Packaging & Labeling' : '5. पैकेजिंग और लेबलिंग'}</h3>
-                            <p className="text-sm text-zinc-500">{language === 'en' ? 'Pending' : 'लंबित'}</p>
-                          </div>
-                          <Badge className="bg-zinc-400">{language === 'en' ? 'Queued' : 'कतारबद्ध'}</Badge>
-                        </div>
-                        {isEditingTimeline ? (
-                          <div className="grid grid-cols-2 gap-3 mt-3">
-                            <div>
-                              <label className="text-xs text-zinc-600 mb-1 block">{language === 'en' ? 'Scheduled Start' : 'निर्धारित प्रारंभ'}</label>
-                              <Input 
-                                type="datetime-local" 
-                                value={timelineData.stage5Start}
-                                onChange={(e) => handleTimelineUpdate('stage5Start', e.target.value)}
-                                className="text-sm h-8"
-                              />
-                            </div>
-                            <div>
-                              <label className="text-xs text-zinc-600 mb-1 block">{language === 'en' ? 'Est. Complete' : 'अनुमानित पूर्ण'}</label>
-                              <Input 
-                                type="datetime-local" 
-                                value={timelineData.stage5End}
-                                onChange={(e) => handleTimelineUpdate('stage5End', e.target.value)}
-                                className="text-sm h-8"
-                              />
-                            </div>
-                            <div className="col-span-2">
-                              <label className="text-xs text-zinc-600 mb-1 block">{language === 'en' ? 'Team' : 'टीम'}</label>
-                              <select
-                                value={timelineData.stage5Team}
-                                onChange={(e) => handleTimelineUpdate('stage5Team', e.target.value)}
-                                className="w-full p-1.5 text-sm border border-zinc-300 rounded-md"
-                              >
-                                <option value="Planning Team">Planning Team</option>
-                                <option value="Team A - Cutting Department">Team A - Cutting Department</option>
-                                <option value="Team B - Sewing Department">Team B - Sewing Department</option>
-                                <option value="Team C - Quality Control">Team C - Quality Control</option>
-                                <option value="Team D - Packaging">Team D - Packaging</option>
-                              </select>
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="grid grid-cols-2 gap-2 text-sm mt-3">
-                            <div>
-                              <p className="text-zinc-600">{language === 'en' ? 'Scheduled' : 'निर्धारित'}</p>
-                              <p>Dec 5, 1:00 PM</p>
-                            </div>
-                            <div>
-                              <p className="text-zinc-600">{language === 'en' ? 'Est. Complete' : 'अनुमानित पूर्ण'}</p>
-                              <p>Dec 5, 5:00 PM</p>
-                            </div>
-                            <div>
-                              <p className="text-zinc-600">{language === 'en' ? 'Team' : 'टीम'}</p>
-                              <p>{timelineData.stage5Team}</p>
-                            </div>
-                            <div>
-                              <p className="text-zinc-600">{language === 'en' ? 'Est. Duration' : 'अनुमानित अवधि'}</p>
-                              <p>4 {language === 'en' ? 'hours' : 'घंटे'}</p>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Stage 6 - Dispatch */}
-                    <div className="relative pl-4">
-                      <div className="absolute -left-[13px] top-0 w-6 h-6 rounded-full bg-zinc-300 flex items-center justify-center">
-                        <Package className="h-4 w-4 text-zinc-600" />
-                      </div>
-                      <div className="bg-white border border-zinc-200 rounded-lg p-4 opacity-75">
-                        <div className="flex items-start justify-between mb-2">
-                          <div>
-                            <h3 className="font-medium">{language === 'en' ? '6. Ready for Dispatch' : '6. प्रेषण के लिए तैयार'}</h3>
-                            <p className="text-sm text-zinc-500">{language === 'en' ? 'Final Stage' : 'अंतिम चरण'}</p>
-                          </div>
-                          <Badge className="bg-zinc-400">{language === 'en' ? 'Queued' : 'कतारबद्ध'}</Badge>
-                        </div>
-                        {isEditingTimeline ? (
-                          <div className="grid grid-cols-2 gap-3 mt-3">
-                            <div className="col-span-2">
-                              <label className="text-xs text-zinc-600 mb-1 block">{language === 'en' ? 'Dispatch Time' : 'प्रेषण समय'}</label>
-                              <Input 
-                                type="datetime-local" 
-                                value={timelineData.stage6Start}
-                                onChange={(e) => handleTimelineUpdate('stage6Start', e.target.value)}
-                                className="text-sm h-8"
-                              />
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="grid grid-cols-2 gap-2 text-sm mt-3">
-                            <div>
-                              <p className="text-zinc-600">{language === 'en' ? 'Scheduled' : 'निर्धारित'}</p>
-                              <p>Dec 5, 5:30 PM</p>
-                            </div>
-                            <div>
-                              <p className="text-zinc-600">{language === 'en' ? 'Delivery Date' : 'वितरण तिथि'}</p>
-                              <p className="font-medium text-emerald-600">{selectedOrder.due_date}</p>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </div>
+                    )}
                   </div>
 
                   {/* Summary Card */}
-                  <div className="bg-gradient-to-r from-emerald-50 to-green-50 p-4 rounded-lg border border-emerald-200">
-                    <h3 className="font-medium mb-2">{language === 'en' ? 'Production Summary' : 'उत्पादन सारांश'}</h3>
-                    <div className="grid grid-cols-3 gap-3 text-sm">
-                      <div>
-                        <p className="text-zinc-600">{language === 'en' ? 'Completed' : 'पूर्ण'}</p>
-                        <p className="text-lg font-medium text-emerald-600">2/6</p>
-                      </div>
-                      <div>
-                        <p className="text-zinc-600">{language === 'en' ? 'Active' : 'सक्रिय'}</p>
-                        <p className="text-lg font-medium text-blue-600">1/6</p>
-                      </div>
-                      <div>
-                        <p className="text-zinc-600">{language === 'en' ? 'Pending' : 'लंबित'}</p>
-                        <p className="text-lg font-medium text-zinc-600">3/6</p>
+                  {associatedWorkOrders.length > 0 && (
+                    <div className="bg-gradient-to-r from-emerald-50 to-blue-50 p-4 rounded-lg border border-emerald-100">
+                      <h3 className="font-medium mb-3 text-emerald-900">{language === 'en' ? 'Production Summary' : 'उत्पादन सारांश'}</h3>
+                      <div className="grid grid-cols-3 gap-3 text-sm">
+                        <div className="bg-white/60 p-2 rounded-md">
+                          <p className="text-zinc-600 text-[10px] uppercase font-semibold">{language === 'en' ? 'Completed' : 'पूर्ण'}</p>
+                          <p className="text-xl font-bold text-emerald-600">{completedCount}/{associatedWorkOrders.length}</p>
+                        </div>
+                        <div className="bg-white/60 p-2 rounded-md">
+                          <p className="text-zinc-600 text-[10px] uppercase font-semibold">{language === 'en' ? 'Active' : 'सक्रिय'}</p>
+                          <p className="text-xl font-bold text-blue-600">{activeCount}/{associatedWorkOrders.length}</p>
+                        </div>
+                        <div className="bg-white/60 p-2 rounded-md">
+                          <p className="text-zinc-600 text-[10px] uppercase font-semibold">{language === 'en' ? 'Pending' : 'लंबित'}</p>
+                          <p className="text-xl font-bold text-zinc-500">{pendingCount}/{associatedWorkOrders.length}</p>
+                        </div>
                       </div>
                     </div>
-                  </div>
-
-                  {isEditingTimeline ? (
-                    <div className="flex gap-2">
-                      <Button onClick={() => setIsEditingTimeline(false)} variant="outline" className="flex-1">
-                        {language === 'en' ? 'Cancel' : 'रद्द करें'}
-                      </Button>
-                      <Button onClick={saveTimeline} className="flex-1 bg-emerald-600">
-                        <CheckCircle2 className="h-4 w-4 mr-2" />
-                        {language === 'en' ? 'Save Changes' : 'परिवर्तन सहेजें'}
-                      </Button>
-                    </div>
-                  ) : (
-                    <Button onClick={closeModal} className="w-full">
-                      {language === 'en' ? 'Close Timeline' : 'समयरेखा बंद करें'}
-                    </Button>
                   )}
+
+                  <Button onClick={closeModal} className="w-full h-12 text-base font-medium">
+                    {language === 'en' ? 'Close Plan' : 'योजना बंद करें'}
+                  </Button>
                 </div>
               </Card>
             </div>
@@ -1667,7 +1318,7 @@ export function PurchaseOrders({ language }: PurchaseOrdersProps) {
                 <label className="text-sm text-zinc-600 mb-2 block">
                   {language === 'en' ? 'Select Team' : 'टीम चुनें'}
                 </label>
-                <select 
+                <select
                   value={selectedTeam}
                   onChange={(e) => setSelectedTeam(e.target.value)}
                   className="w-full p-2 border border-zinc-300 rounded-md"
@@ -1683,8 +1334,8 @@ export function PurchaseOrders({ language }: PurchaseOrdersProps) {
                 <Button onClick={closeModal} variant="outline" className="flex-1">
                   {language === 'en' ? 'Cancel' : 'रद्द करें'}
                 </Button>
-                <Button 
-                  onClick={() => handleSubmit('assignTeam')} 
+                <Button
+                  onClick={() => handleSubmit('assignTeam')}
                   className="flex-1"
                   disabled={!selectedTeam}
                 >
@@ -1715,8 +1366,8 @@ export function PurchaseOrders({ language }: PurchaseOrdersProps) {
                 <Button onClick={closeModal} variant="outline" className="flex-1">
                   {language === 'en' ? 'Cancel' : 'रद्द करें'}
                 </Button>
-                <Button 
-                  onClick={() => handleSubmit('addNotes')} 
+                <Button
+                  onClick={() => handleSubmit('addNotes')}
                   className="flex-1"
                   disabled={!noteText.trim()}
                 >
@@ -1736,8 +1387,8 @@ export function PurchaseOrders({ language }: PurchaseOrdersProps) {
                 <h3 className="font-medium mb-2">{selectedOrder.order_number}</h3>
                 {selectedOrder.qr_code ? (
                   <div className="flex flex-col items-center gap-4">
-                    <img 
-                      src={selectedOrder.qr_code} 
+                    <img
+                      src={selectedOrder.qr_code}
                       alt={`QR Code for ${selectedOrder.order_number}`}
                       className="w-64 h-64 border-2 border-zinc-200 rounded-lg"
                     />
@@ -1779,8 +1430,8 @@ export function PurchaseOrders({ language }: PurchaseOrdersProps) {
                 {activeModal === 'downloadBOM' && <FileText className="h-16 w-16 mx-auto text-emerald-500 mb-4" />}
                 {activeModal === 'exportExcel' && <Download className="h-16 w-16 mx-auto text-blue-500 mb-4" />}
                 <p className="text-zinc-600">
-                  {language === 'en' 
-                    ? `Preparing ${activeModal === 'downloadBOM' ? 'BOM document' : 'Excel file'} for ${selectedOrder.order_number}...` 
+                  {language === 'en'
+                    ? `Preparing ${activeModal === 'downloadBOM' ? 'BOM document' : 'Excel file'} for ${selectedOrder.order_number}...`
                     : `${selectedOrder.order_number} के लिए ${activeModal === 'downloadBOM' ? 'BOM दस्तावेज़' : 'Excel फ़ाइल'} तैयार किया जा रहा है...`}
                 </p>
               </div>
@@ -1803,13 +1454,13 @@ export function PurchaseOrders({ language }: PurchaseOrdersProps) {
             <div className="space-y-4">
               <div className="bg-blue-50 border border-blue-200 p-4 rounded-lg">
                 <p className="text-blue-900">
-                  {language === 'en' 
-                    ? `Send order ${selectedOrder.id} to production floor?` 
+                  {language === 'en'
+                    ? `Send order ${selectedOrder.id} to production floor?`
                     : `ऑर्डर ${selectedOrder.id} को उत्पादन तल पर भेजें?`}
                 </p>
                 <p className="text-sm text-blue-700 mt-2">
-                  {language === 'en' 
-                    ? 'This will notify the production team and start the manufacturing process.' 
+                  {language === 'en'
+                    ? 'This will notify the production team and start the manufacturing process.'
                     : 'यह उत्पादन टीम को सूचित करेगा और निर्माण प्रक्रिया शुरू करेगा।'}
                 </p>
               </div>
@@ -1831,8 +1482,8 @@ export function PurchaseOrders({ language }: PurchaseOrdersProps) {
           <ModalWrapper title={t.requestMaterials}>
             <div className="space-y-4">
               <p className="text-zinc-600">
-                {language === 'en' 
-                  ? `Create material request for order ${selectedOrder.id}?` 
+                {language === 'en'
+                  ? `Create material request for order ${selectedOrder.id}?`
                   : `ऑर्डर ${selectedOrder.id} के लिए सामग्री अनुरोध बनाएं?`}
               </p>
               <div className="bg-zinc-50 p-4 rounded-lg">
@@ -1870,8 +1521,8 @@ export function PurchaseOrders({ language }: PurchaseOrdersProps) {
                 <label className="text-sm text-zinc-600 mb-2 block">
                   {language === 'en' ? 'New Due Date' : 'नई नियत तारीख'}
                 </label>
-                <Input 
-                  type="date" 
+                <Input
+                  type="date"
                   value={newDueDate}
                   onChange={(e) => setNewDueDate(e.target.value)}
                 />
@@ -1880,8 +1531,8 @@ export function PurchaseOrders({ language }: PurchaseOrdersProps) {
                 <Button onClick={closeModal} variant="outline" className="flex-1">
                   {language === 'en' ? 'Cancel' : 'रद्द करें'}
                 </Button>
-                <Button 
-                  onClick={() => handleSubmit('reschedule')} 
+                <Button
+                  onClick={() => handleSubmit('reschedule')}
                   className="flex-1"
                   disabled={!newDueDate}
                 >
@@ -1964,8 +1615,8 @@ export function PurchaseOrders({ language }: PurchaseOrdersProps) {
                 <div className="flex items-center gap-3 mb-2">
                   <config.icon className={`h-6 w-6 text-${config.color}-600`} />
                   <p className={`text-${config.color}-900`}>
-                    {language === 'en' 
-                      ? `Are you sure you want to ${activeModal} this order?` 
+                    {language === 'en'
+                      ? `Are you sure you want to ${activeModal} this order?`
                       : `क्या आप वाकई इस ऑर्डर को ${activeModal === 'delete' ? 'हटाना' : activeModal === 'cancel' ? 'रद्द करना' : activeModal === 'archive' ? 'संग्रहित करना' : 'प्राथमिकता के रूप में चिह्नित करना'} चाहते हैं?`}
                   </p>
                 </div>
@@ -1982,8 +1633,8 @@ export function PurchaseOrders({ language }: PurchaseOrdersProps) {
                 <Button onClick={closeModal} variant="outline" className="flex-1">
                   {language === 'en' ? 'Cancel' : 'रद्द करें'}
                 </Button>
-                <Button 
-                  onClick={() => handleSubmit(activeModal)} 
+                <Button
+                  onClick={() => handleSubmit(activeModal)}
                   className={`flex-1 bg-${config.color}-600`}
                 >
                   {config.title}
@@ -2002,7 +1653,7 @@ export function PurchaseOrders({ language }: PurchaseOrdersProps) {
     <div className="space-y-6">
       {/* Render Modal */}
       {renderModal()}
-      
+
       <div className="flex items-center justify-between">
         <h1>{t.title}</h1>
         <Button className="hidden sm:flex" onClick={() => setShowNewOrderModal(true)}>
@@ -2016,9 +1667,9 @@ export function PurchaseOrders({ language }: PurchaseOrdersProps) {
         <div className="flex gap-3">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400" />
-            <Input 
-              placeholder={t.search} 
-              className="pl-10" 
+            <Input
+              placeholder={t.search}
+              className="pl-10"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
@@ -2074,54 +1725,62 @@ export function PurchaseOrders({ language }: PurchaseOrdersProps) {
       {!isLoading && !error && orders && orders.length > 0 && (
         <div className="lg:hidden space-y-3">
           {orders.map((order) => (
-          <Card key={order.id} className="p-4">
-            <div className="flex items-start justify-between mb-3">
-              <div>
-                <div className="flex items-center gap-2 mb-1">
-                  <span>{order.order_number}</span>
-                  {getStatusBadge(order.status)}
+            <Card key={order.id} className="p-4">
+              <div className="flex items-start justify-between mb-3">
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <span>{order.order_number}</span>
+                    {getStatusBadge(order.status)}
+                  </div>
+                  <p className="text-zinc-600">{order.product_name}</p>
                 </div>
-                <p className="text-zinc-600">{order.product_name}</p>
+                <OrderActionsDropdown
+                  orderId={order.id}
+                  onAction={handleAction}
+                  translations={t as any}
+                />
               </div>
-              <ActionDropdown orderId={order.id} />
-            </div>
-            
-            <div className="space-y-2 text-sm">
-              <div className="flex justify-between">
-                <span className="text-zinc-600">{t.quantity}:</span>
-                <span>{order.quantity} {order.unit}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-zinc-600">{t.status}:</span>
-                <span>{order.status}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-zinc-600">{t.dueDate}:</span>
-                <span>{new Date(order.due_date).toLocaleDateString()}</span>
-              </div>
-            </div>
 
-            {/* Priority Badge and Progress */}
-            <div className="mt-3 space-y-2">
-              <Badge className={order.priority === 'High' || order.priority === 'Urgent' ? 'bg-red-500' : order.priority === 'Cancelled' ? 'bg-zinc-500' : order.priority === 'Medium' ? 'bg-yellow-500' : 'bg-blue-500'}>
-                {order.priority}
-              </Badge>
-              {order.progress_percentage !== undefined && (
-                <div className="space-y-1">
-                  <div className="flex items-center justify-between text-xs text-zinc-600">
-                    <span>{language === 'en' ? 'Progress' : 'प्रगति'}</span>
-                    <span className="font-medium">{Math.round(order.progress_percentage)}%</span>
-                  </div>
-                  <div className="h-2 bg-zinc-200 rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-emerald-500 transition-all"
-                      style={{ width: `${order.progress_percentage}%` }}
-                    />
-                  </div>
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-zinc-600">{t.quantity}:</span>
+                  <span>{order.quantity} {order.unit}</span>
                 </div>
-              )}
-            </div>
-          </Card>
+                <div className="flex justify-between">
+                  <span className="text-zinc-600">{t.status}:</span>
+                  <span>{order.status}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-zinc-600">{t.dueDate}:</span>
+                  <span>{new Date(order.due_date).toLocaleDateString()}</span>
+                </div>
+              </div>
+
+              {/* Priority Badge and Progress */}
+              <div className="mt-3 space-y-2">
+                <Badge className={order.priority === 'High' || order.priority === 'Urgent' ? 'bg-red-500' : order.priority === 'Cancelled' ? 'bg-zinc-500' : order.priority === 'Medium' ? 'bg-yellow-500' : 'bg-blue-500'}>
+                  {order.priority}
+                </Badge>
+                {/* Progress Bar */}
+                {order.progress_percentage !== undefined && (
+                  <div className="space-y-1.5 pt-2 border-t border-zinc-100 mt-2">
+                    <div className="flex items-center justify-between text-xs font-bold text-zinc-500 uppercase tracking-wider">
+                      <span>{language === 'en' ? 'Production Progress' : 'उत्पादन प्रगति'}</span>
+                      <span className="text-zinc-900">{Math.round(order.progress_percentage || 0)}%</span>
+                    </div>
+                    <div className="h-2 bg-zinc-100 rounded-full overflow-hidden border border-zinc-200">
+                      <div
+                        className={`h-full transition-all duration-700 ${order.progress_percentage >= 100 ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.3)]' :
+                          order.progress_percentage >= 50 ? 'bg-blue-500' :
+                            'bg-zinc-400'
+                          }`}
+                        style={{ width: `${order.progress_percentage || 0}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            </Card>
           ))}
         </div>
       )}
@@ -2129,70 +1788,80 @@ export function PurchaseOrders({ language }: PurchaseOrdersProps) {
       {/* Orders Table - Desktop View */}
       {!isLoading && !error && orders && orders.length > 0 && (
         <Card className="hidden lg:block overflow-hidden">
-        <div className="overflow-x-auto">
-          <div className="max-h-[70vh] overflow-y-auto">
-            <table className="w-full">
-              <thead className="bg-zinc-50 border-b sticky top-0 z-10">
-                <tr>
-                  <th className="text-left p-4 bg-zinc-50">{t.order}</th>
-                  <th className="text-left p-4 bg-zinc-50">{t.product}</th>
-                  <th className="text-left p-4 bg-zinc-50">{t.quantity}</th>
-                  <th className="text-left p-4 bg-zinc-50">{t.orderPriority}</th>
-                  <th className="text-left p-4 bg-zinc-50">{t.status}</th>
-                  <th className="text-left p-4 bg-zinc-50">{language === 'en' ? 'Days Until Due' : 'नियत तिथि तक'}</th>
-                  <th className="text-left p-4 bg-zinc-50">{t.dueDate}</th>
-                  <th className="text-left p-4 bg-zinc-50">{t.actions}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {orders.map((order) => (
-                  <tr key={order.id} className="border-b hover:bg-zinc-50">
-                    <td className="p-4">{order.order_number}</td>
-                    <td className="p-4">{order.product_name}</td>
-                    <td className="p-4">{order.quantity} {order.unit}</td>
-                    <td className="p-4">
-                      <Badge className={order.priority === 'High' || order.priority === 'Urgent' ? 'bg-red-500' : order.priority === 'Cancelled' ? 'bg-zinc-500' : order.priority === 'Medium' ? 'bg-yellow-500' : 'bg-blue-500'}>
-                        {order.priority}
-                      </Badge>
-                    </td>
-                    <td className="p-4">
-                      <div className="space-y-1">
-                        {getStatusBadge(order.status)}
-                        {order.progress_percentage !== undefined && (
-                          <div className="flex items-center gap-2">
-                            <div className="flex-1 h-1.5 bg-zinc-200 rounded-full overflow-hidden">
-                              <div
-                                className="h-full bg-emerald-500 transition-all"
-                                style={{ width: `${order.progress_percentage}%` }}
-                              />
-                            </div>
-                            <span className="text-xs text-zinc-600 min-w-[3rem]">{Math.round(order.progress_percentage)}%</span>
-                          </div>
-                        )}
-                      </div>
-                    </td>
-                    <td className="p-4">
-                      {order.days_until_due !== undefined && (
-                        <span className={order.is_overdue ? 'text-red-600 font-medium' : order.days_until_due <= 3 ? 'text-yellow-600' : 'text-zinc-600'}>
-                          {order.is_overdue ? `${Math.abs(order.days_until_due)} days overdue` : `${order.days_until_due} days left`}
-                        </span>
-                      )}
-                    </td>
-                    <td className="p-4">{new Date(order.due_date).toLocaleDateString()}</td>
-                    <td className="p-4">
-                      <ActionDropdown orderId={order.id} />
-                    </td>
+          <div className="overflow-x-auto">
+            <div className="max-h-[70vh] overflow-y-auto">
+              <table className="w-full">
+                <thead className="bg-zinc-50 border-b sticky top-0 z-10">
+                  <tr>
+                    <th className="text-left p-4 bg-zinc-50">{t.order}</th>
+                    <th className="text-left p-4 bg-zinc-50">{t.product}</th>
+                    <th className="text-left p-4 bg-zinc-50">{t.quantity}</th>
+                    <th className="text-left p-4 bg-zinc-50">{t.orderPriority}</th>
+                    <th className="text-left p-4 bg-zinc-50">{t.status}</th>
+                    <th className="text-left p-4 bg-zinc-50">{language === 'en' ? 'Progress' : 'प्रगति'}</th>
+                    <th className="text-left p-4 bg-zinc-50">{language === 'en' ? 'Days Until Due' : 'नियत तिथि तक'}</th>
+                    <th className="text-left p-4 bg-zinc-50">{t.dueDate}</th>
+                    <th className="text-left p-4 bg-zinc-50">{t.actions}</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {orders.map((order) => (
+                    <tr key={order.id} className="border-b hover:bg-zinc-50">
+                      <td className="p-4">{order.order_number}</td>
+                      <td className="p-4">{order.product_name}</td>
+                      <td className="p-4">{order.quantity} {order.unit}</td>
+                      <td className="p-4">
+                        <Badge className={order.priority === 'High' || order.priority === 'Urgent' ? 'bg-red-500' : order.priority === 'Cancelled' ? 'bg-zinc-500' : order.priority === 'Medium' ? 'bg-yellow-500' : 'bg-blue-500'}>
+                          {order.priority}
+                        </Badge>
+                      </td>
+                      <td className="p-4">
+                        <div className="space-y-1">
+                          {getStatusBadge(order.status)}
+                        </div>
+                      </td>
+                      <td className="p-4">
+                        <div className="flex items-center gap-2 min-w-[120px]">
+                          <div className="flex-1 h-2 bg-zinc-100 rounded-full overflow-hidden border border-zinc-200 shadow-inner">
+                            <div
+                              className={`h-full transition-all duration-500 rounded-full ${(order.progress_percentage ?? 0) >= 100 ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)]' :
+                                (order.progress_percentage ?? 0) >= 50 ? 'bg-blue-500' :
+                                  'bg-zinc-400'
+                                }`}
+                              style={{ width: `${order.progress_percentage || 0}%` }}
+                            />
+                          </div>
+                          <span className="text-xs font-bold text-zinc-600 w-9 tabular-nums">
+                            {Math.round(order.progress_percentage || 0)}%
+                          </span>
+                        </div>
+                      </td>
+                      <td className="p-4">
+                        {order.days_until_due !== undefined && (
+                          <span className={order.is_overdue ? 'text-red-600 font-medium' : order.days_until_due <= 3 ? 'text-yellow-600' : 'text-zinc-600'}>
+                            {order.is_overdue ? `${Math.abs(order.days_until_due)} days overdue` : `${order.days_until_due} days left`}
+                          </span>
+                        )}
+                      </td>
+                      <td className="p-4">{new Date(order.due_date).toLocaleDateString()}</td>
+                      <td className="p-4">
+                        <OrderActionsDropdown
+                          orderId={order.id}
+                          onAction={handleAction}
+                          translations={t as any}
+                        />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
-      </Card>
+        </Card>
       )}
 
       {/* Mobile New Order Button */}
-      <Button 
+      <Button
         className="lg:hidden fixed bottom-20 right-4 h-14 w-14 rounded-full shadow-lg"
         onClick={() => setShowNewOrderModal(true)}
       >
@@ -2201,606 +1870,229 @@ export function PurchaseOrders({ language }: PurchaseOrdersProps) {
 
       {/* New Order Modal */}
       {showNewOrderModal && (
-        <>
-          <div className="fixed inset-0 bg-black/50 z-40" onClick={closeNewOrderModal} />
-          <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-full max-w-2xl max-h-[90vh] overflow-hidden">
-            <Card className="p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-xl">{t.createNewOrder}</h2>
-                <Button variant="ghost" size="sm" onClick={closeNewOrderModal}>
-                  <XCircle className="h-5 w-5" />
-                </Button>
-              </div>
-
-              <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-2">
-                {/* Product Selection */}
-                <div>
-                  <label className="text-sm font-medium mb-2 block">
-                    {t.selectProduct} <span className="text-red-500">*</span>
-                  </label>
-                  <select
-                    value={newOrderData.product}
-                    onChange={(e) => handleNewOrderChange('product', e.target.value)}
-                    className="w-full p-2.5 border border-zinc-300 rounded-md"
-                  >
-                    <option value="">{t.chooseProduct}</option>
-                    {products.map((product) => (
-                      <option key={product.id} value={product.id}>
-                        {product.name} ({product.code})
-                      </option>
-                    ))}
-                  </select>
-                  
-                  {/* Add New Product Link */}
-                  <div className="mt-2 flex items-center gap-2">
-                    <span className="text-sm text-zinc-500">{language === 'en' ? "Can't find your product?" : 'अपना उत्पाद नहीं मिल रहा?'}</span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        closeNewOrderModal();
-                        // Navigate to BOM Planner to add new product
-                        window.location.href = '/bom';
-                      }}
-                      className="text-sm text-blue-600 hover:text-blue-800 underline font-medium"
-                    >
-                      {language === 'en' ? '+ Add New Product' : '+ नया उत्पाद जोड़ें'}
-                    </button>
-                  </div>
-                  
-                  {/* Product Preview */}
-                  {newOrderData.product && products.find(p => p.id === newOrderData.product) && (
-                    <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                      <div className="flex items-center gap-2 text-sm">
-                        <p className="text-sm font-medium text-blue-900">{products.find(p => p.id === newOrderData.product)?.name}</p>
-                        <p className="text-xs text-blue-700 mt-1">
-                          {products.find(p => p.id === newOrderData.product)?.code}
-                        </p>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Quantity and Due Date Row */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="text-sm font-medium mb-2 block">
-                      {t.enterQuantity} <span className="text-red-500">*</span>
-                    </label>
-                    <Input
-                      type="number"
-                      min="1"
-                      placeholder="500"
-                      value={newOrderData.quantity}
-                      onChange={(e) => handleNewOrderChange('quantity', e.target.value)}
-                    />
-                    <p className="text-xs text-zinc-500 mt-1">{t.units}</p>
-                  </div>
-
-                  <div>
-                    <label className="text-sm font-medium mb-2 block">
-                      {t.selectDueDate} <span className="text-red-500">*</span>
-                    </label>
-                    <Input
-                      type="date"
-                      value={newOrderData.dueDate}
-                      onChange={(e) => handleNewOrderChange('dueDate', e.target.value)}
-                    />
-                  </div>
-                </div>
-
-                {/* Priority and Stage Row */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="text-sm font-medium mb-2 block">
-                      {t.orderPriority}
-                    </label>
-                    <select
-                      value={newOrderData.priority}
-                      onChange={(e) => handleNewOrderChange('priority', e.target.value)}
-                      className="w-full p-2.5 border border-zinc-300 rounded-md"
-                    >
-                      <option value="Low">🟢 {language === 'en' ? 'Low' : 'कम'}</option>
-                      <option value="Medium">⚪ {t.normal}</option>
-                      <option value="High">🟡 {t.high}</option>
-                      <option value="Urgent">🔴 {t.urgent}</option>
-                      <option value="Cancelled">⛔ {language === 'en' ? 'Cancelled' : 'रद्द'}</option>
-                    </select>
-                    {newOrderData.priority === 'high' && (
-                      <p className="text-xs text-amber-600 mt-1">🟡 {language === 'en' ? 'High priority order' : 'उच्च प्राथमिकता ऑर्डर'}</p>
-                    )}
-                    {newOrderData.priority === 'urgent' && (
-                      <p className="text-xs text-red-600 mt-1">🔴 {language === 'en' ? 'Urgent - Top Priority!' : 'तत्काल - शीर्ष प्राथमिकता!'}</p>
-                    )}
-                  </div>
-
-                  <div>
-                    <label className="text-sm font-medium mb-2 block">
-                      {t.productionStage}
-                    </label>
-                    <select
-                      value={newOrderData.stage}
-                      onChange={(e) => handleNewOrderChange('stage', e.target.value)}
-                      className="w-full p-2.5 border border-zinc-300 rounded-md"
-                    >
-                      <option value="Material Planning">Material Planning</option>
-                      <option value="Cutting">Cutting</option>
-                      <option value="Sewing">Sewing</option>
-                      <option value="Quality Check">Quality Check</option>
-                      <option value="Packaging">Packaging</option>
-                      <option value="Dispatch">Dispatch</option>
-                    </select>
-                  </div>
-                </div>
-
-                {/* Customer Name */}
-                <div>
-                  <label className="text-sm font-medium mb-2 block">
-                    {t.customerName}
-                  </label>
-                  <Input
-                    type="text"
-                    placeholder={t.enterCustomer}
-                    value={newOrderData.customerName}
-                    onChange={(e) => handleNewOrderChange('customerName', e.target.value)}
-                  />
-                </div>
-
-                {/* Assign Team */}
-                <div>
-                  <label className="text-sm font-medium mb-2 block">
-                    {t.assignTeamLabel}
-                  </label>
-                  <select
-                    value={newOrderData.assignedTeam}
-                    onChange={(e) => handleNewOrderChange('assignedTeam', e.target.value)}
-                    className="w-full p-2.5 border border-zinc-300 rounded-md"
-                  >
-                    <option value="">{t.selectTeam}</option>
-                    <option value="Planning Team">Planning Team</option>
-                    <option value="Team A - Cutting Department">Team A - Cutting Department</option>
-                    <option value="Team B - Sewing Department">Team B - Sewing Department</option>
-                    <option value="Team C - Quality Control">Team C - Quality Control</option>
-                    <option value="Team D - Packaging">Team D - Packaging</option>
-                  </select>
-                </div>
-
-                {/* Shift Number */}
-                <div>
-                  <label className="text-sm font-medium mb-2 block">
-                    {t.shiftNumber}
-                  </label>
-                  <select
-                    value={newOrderData.shiftNumber}
-                    onChange={(e) => handleNewOrderChange('shiftNumber', e.target.value)}
-                    className="w-full p-2.5 border border-zinc-300 rounded-md"
-                  >
-                    <option value="Shift 1">🌅 {t.shift1}</option>
-                    <option value="Shift 2">🌤️ {t.shift2}</option>
-                    <option value="Shift 3">🌙 {t.shift3}</option>
-                  </select>
-                  
-                  {/* Shift Visual Indicator */}
-                  <div className={`mt-2 p-2.5 rounded-lg border ${
-                    newOrderData.shiftNumber === 'Shift 1' 
-                      ? 'bg-gradient-to-r from-amber-50 to-orange-50 border-amber-200' 
-                      : newOrderData.shiftNumber === 'Shift 2'
-                      ? 'bg-gradient-to-r from-blue-50 to-sky-50 border-blue-200'
-                      : 'bg-gradient-to-r from-indigo-50 to-purple-50 border-indigo-200'
-                  }`}>
-                    <div className="flex items-center gap-2 text-xs">
-                      <span className="text-lg">
-                        {newOrderData.shiftNumber === 'Shift 1' && '🌅'}
-                        {newOrderData.shiftNumber === 'Shift 2' && '🌤️'}
-                        {newOrderData.shiftNumber === 'Shift 3' && '🌙'}
-                      </span>
-                      <div>
-                        <p className={`font-medium ${
-                          newOrderData.shiftNumber === 'Shift 1' 
-                            ? 'text-amber-900' 
-                            : newOrderData.shiftNumber === 'Shift 2'
-                            ? 'text-blue-900'
-                            : 'text-indigo-900'
-                        }`}>
-                          {newOrderData.shiftNumber === 'Shift 1' && (language === 'en' ? 'Morning Shift' : 'सुबह की शिफ्ट')}
-                          {newOrderData.shiftNumber === 'Shift 2' && (language === 'en' ? 'Afternoon Shift' : 'दोपहर की शिफ्ट')}
-                          {newOrderData.shiftNumber === 'Shift 3' && (language === 'en' ? 'Night Shift' : 'रात की शिफ्ट')}
-                        </p>
-                        <p className={`${
-                          newOrderData.shiftNumber === 'Shift 1' 
-                            ? 'text-amber-700' 
-                            : newOrderData.shiftNumber === 'Shift 2'
-                            ? 'text-blue-700'
-                            : 'text-indigo-700'
-                        }`}>
-                          {newOrderData.shiftNumber === 'Shift 1' && '6:00 AM - 2:00 PM'}
-                          {newOrderData.shiftNumber === 'Shift 2' && '2:00 PM - 10:00 PM'}
-                          {newOrderData.shiftNumber === 'Shift 3' && '10:00 PM - 6:00 AM'}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Production Timeline */}
-                <div className="border-t border-zinc-200 pt-4">
-                  <h3 className="font-medium mb-3 text-zinc-900">
-                    ⏱️ {t.productionTimeline}
-                  </h3>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="text-sm font-medium mb-2 block">
-                        {t.startTime}
-                      </label>
-                      <input
-                        type="datetime-local"
-                        value={newOrderData.startTime}
-                        onChange={(e) => handleNewOrderChange('startTime', e.target.value)}
-                        className="w-full p-2.5 border border-zinc-300 rounded-md"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-sm font-medium mb-2 block">
-                        {t.endTime}
-                      </label>
-                      <input
-                        type="datetime-local"
-                        value={newOrderData.endTime}
-                        onChange={(e) => handleNewOrderChange('endTime', e.target.value)}
-                        className="w-full p-2.5 border border-zinc-300 rounded-md"
-                      />
-                    </div>
-                  </div>
-                  
-                  {/* Timeline Duration Preview */}
-                  {newOrderData.startTime && newOrderData.endTime && (
-                    <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                      <div className="flex items-center gap-2 text-sm">
-                        <Clock className="h-4 w-4 text-blue-600" />
-                        <span className="font-medium text-blue-900">
-                          {language === 'en' ? 'Duration:' : 'अवधि:'} 
-                        </span>
-                        <span className="text-blue-700">
-                          {(() => {
-                            const start = new Date(newOrderData.startTime);
-                            const end = new Date(newOrderData.endTime);
-                            const diffMs = end.getTime() - start.getTime();
-                            const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-                            const diffMins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
-                            return diffHours > 0 
-                              ? `${diffHours}h ${diffMins}m`
-                              : `${diffMins}m`;
-                          })()}
-                        </span>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Order Notes */}
-                <div>
-                  <label className="text-sm font-medium mb-2 block">
-                    {t.orderNotes}
-                  </label>
-                  <textarea
-                    placeholder={t.enterNotes}
-                    value={newOrderData.notes}
-                    onChange={(e) => handleNewOrderChange('notes', e.target.value)}
-                    className="w-full p-2.5 border border-zinc-300 rounded-md min-h-[100px] resize-none"
-                  />
-                </div>
-
-                {/* Order Summary Preview */}
-                {newOrderData.product && newOrderData.quantity && newOrderData.dueDate && (
-                  <div className="bg-gradient-to-r from-emerald-50 to-green-50 border border-emerald-200 p-4 rounded-lg">
-                    <h3 className="font-medium text-emerald-900 mb-3">
-                      {language === 'en' ? '📋 Order Summary' : '📋 ऑर्डर सारांश'}
-                    </h3>
-                    <div className="grid grid-cols-2 gap-3 text-sm">
-                      <div>
-                        <p className="text-zinc-600">{t.product}</p>
-                        <p className="font-medium text-emerald-900">{newOrderData.product}</p>
-                      </div>
-                      <div>
-                        <p className="text-zinc-600">{t.quantity}</p>
-                        <p className="font-medium text-emerald-900">{newOrderData.quantity} {t.units}</p>
-                      </div>
-                      <div>
-                        <p className="text-zinc-600">{t.dueDate}</p>
-                        <p className="font-medium text-emerald-900">{newOrderData.dueDate}</p>
-                      </div>
-                      <div>
-                        <p className="text-zinc-600">{t.orderPriority}</p>
-                        <p className="font-medium text-emerald-900">
-                          {newOrderData.priority === 'Urgent' && '🔴 '}
-                          {newOrderData.priority === 'High' && '🟡 '}
-                          {newOrderData.priority === 'Medium' && '⚪ '}
-                          {newOrderData.priority === 'Low' && '🟢 '}
-                          {newOrderData.priority === 'Urgent' ? t.urgent : newOrderData.priority === 'High' ? t.high : t.normal}
-                        </p>
-                      </div>
-                      {newOrderData.customerName && (
-                        <div className="col-span-2">
-                          <p className="text-zinc-600">{t.customerName}</p>
-                          <p className="font-medium text-emerald-900">{newOrderData.customerName}</p>
-                        </div>
-                      )}
-                      {newOrderData.assignedTeam && (
-                        <div className="col-span-2">
-                          <p className="text-zinc-600">{t.assignTeamLabel}</p>
-                          <p className="font-medium text-emerald-900">{newOrderData.assignedTeam}</p>
-                        </div>
-                      )}
-                      
-                      {/* Shift Information */}
-                      <div>
-                        <p className="text-zinc-600">{t.shiftNumber}</p>
-                        <p className="font-medium text-emerald-900">
-                          {newOrderData.shiftNumber === 'Shift 1' && '🌅 '}
-                          {newOrderData.shiftNumber === 'Shift 2' && '🌤️ '}
-                          {newOrderData.shiftNumber === 'Shift 3' && '🌙 '}
-                          {newOrderData.shiftNumber}
-                        </p>
-                      </div>
-                      
-                      {/* Timeline Information */}
-                      {newOrderData.startTime && newOrderData.endTime && (
-                        <div>
-                          <p className="text-zinc-600">⏱️ {t.productionTimeline}</p>
-                          <p className="font-medium text-emerald-900 text-xs">
-                            {new Date(newOrderData.startTime).toLocaleString(language === 'en' ? 'en-US' : 'hi-IN', { 
-                              month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' 
-                            })}
-                            {' → '}
-                            {new Date(newOrderData.endTime).toLocaleString(language === 'en' ? 'en-US' : 'hi-IN', { 
-                              month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' 
-                            })}
-                          </p>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {/* Required Fields Notice */}
-                <div className="bg-blue-50 border border-blue-200 p-3 rounded-lg text-sm">
-                  <p className="text-blue-900">
-                    <span className="text-red-500">*</span> {t.requiredFields}: {t.selectProduct}, {t.enterQuantity}, {t.selectDueDate}
-                  </p>
-                </div>
-
-                {/* Action Buttons */}
-                <div className="flex gap-3 pt-2">
-                  <Button 
-                    onClick={closeNewOrderModal} 
-                    variant="outline" 
-                    className="flex-1"
-                  >
-                    {t.cancel}
-                  </Button>
-                  <Button 
-                    onClick={createNewOrder} 
-                    className="flex-1 bg-emerald-600"
-                  >
-                    <Plus className="h-4 w-4 mr-2" />
-                    {t.createOrder}
-                  </Button>
-                </div>
-              </div>
-            </Card>
-          </div>
-        </>
+        <NewOrderModal
+          isOpen={showNewOrderModal}
+          onClose={closeNewOrderModal}
+          orderData={newOrderData}
+          onOrderDataChange={setNewOrderData}
+          onSubmit={createNewOrder}
+          products={products.reduce((acc, p) => ({ ...acc, [p.id]: { name: p.name, code: p.code } }), {})}
+          translations={t}
+        />
       )}
 
       {/* Create Working Order Modal */}
       {showCreateWorkingOrderModal && selectedOrder && (
         <>
           <div className="fixed inset-0 bg-black/50 z-40" onClick={() => setShowCreateWorkingOrderModal(false)} />
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <Card className="w-full max-w-lg bg-white p-6 space-y-4 max-h-[90vh] overflow-y-auto">
-              <div className="flex items-center justify-between">
-                <h2 className="text-xl font-semibold">
-                  {language === 'en' ? 'Create Working Order' : 'वर्किंग ऑर्डर बनाएं'}
-                </h2>
-                <Button variant="ghost" size="sm" onClick={() => setShowCreateWorkingOrderModal(false)}>
-                  <XCircle className="h-5 w-5" />
-                </Button>
-              </div>
-
-              {/* Purchase Order Info */}
-              <div className="bg-zinc-50 p-3 rounded-lg border border-zinc-200">
-                <p className="text-sm text-zinc-600">{language === 'en' ? 'Purchase Order' : 'खरीद आदेश'}</p>
-                <p className="font-medium">{selectedOrder.order_number} - {selectedOrder.product_name}</p>
-                <p className="text-sm text-zinc-500">{language === 'en' ? 'Quantity' : 'मात्रा'}: {selectedOrder.quantity}</p>
-              </div>
-
-              <div className="space-y-4">
-                {/* Operation */}
-                <div>
-                  <label className="block text-sm font-medium mb-1">
-                    {language === 'en' ? 'Operation' : 'ऑपरेशन'} <span className="text-red-500">*</span>
-                  </label>
-                  <select
-                    value={workingOrderData.operation}
-                    onChange={(e) => setWorkingOrderData(prev => ({ ...prev, operation: e.target.value }))}
-                    className="w-full p-2 border border-zinc-300 rounded-md"
-                  >
-                    <option value="">{language === 'en' ? 'Select operation...' : 'ऑपरेशन चुनें...'}</option>
-                    <option value="cutting">{language === 'en' ? 'Cutting' : 'कटाई'}</option>
-                    <option value="sewing">{language === 'en' ? 'Sewing' : 'सिलाई'}</option>
-                    <option value="finishing">{language === 'en' ? 'Finishing' : 'फिनिशिंग'}</option>
-                    <option value="qc">{language === 'en' ? 'Quality Check' : 'गुणवत्ता जांच'}</option>
-                    <option value="packaging">{language === 'en' ? 'Packaging' : 'पैकेजिंग'}</option>
-                  </select>
+          <div className="fixed inset-0 z-50 overflow-y-auto">
+            <div className="min-h-full flex items-center justify-center p-4">
+              <Card className="w-full max-w-lg bg-white p-6 space-y-4 shadow-2xl border-none">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-xl font-semibold">
+                    {language === 'en' ? 'Create Working Order' : 'वर्किंग ऑर्डर बनाएं'}
+                  </h2>
+                  <Button variant="ghost" size="sm" onClick={() => setShowCreateWorkingOrderModal(false)}>
+                    <XCircle className="h-5 w-5" />
+                  </Button>
                 </div>
 
-                {/* Workstation */}
-                <div>
-                  <label className="block text-sm font-medium mb-1">
-                    {language === 'en' ? 'Workstation' : 'वर्कस्टेशन'} <span className="text-red-500">*</span>
-                  </label>
-                  <select
-                    value={workingOrderData.workstation}
-                    onChange={(e) => setWorkingOrderData(prev => ({ ...prev, workstation: e.target.value }))}
-                    className="w-full p-2 border border-zinc-300 rounded-md"
-                  >
-                    <option value="">{language === 'en' ? 'Select workstation...' : 'वर्कस्टेशन चुनें...'}</option>
-                    <option value="cutting-1">{language === 'en' ? 'Cutting Table #1' : 'कटिंग टेबल #1'}</option>
-                    <option value="cutting-2">{language === 'en' ? 'Cutting Table #2' : 'कटिंग टेबल #2'}</option>
-                    <option value="sewing-1">{language === 'en' ? 'Sewing Line #1' : 'सिलाई लाइन #1'}</option>
-                    <option value="sewing-2">{language === 'en' ? 'Sewing Line #2' : 'सिलाई लाइन #2'}</option>
-                    <option value="qc-station">{language === 'en' ? 'QC Station' : 'QC स्टेशन'}</option>
-                    <option value="packing">{language === 'en' ? 'Packing Area' : 'पैकिंग एरिया'}</option>
-                  </select>
+                {/* Purchase Order Info */}
+                <div className="bg-zinc-50 p-3 rounded-lg border border-zinc-200">
+                  <p className="text-sm text-zinc-600">{language === 'en' ? 'Purchase Order' : 'खरीद आदेश'}</p>
+                  <p className="font-medium">{selectedOrder.order_number} - {selectedOrder.product_name}</p>
+                  <p className="text-sm text-zinc-500">{language === 'en' ? 'Quantity' : 'मात्रा'}: {selectedOrder.quantity}</p>
                 </div>
 
-                {/* Assigned Team */}
-                <div>
-                  <label className="block text-sm font-medium mb-1">
-                    {language === 'en' ? 'Assigned Team' : 'असाइन टीम'} <span className="text-red-500">*</span>
-                  </label>
-                  <select
-                    value={workingOrderData.assignedTeam}
-                    onChange={(e) => setWorkingOrderData(prev => ({ ...prev, assignedTeam: e.target.value }))}
-                    className="w-full p-2 border border-zinc-300 rounded-md"
-                  >
-                    <option value="">{language === 'en' ? 'Select team...' : 'टीम चुनें...'}</option>
-                    <option value="team-a">Team A - Cutting</option>
-                    <option value="team-b">Team B - Sewing</option>
-                    <option value="team-c">Team C - QC</option>
-                    <option value="team-d">Team D - Packaging</option>
-                  </select>
-                </div>
-
-                {/* Target Quantity */}
-                <div>
-                  <label className="block text-sm font-medium mb-1">
-                    {language === 'en' ? 'Target Quantity' : 'लक्ष्य मात्रा'}
-                  </label>
-                  <Input
-                    type="number"
-                    value={workingOrderData.targetQty}
-                    onChange={(e) => setWorkingOrderData(prev => ({ ...prev, targetQty: e.target.value }))}
-                    placeholder={language === 'en' ? 'Enter quantity...' : 'मात्रा दर्ज करें...'}
-                  />
-                </div>
-
-                {/* Schedule */}
-                <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-4">
+                  {/* Operation */}
                   <div>
                     <label className="block text-sm font-medium mb-1">
-                      {language === 'en' ? 'Start Time' : 'शुरू समय'}
+                      {language === 'en' ? 'Operation' : 'ऑपरेशन'} <span className="text-red-500">*</span>
                     </label>
-                    <Input
-                      type="datetime-local"
-                      value={workingOrderData.scheduledStart}
-                      onChange={(e) => setWorkingOrderData(prev => ({ ...prev, scheduledStart: e.target.value }))}
-                    />
+                    <select
+                      value={workingOrderData.operation}
+                      onChange={(e) => setWorkingOrderData(prev => ({ ...prev, operation: e.target.value }))}
+                      className="w-full p-2 border border-zinc-300 rounded-md"
+                    >
+                      <option value="">{language === 'en' ? 'Select operation...' : 'ऑपरेशन चुनें...'}</option>
+                      <option value="cutting">{language === 'en' ? 'Cutting' : 'कटाई'}</option>
+                      <option value="sewing">{language === 'en' ? 'Sewing' : 'सिलाई'}</option>
+                      <option value="finishing">{language === 'en' ? 'Finishing' : 'फिनिशिंग'}</option>
+                      <option value="qc">{language === 'en' ? 'Quality Check' : 'गुणवत्ता जांच'}</option>
+                      <option value="packaging">{language === 'en' ? 'Packaging' : 'पैकेजिंग'}</option>
+                    </select>
                   </div>
+
+                  {/* Workstation */}
                   <div>
                     <label className="block text-sm font-medium mb-1">
-                      {language === 'en' ? 'End Time' : 'समाप्ति समय'}
+                      {language === 'en' ? 'Workstation' : 'वर्कस्टेशन'} <span className="text-red-500">*</span>
+                    </label>
+                    <select
+                      value={workingOrderData.workstation}
+                      onChange={(e) => setWorkingOrderData(prev => ({ ...prev, workstation: e.target.value }))}
+                      className="w-full p-2 border border-zinc-300 rounded-md"
+                    >
+                      <option value="">{language === 'en' ? 'Select workstation...' : 'वर्कस्टेशन चुनें...'}</option>
+                      <option value="cutting-1">{language === 'en' ? 'Cutting Table #1' : 'कटिंग टेबल #1'}</option>
+                      <option value="cutting-2">{language === 'en' ? 'Cutting Table #2' : 'कटिंग टेबल #2'}</option>
+                      <option value="sewing-1">{language === 'en' ? 'Sewing Line #1' : 'सिलाई लाइन #1'}</option>
+                      <option value="sewing-2">{language === 'en' ? 'Sewing Line #2' : 'सिलाई लाइन #2'}</option>
+                      <option value="qc-station">{language === 'en' ? 'QC Station' : 'QC स्टेशन'}</option>
+                      <option value="packing">{language === 'en' ? 'Packing Area' : 'पैकिंग एरिया'}</option>
+                    </select>
+                  </div>
+
+                  {/* Assigned Team */}
+                  <div>
+                    <label className="block text-sm font-medium mb-1">
+                      {language === 'en' ? 'Assigned Team' : 'असाइन टीम'} <span className="text-red-500">*</span>
+                    </label>
+                    <select
+                      value={workingOrderData.assignedTeam}
+                      onChange={(e) => setWorkingOrderData(prev => ({ ...prev, assignedTeam: e.target.value }))}
+                      className="w-full p-2 border border-zinc-300 rounded-md"
+                    >
+                      <option value="">{language === 'en' ? 'Select team...' : 'टीम चुनें...'}</option>
+                      <option value="team-a">Team A - Cutting</option>
+                      <option value="team-b">Team B - Sewing</option>
+                      <option value="team-c">Team C - QC</option>
+                      <option value="team-d">Team D - Packaging</option>
+                    </select>
+                  </div>
+
+                  {/* Target Quantity */}
+                  <div>
+                    <label className="block text-sm font-medium mb-1">
+                      {language === 'en' ? 'Target Quantity' : 'लक्ष्य मात्रा'}
                     </label>
                     <Input
-                      type="datetime-local"
-                      value={workingOrderData.scheduledEnd}
-                      onChange={(e) => setWorkingOrderData(prev => ({ ...prev, scheduledEnd: e.target.value }))}
+                      type="number"
+                      value={workingOrderData.targetQty}
+                      onChange={(e) => setWorkingOrderData(prev => ({ ...prev, targetQty: e.target.value }))}
+                      placeholder={language === 'en' ? 'Enter quantity...' : 'मात्रा दर्ज करें...'}
+                    />
+                  </div>
+
+                  {/* Schedule */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-sm font-medium mb-1">
+                        {language === 'en' ? 'Start Time' : 'शुरू समय'}
+                      </label>
+                      <Input
+                        type="datetime-local"
+                        value={workingOrderData.scheduledStart}
+                        onChange={(e) => setWorkingOrderData(prev => ({ ...prev, scheduledStart: e.target.value }))}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">
+                        {language === 'en' ? 'End Time' : 'समाप्ति समय'}
+                      </label>
+                      <Input
+                        type="datetime-local"
+                        value={workingOrderData.scheduledEnd}
+                        onChange={(e) => setWorkingOrderData(prev => ({ ...prev, scheduledEnd: e.target.value }))}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Priority */}
+                  <div>
+                    <label className="block text-sm font-medium mb-1">
+                      {language === 'en' ? 'Priority' : 'प्राथमिकता'}
+                    </label>
+                    <select
+                      value={workingOrderData.priority}
+                      onChange={(e) => setWorkingOrderData(prev => ({ ...prev, priority: e.target.value }))}
+                      className="w-full p-2 border border-zinc-300 rounded-md"
+                    >
+                      <option value="low">{language === 'en' ? 'Low' : 'कम'}</option>
+                      <option value="normal">{language === 'en' ? 'Normal' : 'सामान्य'}</option>
+                      <option value="high">{language === 'en' ? 'High' : 'उच्च'}</option>
+                      <option value="urgent">{language === 'en' ? 'Urgent' : 'तत्काल'}</option>
+                    </select>
+                  </div>
+
+                  {/* Notes */}
+                  <div>
+                    <label className="block text-sm font-medium mb-1">
+                      {language === 'en' ? 'Notes' : 'नोट्स'}
+                    </label>
+                    <textarea
+                      value={workingOrderData.notes}
+                      onChange={(e) => setWorkingOrderData(prev => ({ ...prev, notes: e.target.value }))}
+                      placeholder={language === 'en' ? 'Add any special instructions...' : 'विशेष निर्देश जोड़ें...'}
+                      className="w-full p-2 border border-zinc-300 rounded-md resize-none h-20"
                     />
                   </div>
                 </div>
 
-                {/* Priority */}
-                <div>
-                  <label className="block text-sm font-medium mb-1">
-                    {language === 'en' ? 'Priority' : 'प्राथमिकता'}
-                  </label>
-                  <select
-                    value={workingOrderData.priority}
-                    onChange={(e) => setWorkingOrderData(prev => ({ ...prev, priority: e.target.value }))}
-                    className="w-full p-2 border border-zinc-300 rounded-md"
+                {/* Action Buttons */}
+                <div className="flex gap-3 pt-2">
+                  <Button
+                    onClick={() => setShowCreateWorkingOrderModal(false)}
+                    variant="outline"
+                    className="flex-1"
                   >
-                    <option value="low">{language === 'en' ? 'Low' : 'कम'}</option>
-                    <option value="normal">{language === 'en' ? 'Normal' : 'सामान्य'}</option>
-                    <option value="high">{language === 'en' ? 'High' : 'उच्च'}</option>
-                    <option value="urgent">{language === 'en' ? 'Urgent' : 'तत्काल'}</option>
-                  </select>
-                </div>
+                    {language === 'en' ? 'Cancel' : 'रद्द करें'}
+                  </Button>
+                  <Button
+                    onClick={async () => {
+                      if (!workingOrderData.operation || !workingOrderData.workstation || !workingOrderData.assignedTeam) {
+                        alert(language === 'en'
+                          ? '⚠️ Please fill in all required fields (Operation, Workstation, Team)'
+                          : '⚠️ कृपया सभी आवश्यक फ़ील्ड भरें (ऑपरेशन, वर्कस्टेशन, टीम)');
+                        return;
+                      }
 
-                {/* Notes */}
-                <div>
-                  <label className="block text-sm font-medium mb-1">
-                    {language === 'en' ? 'Notes' : 'नोट्स'}
-                  </label>
-                  <textarea
-                    value={workingOrderData.notes}
-                    onChange={(e) => setWorkingOrderData(prev => ({ ...prev, notes: e.target.value }))}
-                    placeholder={language === 'en' ? 'Add any special instructions...' : 'विशेष निर्देश जोड़ें...'}
-                    className="w-full p-2 border border-zinc-300 rounded-md resize-none h-20"
-                  />
-                </div>
-              </div>
+                      try {
+                        // Prepare working order data for API
+                        const workingOrderPayload: WorkingOrderCreate = {
+                          purchase_order_id: selectedOrder.id,
+                          operation: workingOrderData.operation,
+                          workstation_name: workingOrderData.workstation,
+                          assigned_team: workingOrderData.assignedTeam,
+                          target_qty: parseFloat(workingOrderData.targetQty) || selectedOrder.quantity,
+                          unit: selectedOrder.unit || 'pcs',
+                          priority: workingOrderData.priority as 'Low' | 'Normal' | 'High' | 'Urgent',
+                          scheduled_start: workingOrderData.scheduledStart || undefined,
+                          scheduled_end: workingOrderData.scheduledEnd || undefined,
+                          notes: workingOrderData.notes || undefined
+                        };
 
-              {/* Action Buttons */}
-              <div className="flex gap-3 pt-2">
-                <Button 
-                  onClick={() => setShowCreateWorkingOrderModal(false)} 
-                  variant="outline" 
-                  className="flex-1"
-                >
-                  {language === 'en' ? 'Cancel' : 'रद्द करें'}
-                </Button>
-                <Button 
-                  onClick={async () => {
-                    if (!workingOrderData.operation || !workingOrderData.workstation || !workingOrderData.assignedTeam) {
-                      alert(language === 'en' 
-                        ? '⚠️ Please fill in all required fields (Operation, Workstation, Team)' 
-                        : '⚠️ कृपया सभी आवश्यक फ़ील्ड भरें (ऑपरेशन, वर्कस्टेशन, टीम)');
-                      return;
-                    }
-                    
-                    try {
-                      // Prepare working order data for API
-                      const workingOrderPayload: WorkingOrderCreate = {
-                        purchase_order_id: selectedOrder.id,
-                        operation: workingOrderData.operation,
-                        workstation: workingOrderData.workstation,
-                        assigned_team: workingOrderData.assignedTeam,
-                        target_qty: parseFloat(workingOrderData.targetQty) || selectedOrder.quantity,
-                        unit: selectedOrder.unit || 'pcs',
-                        priority: workingOrderData.priority as 'Low' | 'Normal' | 'High' | 'Urgent',
-                        scheduled_start: workingOrderData.scheduledStart || undefined,
-                        scheduled_end: workingOrderData.scheduledEnd || undefined,
-                        notes: workingOrderData.notes || undefined
-                      };
-                      
-                      // Call backend API to create working order
-                      const createdWorkOrder = await wipApi.createWorkingOrder(workingOrderPayload);
-                      
-                      alert(`✅ ${language === 'en' ? 'Working Order Created Successfully!' : 'वर्किंग ऑर्डर सफलतापूर्वक बनाया गया!'}\n\n${language === 'en' ? 'Working Order Number' : 'वर्किंग ऑर्डर नंबर'}: ${createdWorkOrder.work_order_number}\n${language === 'en' ? 'Purchase Order' : 'खरीद आदेश'}: ${selectedOrder.order_number}\n${language === 'en' ? 'Operation' : 'ऑपरेशन'}: ${createdWorkOrder.operation}\n${language === 'en' ? 'Workstation' : 'वर्कस्टेशन'}: ${createdWorkOrder.workstation}\n${language === 'en' ? 'Status' : 'स्थिति'}: ${createdWorkOrder.status}`);
-                      
-                      setShowCreateWorkingOrderModal(false);
-                      setSelectedOrder(null);
-                      setWorkingOrderData({
-                        operation: '',
-                        workstation: '',
-                        assignedTeam: '',
-                        targetQty: '',
-                        scheduledStart: '',
-                        scheduledEnd: '',
-                        priority: 'Medium',
-                        notes: ''
-                      });
-                    } catch (error: any) {
-                      alert(`❌ ${language === 'en' ? 'Failed to create working order' : 'वर्किंग ऑर्डर बनाने में विफल'}\n\n${error?.message || error?.detail || 'Unknown error'}`);
-                      console.error('Error creating working order:', error);
-                    }
-                  }} 
-                  className="flex-1 bg-emerald-600"
-                >
-                  <Plus className="h-4 w-4 mr-2" />
-                  {language === 'en' ? 'Create Working Order' : 'वर्किंग ऑर्डर बनाएं'}
-                </Button>
-              </div>
-            </Card>
+                        // Call backend API to create working order
+                        const createdWorkOrder = await wipApi.createWorkingOrder(workingOrderPayload);
+
+                        alert(`✅ ${language === 'en' ? 'Working Order Created Successfully!' : 'वर्किंग ऑर्डर सफलतापूर्वक बनाया गया!'}\n\n${language === 'en' ? 'Working Order Number' : 'वर्किंग ऑर्डर नंबर'}: ${createdWorkOrder.work_order_number}\n${language === 'en' ? 'Purchase Order' : 'खरीद आदेश'}: ${selectedOrder.order_number}\n${language === 'en' ? 'Operation' : 'ऑपरेशन'}: ${createdWorkOrder.operation}\n${language === 'en' ? 'Workstation' : 'वर्कस्टेशन'}: ${createdWorkOrder.workstation_name}\n${language === 'en' ? 'Status' : 'स्थिति'}: ${createdWorkOrder.status}`);
+
+                        setShowCreateWorkingOrderModal(false);
+                        setSelectedOrder(null);
+                        setWorkingOrderData({
+                          operation: '',
+                          workstation: '',
+                          assignedTeam: '',
+                          targetQty: '',
+                          scheduledStart: '',
+                          scheduledEnd: '',
+                          priority: 'Medium',
+                          notes: ''
+                        });
+                      } catch (error: any) {
+                        alert(`❌ ${language === 'en' ? 'Failed to create working order' : 'वर्किंग ऑर्डर बनाने में विफल'}\n\n${error?.message || error?.detail || 'Unknown error'}`);
+                        console.error('Error creating working order:', error);
+                      }
+                    }}
+                    className="flex-1 bg-emerald-600"
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    {language === 'en' ? 'Create Working Order' : 'वर्किंग ऑर्डर बनाएं'}
+                  </Button>
+                </div>
+              </Card>
+            </div>
           </div>
         </>
       )}

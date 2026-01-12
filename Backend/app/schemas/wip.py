@@ -12,11 +12,12 @@ from decimal import Decimal
 class WorkingOrderBase(BaseModel):
     purchase_order_id: str
     operation: str = Field(..., description="Operation name (e.g., Cutting, Sewing)")
-    workstation: Optional[str] = None
+    workstation_id: Optional[str] = None  # Added
+    workstation_name: Optional[str] = None  # Renamed from workstation
     assigned_team: Optional[str] = None
     target_qty: Decimal = Field(..., gt=0)
     unit: str
-    priority: str = Field(default="Normal", pattern="^(Low|Normal|High|Urgent)$")
+    priority: str = Field(default="Normal", pattern="^(Low|Normal|Medium|High|Urgent|LOW|MEDIUM|HIGH|URGENT)$")
     scheduled_start: Optional[datetime] = None
     scheduled_end: Optional[datetime] = None
     notes: Optional[str] = None
@@ -28,13 +29,14 @@ class WorkingOrderCreate(WorkingOrderBase):
 
 class WorkingOrderUpdate(BaseModel):
     operation: Optional[str] = None
-    workstation: Optional[str] = None
+    workstation_id: Optional[str] = None  # Added
+    workstation_name: Optional[str] = None  # Renamed from workstation
     assigned_team: Optional[str] = None
     target_qty: Optional[Decimal] = Field(None, gt=0)
     completed_qty: Optional[Decimal] = Field(None, ge=0)
     rejected_qty: Optional[Decimal] = Field(None, ge=0)
     status: Optional[str] = Field(None, pattern="^(Pending|In Progress|Completed|On Hold|Cancelled)$")
-    priority: Optional[str] = Field(None, pattern="^(Low|Normal|High|Urgent)$")
+    priority: Optional[str] = Field(None, pattern="^(Low|Normal|Medium|High|Urgent|LOW|MEDIUM|HIGH|URGENT)$")
     scheduled_start: Optional[datetime] = None
     scheduled_end: Optional[datetime] = None
     actual_start: Optional[datetime] = None
@@ -64,7 +66,8 @@ class WorkingOrderListItem(BaseModel):
     work_order_number: str
     purchase_order_id: str
     operation: str
-    workstation: Optional[str] = None
+    workstation_id: Optional[str] = None  # Added
+    workstation_name: Optional[str] = None  # Renamed from workstation
     assigned_team: Optional[str] = None
     target_qty: Decimal
     completed_qty: Decimal

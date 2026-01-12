@@ -1,20 +1,21 @@
-import { XCircle } from 'lucide-react';
+import { XCircle, Clock, Package } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 
-interface NewOrderData {
+interface OrderItem {
+  id: string; // Internal ID for keys
   product: string;
   quantity: string;
+}
+
+interface NewOrderData {
+  items: OrderItem[];
   dueDate: string;
   priority: string;
-  customerName: string;
-  stage: string;
-  assignedTeam: string;
   notes: string;
-  shiftNumber: string;
-  startTime: string;
-  endTime: string;
+  startTime?: string;
+  endTime?: string;
 }
 
 interface NewOrderModalProps {
@@ -23,7 +24,7 @@ interface NewOrderModalProps {
   orderData: NewOrderData;
   onOrderDataChange: (data: NewOrderData) => void;
   onSubmit: () => void;
-  products?: Record<string, string>; // Products from backend API
+  products?: Record<string, { name: string; code: string }>; // Products from backend API
   translations: {
     createNewOrder: string;
     selectProduct: string;
@@ -68,195 +69,221 @@ export function NewOrderModal({
 }: NewOrderModalProps) {
   if (!isOpen) return null;
 
-  const updateField = (field: keyof NewOrderData, value: string) => {
+  const updateField = (field: keyof NewOrderData, value: any) => {
     onOrderDataChange({ ...orderData, [field]: value });
+  };
+
+  const addItem = () => {
+    const newItems = [...orderData.items, { id: Math.random().toString(36).substr(2, 9), product: '', quantity: '' }];
+    updateField('items', newItems);
+  };
+
+  const removeItem = (id: string) => {
+    const newItems = orderData.items.filter(item => item.id !== id);
+    updateField('items', newItems);
+  };
+
+  const updateItem = (id: string, field: keyof OrderItem, value: string) => {
+    const newItems = orderData.items.map(item =>
+      item.id === id ? { ...item, [field]: value } : item
+    );
+    updateField('items', newItems);
   };
 
   return (
     <>
       <div className="fixed inset-0 bg-black/50 z-40" onClick={onClose} />
-      <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-full max-w-lg max-h-[90vh] overflow-hidden">
-        <Card className="p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-semibold">{t.createNewOrder}</h2>
-            <Button variant="ghost" size="sm" onClick={onClose}>
-              <XCircle className="h-5 w-5" />
-            </Button>
-          </div>
-          
-          <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-2">
-            {/* Product Selection */}
-            <div>
-              <label className="block text-sm font-medium text-zinc-700 mb-1">
-                {t.selectProduct} <span className="text-red-500">*</span>
-              </label>
-              <select
-                value={orderData.product}
-                onChange={(e) => updateField('product', e.target.value)}
-                className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              >
-                <option value="">{t.chooseProduct}</option>
-                {Object.entries(products).map(([code, name]) => (
-                  <option key={code} value={code}>{code} - {name}</option>
-                ))}
-              </select>
+      <div className="fixed inset-0 z-50 overflow-y-auto">
+        <div className="min-h-full flex items-center justify-center p-4">
+          <Card className="w-full max-w-lg shadow-2xl border-none">
+            <div className="flex items-center justify-between p-6 pb-4 border-b bg-white rounded-t-lg">
+              <h2 className="text-xl font-semibold text-zinc-900">{t.createNewOrder}</h2>
+              <Button variant="ghost" size="sm" onClick={onClose} className="rounded-full hover:bg-zinc-100">
+                <XCircle className="h-5 w-5 text-zinc-500" />
+              </Button>
             </div>
 
-            {/* Quantity */}
-            <div>
-              <label className="block text-sm font-medium text-zinc-700 mb-1">
-                {t.enterQuantity} <span className="text-red-500">*</span>
-              </label>
-              <div className="flex gap-2">
-                <Input
-                  type="number"
-                  value={orderData.quantity}
-                  onChange={(e) => updateField('quantity', e.target.value)}
-                  placeholder="0"
-                  className="flex-1"
-                />
-                <span className="flex items-center px-3 bg-zinc-100 rounded-lg text-sm text-zinc-600">
-                  {t.units}
-                </span>
+            <div className="p-6 overflow-y-auto flex-1 space-y-6">
+              {/* Multi-SKU Items */}
+              <div className="space-y-4">
+                <label className="block text-sm font-medium text-zinc-700">
+                  {t.selectProduct} & {t.enterQuantity} <span className="text-red-500">*</span>
+                </label>
+                <div className="space-y-3">
+                  {orderData.items.map((item) => (
+                    <div key={item.id} className="flex gap-3 items-start bg-zinc-50 p-4 rounded-xl border border-zinc-200 transition-all hover:bg-zinc-100/50">
+                      <div className="flex-1 space-y-3">
+                        <select
+                          value={item.product}
+                          onChange={(e) => updateItem(item.id, 'product', e.target.value)}
+                          className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-sm bg-white"
+                        >
+                          <option value="">{t.chooseProduct}</option>
+                          {Object.entries(products).map(([id, product]) => (
+                            <option key={id} value={id}>
+                              {product.code.padEnd(15, '\u00A0')} | {product.name}
+                            </option>
+                          ))}
+                        </select>
+                        <div className="flex gap-2">
+                          <Input
+                            type="number"
+                            value={item.quantity}
+                            onChange={(e) => updateItem(item.id, 'quantity', e.target.value)}
+                            placeholder={t.enterQuantity}
+                            className="flex-1 h-10 rounded-lg bg-white"
+                          />
+                          <span className="flex items-center px-4 bg-zinc-200/50 rounded-lg text-xs font-medium text-zinc-600">
+                            {t.units}
+                          </span>
+                        </div>
+                      </div>
+                      {orderData.items.length > 1 && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => removeItem(item.id)}
+                          className="text-zinc-400 hover:text-red-500 hover:bg-red-50 rounded-lg mt-1"
+                        >
+                          <XCircle className="h-5 w-5" />
+                        </Button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={addItem}
+                  className="w-full border-dashed border-zinc-300 hover:border-emerald-500 hover:text-emerald-600 py-6 text-sm font-medium bg-zinc-50/50"
+                >
+                  + Add Another Product
+                </Button>
               </div>
-            </div>
 
-            {/* Due Date */}
-            <div>
-              <label className="block text-sm font-medium text-zinc-700 mb-1">
-                {t.selectDueDate} <span className="text-red-500">*</span>
-              </label>
-              <Input
-                type="date"
-                value={orderData.dueDate}
-                onChange={(e) => updateField('dueDate', e.target.value)}
-              />
-            </div>
-
-            {/* Priority */}
-            <div>
-              <label className="block text-sm font-medium text-zinc-700 mb-1">
-                {t.orderPriority}
-              </label>
-              <div className="flex gap-2">
-                {['normal', 'high', 'urgent'].map((priority) => (
-                  <button
-                    key={priority}
-                    onClick={() => updateField('priority', priority)}
-                    className={`flex-1 py-2 px-3 rounded-lg border text-sm font-medium transition-colors ${
-                      orderData.priority === priority
-                        ? priority === 'urgent' 
-                          ? 'bg-red-500 text-white border-red-500'
-                          : priority === 'high'
-                          ? 'bg-amber-500 text-white border-amber-500'
-                          : 'bg-blue-500 text-white border-blue-500'
-                        : 'bg-white text-zinc-700 border-zinc-300 hover:bg-zinc-50'
-                    }`}
+              <div className="grid grid-cols-2 gap-4">
+                {/* Due Date */}
+                <div className="space-y-1.5">
+                  <label className="block text-sm font-medium text-zinc-700">
+                    {t.selectDueDate} <span className="text-red-500">*</span>
+                  </label>
+                  <Input
+                    type="date"
+                    value={orderData.dueDate}
+                    onChange={(e) => updateField('dueDate', e.target.value)}
+                    className="w-full h-10 rounded-lg bg-white"
+                  />
+                </div>
+                {/* Priority */}
+                <div className="space-y-1.5">
+                  <label className="block text-sm font-medium text-zinc-700">
+                    {t.orderPriority}
+                  </label>
+                  <select
+                    value={orderData.priority}
+                    onChange={(e) => updateField('priority', e.target.value)}
+                    className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-sm h-10 bg-white"
                   >
-                    {t[priority as keyof typeof t]}
-                  </button>
-                ))}
+                    <option value="normal">{t.normal}</option>
+                    <option value="high">{t.high}</option>
+                    <option value="urgent">{t.urgent}</option>
+                  </select>
+                </div>
               </div>
+
+              {/* Production Timeline Section */}
+              <div className="bg-blue-50/50 p-5 rounded-xl border border-blue-100 space-y-4">
+                <h3 className="text-sm font-bold text-blue-900 flex items-center gap-2">
+                  <Clock className="w-4 h-4 text-blue-600" />
+                  {t.productionTimeline || 'Production Timeline'}
+                </h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-semibold text-blue-700">
+                      {t.startTime || 'Start Time'}
+                    </label>
+                    <Input
+                      type="datetime-local"
+                      value={orderData.startTime || ''}
+                      onChange={(e) => updateField('startTime', e.target.value)}
+                      className="w-full h-10 rounded-lg bg-white border-blue-200 focus:ring-blue-500/20 shadow-sm"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-semibold text-blue-700">
+                      {t.endTime || 'End Time'}
+                    </label>
+                    <Input
+                      type="datetime-local"
+                      value={orderData.endTime || ''}
+                      onChange={(e) => updateField('endTime', e.target.value)}
+                      className="w-full h-10 rounded-lg bg-white border-blue-200 focus:ring-blue-500/20 shadow-sm"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Notes */}
+              <div className="space-y-1.5">
+                <label className="block text-sm font-medium text-zinc-700">
+                  {t.orderNotes}
+                </label>
+                <textarea
+                  value={orderData.notes}
+                  onChange={(e) => updateField('notes', e.target.value)}
+                  placeholder={t.enterNotes}
+                  rows={3}
+                  className="w-full px-4 py-3 border border-zinc-300 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 resize-none text-sm bg-white"
+                />
+              </div>
+
+              {/* Order Summary Section */}
+              {orderData.items.some(item => item.product && item.quantity) && (
+                <div className="bg-emerald-50 p-5 rounded-xl border border-emerald-100 space-y-3">
+                  <h3 className="text-sm font-bold text-emerald-900 flex items-center gap-2">
+                    <Package className="w-4 h-4 text-emerald-600" />
+                    Order Summary
+                  </h3>
+                  <div className="space-y-2">
+                    {orderData.items.map((item, idx) => {
+                      const product = products[item.product];
+                      if (!product || !item.quantity) return null;
+                      return (
+                        <div key={item.id} className="flex justify-between items-center text-sm bg-white/50 p-2 rounded-lg border border-emerald-50">
+                          <span className="text-zinc-600 font-medium">
+                            {idx + 1}. {product.code} - {product.name}
+                          </span>
+                          <span className="text-emerald-700 font-bold px-2 py-0.5 bg-emerald-100 rounded-md">
+                            {item.quantity} {t.units}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Required Fields Note */}
+              <p className="text-xs text-zinc-400 italic">
+                <span className="text-red-500">*</span> {t.requiredFields}
+              </p>
             </div>
 
-            {/* Customer Name */}
-            <div>
-              <label className="block text-sm font-medium text-zinc-700 mb-1">
-                {t.customerName}
-              </label>
-              <Input
-                value={orderData.customerName}
-                onChange={(e) => updateField('customerName', e.target.value)}
-                placeholder={t.enterCustomer}
-              />
-            </div>
-
-            {/* Production Stage */}
-            <div>
-              <label className="block text-sm font-medium text-zinc-700 mb-1">
-                {t.productionStage}
-              </label>
-              <select
-                value={orderData.stage}
-                onChange={(e) => updateField('stage', e.target.value)}
-                className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            <div className="flex gap-3 p-6 pt-4 border-t bg-zinc-50/50 rounded-b-lg">
+              <Button variant="outline" onClick={onClose} className="flex-1 h-11 font-medium rounded-lg border-zinc-300 hover:bg-white transition-colors">
+                {t.cancel}
+              </Button>
+              <Button
+                onClick={onSubmit}
+                className="flex-1 h-11 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg shadow-lg shadow-emerald-600/20 transition-all hover:scale-[1.02] active:scale-[0.98]"
+                disabled={orderData.items.some(item => !item.product || !item.quantity) || !orderData.dueDate}
               >
-                <option value="Material Planning">Material Planning</option>
-                <option value="Cutting">Cutting</option>
-                <option value="Sewing">Sewing</option>
-                <option value="Quality Check">Quality Check</option>
-                <option value="Packaging">Packaging</option>
-              </select>
+                {t.createOrder}
+              </Button>
             </div>
-
-            {/* Assign Team */}
-            <div>
-              <label className="block text-sm font-medium text-zinc-700 mb-1">
-                {t.assignTeam}
-              </label>
-              <select
-                value={orderData.assignedTeam}
-                onChange={(e) => updateField('assignedTeam', e.target.value)}
-                className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              >
-                <option value="">{t.selectTeam}</option>
-                <option value="Team A">Team A - Cutting Department</option>
-                <option value="Team B">Team B - Sewing Department</option>
-                <option value="Team C">Team C - Quality Control</option>
-                <option value="Team D">Team D - Packaging</option>
-              </select>
-            </div>
-
-            {/* Shift Number */}
-            <div>
-              <label className="block text-sm font-medium text-zinc-700 mb-1">
-                {t.shiftNumber}
-              </label>
-              <select
-                value={orderData.shiftNumber}
-                onChange={(e) => updateField('shiftNumber', e.target.value)}
-                className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              >
-                <option value="Shift 1">{t.shift1}</option>
-                <option value="Shift 2">{t.shift2}</option>
-                <option value="Shift 3">{t.shift3}</option>
-              </select>
-            </div>
-
-            {/* Notes */}
-            <div>
-              <label className="block text-sm font-medium text-zinc-700 mb-1">
-                {t.orderNotes}
-              </label>
-              <textarea
-                value={orderData.notes}
-                onChange={(e) => updateField('notes', e.target.value)}
-                placeholder={t.enterNotes}
-                rows={3}
-                className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
-              />
-            </div>
-
-            {/* Required Fields Note */}
-            <p className="text-xs text-zinc-500">
-              <span className="text-red-500">*</span> {t.requiredFields}
-            </p>
-          </div>
-
-          {/* Actions */}
-          <div className="flex gap-2 mt-4 pt-4 border-t">
-            <Button variant="outline" onClick={onClose} className="flex-1">
-              {t.cancel}
-            </Button>
-            <Button 
-              onClick={onSubmit} 
-              className="flex-1"
-              disabled={!orderData.product || !orderData.quantity || !orderData.dueDate}
-            >
-              {t.createOrder}
-            </Button>
-          </div>
-        </Card>
+          </Card>
+        </div>
       </div>
     </>
   );

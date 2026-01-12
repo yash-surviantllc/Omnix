@@ -1,5 +1,3 @@
-import { useState } from 'react';
-import { Menu, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { UserProfile } from '@/components/features';
 import { useAppStore } from '@/stores/appStore';
@@ -11,21 +9,6 @@ interface SidebarProps {
   onLogout: () => void;
   setCurrentView: (view: View | string) => void;
 }
-
-const viewToPath: Record<View, string> = {
-  'dashboard': '/',
-  'orders': '/orders',
-  'working-order': '/working-order',
-  'bom': '/bom',
-  'wip': '/wip',
-  'transfer': '/transfer',
-  'material-request': '/material-request',
-  'qc': '/qc',
-  'inventory': '/inventory',
-  'gate-entry': '/gate-entry',
-  'gate-exit': '/gate-exit',
-  'settings': '/settings',
-};
 
 const languageOptions = [
   { code: 'en' as Language, name: 'English' },
@@ -184,37 +167,37 @@ export function Sidebar({ language, user, onLogout, setCurrentView }: SidebarPro
         </div>
       </div>
       <nav className="flex-1 space-y-1 px-3 py-4 overflow-y-auto">
-        <NavButton active={false} onClick={() => setCurrentView('dashboard')}>
+        <NavButton active={useAppStore.getState().currentView === 'dashboard'} onClick={() => setCurrentView('dashboard')}>
           {t.dashboard}
         </NavButton>
-        <NavButton active={false} onClick={() => setCurrentView('bom')}>
+        <NavButton active={useAppStore.getState().currentView === 'bom'} onClick={() => setCurrentView('bom')}>
           {t.bom}
         </NavButton>
-        <NavButton active={false} onClick={() => setCurrentView('orders')}>
+        <NavButton active={useAppStore.getState().currentView === 'orders'} onClick={() => setCurrentView('orders')}>
           {t.orders}
         </NavButton>
-        <NavButton active={false} onClick={() => setCurrentView('working-order')}>
+        <NavButton active={useAppStore.getState().currentView === 'working-order'} onClick={() => setCurrentView('working-order')}>
           {t['working-order']}
         </NavButton>
-        <NavButton active={false} onClick={() => setCurrentView('wip')}>
+        <NavButton active={useAppStore.getState().currentView === 'wip'} onClick={() => setCurrentView('wip')}>
           {t.wip}
         </NavButton>
-        <NavButton active={false} onClick={() => setCurrentView('transfer')}>
+        <NavButton active={useAppStore.getState().currentView === 'transfer'} onClick={() => setCurrentView('transfer')}>
           {t.transfer}
         </NavButton>
-        <NavButton active={false} onClick={() => setCurrentView('material-request')}>
+        <NavButton active={useAppStore.getState().currentView === 'material-request'} onClick={() => setCurrentView('material-request')}>
           {t['material-request']}
         </NavButton>
-        <NavButton active={false} onClick={() => setCurrentView('qc')}>
+        <NavButton active={useAppStore.getState().currentView === 'qc'} onClick={() => setCurrentView('qc')}>
           {t.qc}
         </NavButton>
-        <NavButton active={false} onClick={() => setCurrentView('inventory')}>
+        <NavButton active={useAppStore.getState().currentView === 'inventory'} onClick={() => setCurrentView('inventory')}>
           {t.inventory}
         </NavButton>
-        <NavButton active={false} onClick={() => setCurrentView('gate-entry')}>
+        <NavButton active={useAppStore.getState().currentView === 'gate-entry'} onClick={() => setCurrentView('gate-entry')}>
           {t['gate-entry']}
         </NavButton>
-        <NavButton active={false} onClick={() => setCurrentView('gate-exit')}>
+        <NavButton active={useAppStore.getState().currentView === 'gate-exit'} onClick={() => setCurrentView('gate-exit')}>
           {t['gate-exit']}
         </NavButton>
       </nav>
@@ -233,9 +216,8 @@ export function Sidebar({ language, user, onLogout, setCurrentView }: SidebarPro
                 <button
                   key={lang.code}
                   onClick={() => handleLanguageChange(lang.code)}
-                  className={`w-full text-left px-4 py-3 hover:bg-zinc-100 transition-colors ${
-                    language === lang.code ? 'bg-emerald-50 text-emerald-900' : 'text-zinc-900'
-                  }`}
+                  className={`w-full text-left px-4 py-3 hover:bg-zinc-100 transition-colors ${language === lang.code ? 'bg-emerald-50 text-emerald-900' : 'text-zinc-900'
+                    }`}
                 >
                   {lang.name}
                 </button>
@@ -265,9 +247,8 @@ function NavButton({ active, onClick, children }: { active: boolean; onClick: ()
   return (
     <button
       onClick={onClick}
-      className={`w-full text-left px-4 py-3 rounded-lg transition-colors ${
-        active ? 'bg-emerald-600 text-white' : 'text-zinc-300 hover:bg-zinc-800'
-      }`}
+      className={`w-full text-left px-4 py-3 rounded-lg transition-colors ${active ? 'bg-emerald-600 text-white' : 'text-zinc-300 hover:bg-zinc-800'
+        }`}
     >
       {children}
     </button>

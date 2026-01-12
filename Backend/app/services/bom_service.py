@@ -993,9 +993,12 @@ class BOMService:
             
             # Calculate free quantity
             if include_allocated:
-                free_qty = available_qty
+                free_qty = available_qty.quantize(Decimal('0.001'))
             else:
-                free_qty = available_qty - allocated_qty
+                free_qty = (available_qty - allocated_qty).quantize(Decimal('0.001'))
+            
+            # Ensure required_qty is also quantized for fair comparison
+            required_qty = required_qty.quantize(Decimal('0.001'))
             
             # Calculate shortage
             shortage_qty = max(Decimal('0'), required_qty - free_qty)

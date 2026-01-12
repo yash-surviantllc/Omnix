@@ -1,4 +1,4 @@
-import { Search, Filter, Plus, Play, Pause, CheckCircle2, Clock, AlertCircle, Calendar, Package, XCircle, ChevronDown, ChevronUp, Settings } from 'lucide-react';
+import { Search, Filter, Plus, Play, Pause, CheckCircle2, Clock, AlertCircle, Calendar, Package, XCircle, ChevronDown, ChevronUp } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -12,10 +12,10 @@ type WorkingOrderProps = {
 };
 
 // Standard operations that should appear in every work order
-const STANDARD_OPERATIONS = ['Cutting', 'Sewing', 'Finishing', 'Quality Check', 'Packing'];
 
 interface WorkOrderOperation {
   name: string;
+  id: string; // Added ID for action handling
   completedUnits: number;
   status: 'pending' | 'in-progress' | 'completed' | 'on-hold';
   assignedTo: string;
@@ -25,7 +25,9 @@ interface WorkOrderOperation {
 
 interface WorkOrder {
   id: string;
+  workOrderNumber: string; // Added work order number
   purchaseOrderId: string;
+  purchaseOrderNumber: string; // Added PO number
   product: string;
   operations: WorkOrderOperation[];
   assignedTo: string;
@@ -45,10 +47,10 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
   const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  
+
   // Expanded state for collapsible cards - tracks which work orders are expanded
   const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set());
-  
+
   // New Work Order Modal state
   const [showNewWorkOrderModal, setShowNewWorkOrderModal] = useState(false);
   const [productionOrders, setProductionOrders] = useState<PurchaseOrder[]>([]);
@@ -84,107 +86,88 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
     setLoading(true);
     setError(null);
     try {
-      const data = await wipApi.listWorkingOrders({ limit: 100 });
-      const poData = await purchaseOrdersApi.listOrders({ limit: 100 });
-      
-      // Create a map of purchase order ID to product name
-      const poProductMap = new Map<string, { productName: string; quantity: number }>();
-      poData.forEach(po => {
-        poProductMap.set(po.id, { 
-          productName: po.product_name, 
-          quantity: po.quantity 
-        });
-      });
-      
-      // Group work orders by purchase_order_id
-      const groupedByPO = new Map<string, typeof data>();
-      data.forEach(wo => {
-        const existing = groupedByPO.get(wo.purchase_order_id) || [];
-        existing.push(wo);
-        groupedByPO.set(wo.purchase_order_id, existing);
-      });
-      
-      // Transform grouped data into WorkOrder format with all standard operations
-      const transformedOrders: WorkOrder[] = [];
-      let workOrderCounter = 1;
-      
-      groupedByPO.forEach((operations, purchaseOrderId) => {
-        // Get product info from PO
-        const poInfo = poProductMap.get(purchaseOrderId);
-        const productName = poInfo?.productName || 'Unknown Product';
-        const targetQty = poInfo?.quantity || operations[0]?.target_qty || 0;
-        
-        // Create operation map from actual data
-        const operationMap = new Map<string, typeof operations[0]>();
-        operations.forEach(op => {
-          operationMap.set(op.operation, op);
-        });
-        
-        // Build operations array with all standard operations
-        const allOperations: WorkOrderOperation[] = STANDARD_OPERATIONS.map(opName => {
-          const existingOp = operationMap.get(opName);
-          if (existingOp) {
-            return {
-              name: opName,
-              completedUnits: existingOp.completed_qty,
-              status: existingOp.status.toLowerCase().replace(' ', '-') as 'pending' | 'in-progress' | 'completed' | 'on-hold',
-              assignedTo: existingOp.assigned_team || 'Unassigned',
-              workstation: existingOp.workstation || `${opName} Station`,
-              targetUnits: existingOp.target_qty
-            };
-          } else {
-            // Default empty operation
-            return {
-              name: opName,
-              completedUnits: 0,
-              status: 'pending' as const,
-              assignedTo: 'Unassigned',
-              workstation: `${opName} Station`,
-              targetUnits: targetQty
-            };
-          }
-        });
-        
-        // Get last operation for final completion count
-        const lastOperation = allOperations[allOperations.length - 1]; // Packing is the final stage
-        
-        // Determine overall status based on operations
-        let overallStatus: 'pending' | 'in-progress' | 'completed' | 'on-hold' = 'pending';
-        const hasInProgress = allOperations.some(op => op.status === 'in-progress');
-        const hasCompleted = allOperations.some(op => op.completedUnits > 0);
-        const allCompleted = lastOperation.completedUnits >= targetQty;
-        
-        if (allCompleted) {
-          overallStatus = 'completed';
-        } else if (hasInProgress) {
-          overallStatus = 'in-progress';
-        } else if (hasCompleted) {
-          overallStatus = 'in-progress';
+      // Fetch working orders directly without complex transformation
+      const workingOrdersData = await wipApi.listWorkingOrders({ limit: 100 });
+      const purchaseOrdersData = await purchaseOrdersApi.listOrders({ limit: 100 });
+
+      // Create a simple mapping for purchase orders
+      const poMap = new Map<string, any>();
+      purchaseOrdersData.forEach(po => {
+        if (po && po.id) {
+          poMap.set(po.id, {
+            productName: po.product_name || 'Unknown Product',
+            quantity: po.quantity || 0,
+            orderNumber: po.order_number || 'PO-????'
+          });
         }
-        
-        // Get first operation's data for timing info
-        const firstOp = operations[0];
-        
-        transformedOrders.push({
-          id: `WO-${String(workOrderCounter).padStart(4, '0')}`,
-          purchaseOrderId,
-          product: productName,
-          operations: allOperations,
-          assignedTo: firstOp?.assigned_team || 'Multiple Teams',
-          quantity: targetQty,
-          completedQty: lastOperation.completedUnits, // Use packing completed as final count
-          status: overallStatus,
-          priority: (firstOp?.priority?.toLowerCase() || 'normal') as 'low' | 'normal' | 'high' | 'urgent',
-          startTime: firstOp?.scheduled_start || firstOp?.created_at || '',
-          estimatedEnd: firstOp?.scheduled_end || '',
-          actualEnd: firstOp?.actual_end || undefined
-        });
-        
-        workOrderCounter++;
       });
-      
+
+      // Group working orders by work_order_number
+      const groupedOrders = new Map<string, typeof workingOrdersData>();
+
+      workingOrdersData.forEach(wo => {
+        const woNumber = wo.work_order_number || `WO-${wo.id.substring(0, 4)}`;
+        if (!groupedOrders.has(woNumber)) {
+          groupedOrders.set(woNumber, []);
+        }
+        groupedOrders.get(woNumber)?.push(wo);
+      });
+
+      // Transform grouped orders
+      const transformedOrders: WorkOrder[] = Array.from(groupedOrders.values()).map((group) => {
+        const firstOp = group[0]; // Use first operation for common details
+        const poInfo = poMap.get(firstOp.purchase_order_id);
+
+        // Map operations
+        const operations = group.map(wo => ({
+          name: wo.operation || 'Unknown Operation',
+          id: wo.id, // Include ID
+          completedUnits: Number(wo.completed_qty) || 0,
+          status: (wo.status?.toLowerCase().replace(' ', '-') as 'pending' | 'in-progress' | 'completed' | 'on-hold') || 'pending',
+          assignedTo: wo.assigned_team || 'Unassigned',
+          workstation: wo.workstation_name || `${wo.operation || 'Unknown'} Station`,
+          targetUnits: Number(wo.target_qty) || 0
+        }));
+
+        // Determine aggregate status
+        let aggregateStatus: WorkOrder['status'] = 'pending';
+        const statuses = operations.map(op => op.status);
+        if (statuses.every(s => s === 'completed')) aggregateStatus = 'completed';
+        else if (statuses.some(s => s === 'in-progress')) aggregateStatus = 'in-progress';
+        else if (statuses.some(s => s === 'completed')) aggregateStatus = 'in-progress'; // Some completed, rest pending/in-progress
+        else if (statuses.some(s => s === 'on-hold')) aggregateStatus = 'on-hold';
+
+        // Calculate total stats
+        // Assuming quantity is the target quantity of the specific order (usually same across operations or defined by PO)
+        // For progress bar: Sum of all completed / Sum of all targets? 
+        // Or if it is sequential, target is just ONE target amount?
+        // Reference screenshot: "340 of 500 units". 500 seems to be the total target of the order.
+        // If we sum targets of 5 ops (each 100), we get 500. So we sum them.
+
+        const totalTarget = operations.reduce((sum, op) => sum + op.targetUnits, 0);
+        const totalCompleted = operations.reduce((sum, op) => sum + op.completedUnits, 0);
+
+        return {
+          id: firstOp.id, // Use ID of first op as key?? Ideally we need a unique WO ID.
+          workOrderNumber: firstOp.work_order_number || `WO-${firstOp.id}`,
+          purchaseOrderId: firstOp.purchase_order_id || '',
+          purchaseOrderNumber: poInfo?.orderNumber || 'Unknown PO',
+          product: poInfo?.productName || 'Unknown Product',
+          operations: operations,
+          assignedTo: firstOp.assigned_team || 'Unassigned',
+          quantity: totalTarget,
+          completedQty: totalCompleted,
+          status: aggregateStatus,
+          priority: (firstOp.priority?.toLowerCase() as 'low' | 'normal' | 'high' | 'urgent') || 'normal',
+          startTime: firstOp.scheduled_start || firstOp.created_at || '',
+          estimatedEnd: firstOp.scheduled_end || '',
+          actualEnd: firstOp.actual_end || undefined
+        };
+      });
+
       setWorkOrders(transformedOrders);
     } catch (err: any) {
+      console.error('Error fetching work orders:', err);
       setError(err?.detail || err?.message || 'Failed to load work orders');
     } finally {
       setLoading(false);
@@ -494,87 +477,88 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
 
   const t = translations[language];
 
-  const getStatusBadge = (status: WorkOrder['status']) => {
-    const statusConfig = {
+  const getStatusBadge = (status: string) => {
+    const statusConfig: Record<string, { color: string; label: string }> = {
       'pending': { color: 'bg-zinc-500', label: t.pending },
       'in-progress': { color: 'bg-blue-500', label: t.inProgress },
       'completed': { color: 'bg-emerald-500', label: t.completed },
       'on-hold': { color: 'bg-amber-500', label: t.onHold },
+      // Add fallbacks for other common statuses
+      'planned': { color: 'bg-zinc-500', label: t.pending },
+      'cancelled': { color: 'bg-rose-500', label: 'Cancelled' },
+      'draft': { color: 'bg-zinc-400', label: 'Draft' },
     };
-    const config = statusConfig[status];
+
+    // Normalize status key
+    const normalizedStatus = status?.toLowerCase().replace(' ', '-') || 'pending';
+    const config = statusConfig[normalizedStatus] || statusConfig['pending'];
+
     return <Badge className={config.color}>{config.label}</Badge>;
   };
 
   const filteredOrders = workOrders.filter(order => {
-    const matchesSearch = 
-      order.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    const matchesSearch =
+      order.workOrderNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
       order.product.toLowerCase().includes(searchQuery.toLowerCase()) ||
       order.operations.some(op => op.name.toLowerCase().includes(searchQuery.toLowerCase())) ||
       order.assignedTo.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      order.purchaseOrderId.toLowerCase().includes(searchQuery.toLowerCase());
-    
+      order.purchaseOrderNumber.toLowerCase().includes(searchQuery.toLowerCase());
+
     const matchesStatus = statusFilter === 'all' || order.status === statusFilter;
     const matchesPO = poFilter === 'all' || order.purchaseOrderId === poFilter;
-    
+
     return matchesSearch && matchesStatus && matchesPO;
   });
 
-  const handleAction = async (action: string, orderId: string) => {
-    const order = workOrders.find(o => o.id === orderId);
+  const handleAction = async (action: string, groupedOrderId: string) => {
+    const order = workOrders.find(o => o.id === groupedOrderId);
     if (!order) return;
 
     try {
+      let targetOpId: string | null = null;
       let status: 'Pending' | 'In Progress' | 'Completed' | 'On Hold' | 'Cancelled';
       let updateData: any = {};
 
-      switch (action) {
-        case 'start':
+      // Identify target operation based on action and current state
+      if (action === 'start') {
+        // Find first pending or on-hold operation
+        const op = order.operations.find(op => op.status === 'pending' || op.status === 'on-hold');
+        if (op) {
+          targetOpId = op.id;
           status = 'In Progress';
-          updateData = {
-            status,
-            actual_start: new Date().toISOString()
-          };
-          break;
-        case 'pause':
+          updateData = { status, actual_start: new Date().toISOString() };
+        }
+      } else if (action === 'pause') {
+        // Find first in-progress operation
+        const op = order.operations.find(op => op.status === 'in-progress');
+        if (op) {
+          targetOpId = op.id;
           status = 'On Hold';
           updateData = { status };
-          break;
-        case 'complete':
+        }
+      } else if (action === 'complete') {
+        // Find first in-progress operation
+        const op = order.operations.find(op => op.status === 'in-progress');
+        if (op) {
+          targetOpId = op.id;
           status = 'Completed';
           updateData = {
             status,
             actual_end: new Date().toISOString(),
-            completed_qty: order.quantity
+            completed_qty: op.targetUnits // Auto-fill quantity? Or let backend handle?
           };
-          break;
-        default:
-          return;
+        }
       }
 
-      // Update each operation in the work order
-      // Since we grouped operations by purchase_order_id, we need to update all operations
-      const updatePromises = order.operations.map(async (op) => {
-        // Find the actual working order ID for this operation
-        const allWorkingOrders = await wipApi.listWorkingOrders({ 
-          purchase_order_id: order.purchaseOrderId,
-          operation: op.name
-        });
-        
-        if (allWorkingOrders.length > 0) {
-          const workingOrderId = allWorkingOrders[0].id;
-          await wipApi.updateWorkingOrder(workingOrderId, updateData);
-        }
-      });
+      if (!targetOpId) {
+        // If no specific operation targeted, maybe user clicked main button but state changed?
+        // Fallback: Use the grouped ID (first op ID) if safe? No, risky.
+        console.warn("No suitable operation found for action:", action);
+        return;
+      }
 
-      await Promise.all(updatePromises);
-
-      alert(`✅ ${language === 'en' ? 
-        action === 'start' ? 'Started work order' :
-        action === 'pause' ? 'Paused work order' :
-        'Completed work order' :
-        action === 'start' ? 'कार्य आदेश शुरू किया' :
-        action === 'pause' ? 'कार्य आदेश रोका' :
-        'कार्य आदेश पूर्ण'}: ${orderId}`);
+      // Update the specific operation
+      await wipApi.updateWorkingOrder(targetOpId, updateData);
 
       // Refresh the work orders list
       await fetchWorkOrders();
@@ -586,8 +570,8 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
   // Create new work order
   const handleCreateWorkOrder = async () => {
     if (!newWorkOrderData.purchase_order_id || !newWorkOrderData.operation || !newWorkOrderData.target_qty) {
-      alert(language === 'en' 
-        ? '⚠️ Please fill in required fields (Purchase Order, Operation, Target Quantity)' 
+      alert(language === 'en'
+        ? '⚠️ Please fill in required fields (Purchase Order, Operation, Target Quantity)'
         : '⚠️ कृपया आवश्यक फ़ील्ड भरें (खरीद आदेश, ऑपरेशन, लक्ष्य मात्रा)');
       return;
     }
@@ -597,7 +581,7 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
       const payload: WorkingOrderCreate = {
         purchase_order_id: newWorkOrderData.purchase_order_id,
         operation: newWorkOrderData.operation,
-        workstation: newWorkOrderData.workstation || undefined,
+        workstation_name: newWorkOrderData.workstation || undefined,
         assigned_team: newWorkOrderData.assigned_team || undefined,
         target_qty: parseFloat(newWorkOrderData.target_qty),
         unit: newWorkOrderData.unit,
@@ -608,9 +592,9 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
       };
 
       const createdOrder = await wipApi.createWorkingOrder(payload);
-      
+
       alert(`✅ ${language === 'en' ? 'Work Order Created!' : 'कार्य आदेश बनाया गया!'}\n\n${language === 'en' ? 'Work Order Number' : 'कार्य आदेश नंबर'}: ${createdOrder.work_order_number}`);
-      
+
       setShowNewWorkOrderModal(false);
       setNewWorkOrderData({
         purchase_order_id: '',
@@ -637,7 +621,7 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <h1 className="text-2xl font-semibold">{t.title}</h1>
-        <Button 
+        <Button
           className="bg-emerald-600 hover:bg-emerald-700"
           onClick={() => setShowNewWorkOrderModal(true)}
         >
@@ -690,61 +674,38 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
       <div className="grid gap-4">
         {filteredOrders.map((order) => {
           const isExpanded = expandedOrders.has(order.id);
-          
-          // Calculate total completed across all operations for overall progress
+
+          // Calculate overall progress for single operation
           const totalCompletedUnits = order.operations.reduce((sum, op) => sum + op.completedUnits, 0);
-          const overallProgressPercent = order.quantity > 0 
-            ? Math.round((totalCompletedUnits / (order.quantity * order.operations.length)) * 100) 
+          const overallProgressPercent = order.quantity > 0
+            ? Math.round((totalCompletedUnits / order.quantity) * 100)
             : 0;
-          
+
           return (
-            <Card key={order.id} className="overflow-hidden">
+            <Card key={order.id} className="overflow-hidden bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 shadow-sm">
               {/* Collapsed Header - Always Visible */}
-              <div 
-                className="p-4 cursor-pointer hover:bg-zinc-50 transition-colors"
+              <div
+                className="p-6 cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors"
                 onClick={() => toggleExpanded(order.id)}
               >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-4 flex-1">
-                    {/* Work Order ID and Status */}
-                    <div className="flex items-center gap-2">
-                      <span className="font-semibold text-lg">{order.id}</span>
-                      {getStatusBadge(order.status)}
-                    </div>
-                    
-                    {/* Production Order Reference */}
-                    <p className="text-sm text-zinc-500 hidden sm:block">
-                      {t.productionOrder}: {order.purchaseOrderId.slice(0, 8)}...
-                    </p>
-                    
-                    {/* Product Name */}
-                    <div className="flex items-center gap-2 hidden md:flex">
-                      <Settings className="h-4 w-4 text-zinc-400" />
-                      <span className="text-sm font-medium">{order.product}</span>
-                    </div>
-                  </div>
-                  
-                  {/* Right side - Progress summary and expand button */}
-                  <div className="flex items-center gap-4">
-                    {/* Mini progress indicator when collapsed */}
-                    {!isExpanded && (
-                      <div className="hidden sm:flex items-center gap-2">
-                        <div className="w-24 h-2 bg-zinc-200 rounded-full overflow-hidden">
-                          <div
-                            className={`h-full transition-all ${
-                              order.status === 'completed' ? 'bg-emerald-500' :
-                              order.status === 'in-progress' ? 'bg-blue-500' :
-                              'bg-zinc-400'
-                            }`}
-                            style={{ width: `${overallProgressPercent}%` }}
-                          />
-                        </div>
-                        <span className="text-sm text-zinc-500 w-12">{overallProgressPercent}%</span>
+                <div className="flex flex-col gap-6">
+
+                  {/* Top Row: WO Number, Status, PO Number */}
+                  <div className="flex items-start justify-between">
+                    <div className="flex flex-col gap-1">
+                      <div className="flex items-center gap-3">
+                        <span className="font-bold text-xl text-zinc-900 dark:text-zinc-100">
+                          {order.workOrderNumber}
+                        </span>
+                        {getStatusBadge(order.status)}
                       </div>
-                    )}
-                    
+                      <div className="text-sm text-zinc-500">
+                        {t.productionOrder}: {order.purchaseOrderNumber}
+                      </div>
+                    </div>
+
                     {/* Expand/Collapse Button */}
-                    <button className="p-2 hover:bg-zinc-100 rounded-full transition-colors">
+                    <button className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-full transition-colors">
                       {isExpanded ? (
                         <ChevronUp className="h-5 w-5 text-zinc-500" />
                       ) : (
@@ -752,145 +713,159 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
                       )}
                     </button>
                   </div>
+
+                  {/* Product Info Row */}
+                  <div className="flex items-center gap-2.5 text-[15px] font-medium text-zinc-700 dark:text-zinc-300">
+                    <div className="p-1.5 bg-zinc-100 dark:bg-zinc-800 rounded-md text-zinc-500">
+                      <Package className="h-4 w-4" />
+                    </div>
+                    {order.product}
+                  </div>
+
+                  {/* Expanded Content or Mini Progress */}
+                  {isExpanded ? (
+                    <div className="mt-4 space-y-6 animate-in slide-in-from-top-2 duration-200">
+
+                      {/* Operation Progress Cards */}
+                      <div>
+                        <h4 className="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-3">
+                          {language === 'en' ? 'Operation Progress' : 'ऑपरेशन प्रगति'}
+                        </h4>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                          {order.operations.map((op, idx) => {
+                            const opPercent = op.targetUnits > 0 ? Math.round((op.completedUnits / op.targetUnits) * 100) : 0;
+                            return (
+                              <div
+                                key={idx}
+                                className={`
+                                  relative p-4 rounded-xl border transition-all shadow-sm
+                                  ${op.status === 'completed' ? 'bg-emerald-50/50 border-emerald-200 dark:bg-emerald-900/10 dark:border-emerald-800' :
+                                    op.status === 'in-progress' ? 'bg-blue-50/50 border-blue-200 dark:bg-blue-900/10 dark:border-blue-800' :
+                                      'bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800'}
+                                `}
+                              >
+                                <div className="flex flex-col items-center text-center gap-2">
+                                  <span className="font-semibold text-zinc-900">{op.name}</span>
+
+                                  <div className="flex items-baseline gap-1">
+                                    <span className="text-2xl font-bold tracking-tight">{op.completedUnits}</span>
+                                    <span className="text-xs text-zinc-500 font-medium">{t.units}</span>
+                                  </div>
+
+                                  <div className="w-full bg-zinc-100 h-1.5 rounded-full overflow-hidden mt-1">
+                                    <div
+                                      className={`h-full rounded-full transition-all duration-500 ${op.status === 'completed' ? 'bg-emerald-500' :
+                                        op.status === 'in-progress' ? 'bg-blue-500' : 'bg-zinc-300'
+                                        }`}
+                                      style={{ width: `${opPercent}%` }}
+                                    />
+                                  </div>
+
+                                  <div className="text-xs text-zinc-500 mt-1">
+                                    {opPercent}% {t.of} {op.targetUnits}
+                                  </div>
+
+                                  <div className="flex flex-col gap-0.5 text-[11px] text-zinc-500 mt-2">
+                                    <span>{t.workstation}: <strong className="text-zinc-700">{op.workstation}</strong></span>
+                                    <span>{t.assignedTo}: <strong className="text-zinc-700">{op.assignedTo}</strong></span>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Overall Progress & Timeline */}
+                      <div className="space-y-6 pt-6 border-t border-zinc-100 dark:border-zinc-800">
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="text-zinc-500 font-medium">{t.overallProgress}</span>
+                            <span className="font-semibold text-zinc-900 dark:text-zinc-100">
+                              {totalCompletedUnits.toFixed(1)} {t.of} {order.quantity.toFixed(1)} {t.units} ({overallProgressPercent}%)
+                            </span>
+                          </div>
+                          <div className="h-3 bg-zinc-100 dark:bg-zinc-800 rounded-full overflow-hidden">
+                            <div
+                              className="h-full bg-blue-600 rounded-full transition-all duration-500"
+                              style={{ width: `${overallProgressPercent}%` }}
+                            />
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-6 text-sm text-zinc-500 pb-2">
+                          <div className="flex items-center gap-1.5">
+                            <Clock className="h-4 w-4 text-zinc-400" />
+                            <span>{t.startTime}: <span className="text-zinc-700 dark:text-zinc-300 font-medium">{order.startTime ? new Date(order.startTime).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' }) : 'Not set'}</span></span>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <Calendar className="h-4 w-4 text-zinc-400" />
+                            <span>{t.estimatedEnd}: <span className="text-zinc-700 dark:text-zinc-300 font-medium">{order.estimatedEnd ? new Date(order.estimatedEnd).toLocaleDateString() : 'Not set'}</span></span>
+                          </div>
+                        </div>
+
+                        {/* Action Buttons - Bottom Layout */}
+                        <div className="flex flex-col gap-3 pt-2">
+                          {order.status === 'pending' && (
+                            <Button
+                              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm h-12 text-base font-medium rounded-xl"
+                              onClick={(e) => { e.stopPropagation(); handleAction('start', order.id); }}
+                            >
+                              <Play className="h-5 w-5 mr-2" />
+                              {t.start}
+                            </Button>
+                          )}
+
+                          {order.status === 'in-progress' && (
+                            <>
+                              <div className="flex justify-center">
+                                <Button
+                                  variant="ghost"
+                                  className="text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-800 rounded-full px-6"
+                                  onClick={(e) => { e.stopPropagation(); handleAction('pause', order.id); }}
+                                >
+                                  <Pause className="h-4 w-4 mr-2" />
+                                  {t.pause}
+                                </Button>
+                              </div>
+                              <Button
+                                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm h-12 text-base font-medium rounded-xl"
+                                onClick={(e) => { e.stopPropagation(); handleAction('complete', order.id); }}
+                              >
+                                <CheckCircle2 className="h-5 w-5 mr-2" />
+                                {t.complete}
+                              </Button>
+                            </>
+                          )}
+
+                          {order.status === 'on-hold' && (
+                            <Button
+                              className="w-full bg-blue-600 hover:bg-blue-700 text-white shadow-sm h-12 text-base font-medium rounded-xl"
+                              onClick={(e) => { e.stopPropagation(); handleAction('start', order.id); }}
+                            >
+                              <Play className="h-5 w-5 mr-2" />
+                              {t.start}
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    // Collapsed View - Progress Summary
+                    <div className="mt-4">
+                      <div className="flex items-center gap-3">
+                        <div className="flex-1 h-2 bg-zinc-100 rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-blue-600 rounded-full transition-all duration-500"
+                            style={{ width: `${overallProgressPercent}%` }}
+                          />
+                        </div>
+                        <span className="text-sm font-medium text-zinc-600">{overallProgressPercent}%</span>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
-              
-              {/* Expanded Content */}
-              {isExpanded && (
-                <div className="border-t border-zinc-200 p-4 space-y-4">
-                  {/* Product Info Row */}
-                  <div className="flex flex-wrap items-center gap-4 text-sm">
-                    <div className="flex items-center gap-2">
-                      <Package className="h-4 w-4 text-zinc-500" />
-                      <span className="font-medium">{order.product}</span>
-                    </div>
-                    <span className="text-zinc-400">|</span>
-                    <span className="text-zinc-500">{t.productionOrder}: {order.purchaseOrderId}</span>
-                  </div>
-
-                  {/* Operation Progress - All 5 Operations */}
-                  <div>
-                    <h4 className="text-sm font-medium text-zinc-500 mb-3">
-                      {language === 'en' ? 'Operation Progress' : 'ऑपरेशन प्रगति'}
-                    </h4>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
-                      {order.operations.map((op, idx) => {
-                        const opPercent = op.targetUnits > 0 ? Math.round((op.completedUnits / op.targetUnits) * 100) : 0;
-                        return (
-                          <div
-                            key={idx}
-                            className={`
-                              p-3 rounded-lg text-center border transition-all
-                              ${op.status === 'completed' ? 'bg-emerald-50 border-emerald-300' :
-                                op.status === 'in-progress' ? 'bg-blue-50 border-blue-300' :
-                                op.status === 'on-hold' ? 'bg-amber-50 border-amber-300' :
-                                'bg-zinc-50 border-zinc-200'}
-                            `}
-                          >
-                            <div className={`text-sm font-medium ${
-                              op.status === 'completed' ? 'text-emerald-700' :
-                              op.status === 'in-progress' ? 'text-blue-700' :
-                              op.status === 'on-hold' ? 'text-amber-700' :
-                              'text-zinc-600'
-                            }`}>{op.name}</div>
-                            <div className="text-xl font-bold my-1">{op.completedUnits} {t.units}</div>
-                            <div className="text-xs text-zinc-500">
-                              {opPercent}% {t.of} {op.targetUnits}
-                            </div>
-                            <div className="mt-2 text-xs text-zinc-600">
-                              <div>{t.workstation}: <span className="text-blue-600">{op.workstation}</span></div>
-                              <div>{t.assignedTo}: <span className="text-orange-600">{op.assignedTo}</span></div>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  {/* Overall Progress Bar */}
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-zinc-500">{t.overallProgress}</span>
-                      <span className="font-medium">
-                        {totalCompletedUnits} {t.of} {order.quantity * order.operations.length} {t.units} ({overallProgressPercent}%)
-                      </span>
-                    </div>
-                    <div className="h-3 bg-zinc-200 rounded-full overflow-hidden">
-                      <div
-                        className={`h-full transition-all duration-500 ${
-                          order.status === 'completed' ? 'bg-emerald-500' :
-                          order.status === 'in-progress' ? 'bg-blue-500' :
-                          order.status === 'on-hold' ? 'bg-amber-500' :
-                          'bg-zinc-400'
-                        }`}
-                        style={{ width: `${overallProgressPercent}%` }}
-                      />
-                    </div>
-                  </div>
-
-                  {/* Timeline */}
-                  <div className="flex flex-wrap items-center gap-4 text-sm text-zinc-500">
-                    <div className="flex items-center gap-1">
-                      <Clock className="h-4 w-4" />
-                      <span>{t.startTime}: {order.startTime || 'Not set'}</span>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <Calendar className="h-4 w-4" />
-                      <span>{t.estimatedEnd}: {order.estimatedEnd || 'Not set'}</span>
-                    </div>
-                  </div>
-
-                  {/* Action Buttons */}
-                  <div className="flex flex-wrap gap-2 pt-2 border-t border-zinc-100">
-                    {order.status === 'pending' && (
-                      <Button
-                        size="sm"
-                        className="bg-emerald-600 hover:bg-emerald-700"
-                        onClick={(e) => { e.stopPropagation(); handleAction('start', order.id); }}
-                      >
-                        <Play className="h-4 w-4 mr-1" />
-                        {t.start}
-                      </Button>
-                    )}
-                    {order.status === 'in-progress' && (
-                      <>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={(e) => { e.stopPropagation(); handleAction('pause', order.id); }}
-                        >
-                          <Pause className="h-4 w-4 mr-1" />
-                          {t.pause}
-                        </Button>
-                        <Button
-                          size="sm"
-                          className="bg-emerald-600 hover:bg-emerald-700"
-                          onClick={(e) => { e.stopPropagation(); handleAction('complete', order.id); }}
-                        >
-                          <CheckCircle2 className="h-4 w-4 mr-1" />
-                          {t.complete}
-                        </Button>
-                      </>
-                    )}
-                    {order.status === 'on-hold' && (
-                      <Button
-                        size="sm"
-                        className="bg-blue-600 hover:bg-blue-700"
-                        onClick={(e) => { e.stopPropagation(); handleAction('start', order.id); }}
-                      >
-                        <Play className="h-4 w-4 mr-1" />
-                        {t.start}
-                      </Button>
-                    )}
-                    {order.status === 'completed' && (
-                      <div className="flex items-center gap-1 text-emerald-600">
-                        <CheckCircle2 className="h-5 w-5" />
-                        <span className="text-sm font-medium">{t.completed}</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
             </Card>
           );
         })}
@@ -1093,20 +1068,20 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
 
               {/* Action Buttons */}
               <div className="flex gap-3 pt-2">
-                <Button 
-                  onClick={() => setShowNewWorkOrderModal(false)} 
-                  variant="outline" 
+                <Button
+                  onClick={() => setShowNewWorkOrderModal(false)}
+                  variant="outline"
                   className="flex-1"
                 >
                   {language === 'en' ? 'Cancel' : 'रद्द करें'}
                 </Button>
-                <Button 
+                <Button
                   onClick={handleCreateWorkOrder}
                   className="flex-1 bg-emerald-600 hover:bg-emerald-700"
                   disabled={isCreating}
                 >
-                  {isCreating 
-                    ? (language === 'en' ? 'Creating...' : 'बना रहे हैं...') 
+                  {isCreating
+                    ? (language === 'en' ? 'Creating...' : 'बना रहे हैं...')
                     : (language === 'en' ? 'Create Work Order' : 'कार्य आदेश बनाएं')}
                 </Button>
               </div>

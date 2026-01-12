@@ -2,14 +2,13 @@ from fastapi import APIRouter, Depends, Query
 from typing import List, Optional
 from app.schemas.purchase_order import (
     PurchaseOrderCreate, PurchaseOrderUpdate, PurchaseOrderResponse,
-    PurchaseOrderListItem, MaterialRequirement, OrderProgress, OrderStatusUpdate,
-    TeamAssignment, PurchaseOrderValidation
+    PurchaseOrderListItem, OrderStatusUpdate, MaterialRequirement, OrderProgress,
+    TeamAssignment, PurchaseOrderValidation, PurchaseOrderMultiSKUCreate
 )
 from app.schemas.user import UserResponse
 from app.services.purchase_order_service import purchase_order_service
 from app.api.deps import get_current_user, require_role
 from decimal import Decimal
-import asyncio
 
 router = APIRouter()
 
@@ -17,7 +16,7 @@ router = APIRouter()
 @router.post("/", response_model=PurchaseOrderResponse, status_code=201)
 async def create_purchase_order(
     order_data: PurchaseOrderCreate,
-    current_user: UserResponse = Depends(require_role("Planner"))
+    current_user: UserResponse = Depends(get_current_user)
 ):
     """
     Create a new purchase order.
@@ -29,19 +28,14 @@ async def create_purchase_order(
     - **quantity**: Order quantity
     - **due_date**: Target completion date
     - **priority**: Low/Medium/High/Urgent
-    - **customer_name**: Customer name (optional)
-    - **production_stage**: Current stage (optional)
-    - **shift_number**: Shift assignment (optional)
-    - **start_time**: Production start time (optional)
-    - **end_time**: Production end time (optional)
     """
     return await purchase_order_service.create_purchase_order(order_data, current_user.id)
 
 
-@router.post("/{order_id}/duplicate", response_model=PurchaseOrderResponse, status_code=201)
+@router.post("/{order_id}/duplicate", response_model=PurchaseOrderResponse)
 async def duplicate_purchase_order(
     order_id: str,
-    current_user: UserResponse = Depends(require_role("Planner"))
+    current_user: UserResponse = Depends(get_current_user)
 ):
     """
     Duplicate an existing purchase order.
@@ -56,6 +50,25 @@ async def duplicate_purchase_order(
     return await purchase_order_service.duplicate_purchase_order(order_id, current_user.id)
 
 
+@router.post("/multi-sku", response_model=PurchaseOrderResponse, status_code=201)
+async def create_multi_sku_order(
+    order_data: PurchaseOrderMultiSKUCreate,
+    current_user: UserResponse = Depends(get_current_user)
+):
+    """
+    Create a purchase order with multiple SKUs.
+    
+    - Supports multiple products in one order
+    - Calculates material requirements for all SKUs
+    - Optional OCR document upload
+    - **items**: List of SKU items with product_id and quantity
+    - **customer_name**: Customer name
+    - **due_date**: Target completion date
+    - **shift_number**: Shift assignment
+    """
+    return await purchase_order_service.create_multi_sku_order(order_data, current_user.id)
+
+
 @router.get("/", response_model=List[PurchaseOrderListItem])
 async def list_purchase_orders(
     page: int = Query(1, ge=1),
@@ -63,8 +76,6 @@ async def list_purchase_orders(
     status: Optional[str] = None,
     priority: Optional[str] = None,
     search: Optional[str] = None,
-    due_date_from: Optional[str] = None,
-    due_date_to: Optional[str] = None,
     current_user: UserResponse = Depends(get_current_user)
 ):
     """
@@ -73,10 +84,13 @@ async def list_purchase_orders(
     - **status**: Planned/In Progress/Completed/Cancelled
     - **priority**: Low/Medium/High/Urgent
     - **search**: Search in order number or product name
-    - **due_date_from/to**: Date range filter
     """
     return await purchase_order_service.list_purchase_orders(
-        page, limit, status, priority, search, due_date_from, due_date_to
+        page=page,
+        limit=limit,
+        status=status,
+        priority=priority,
+        search=search
     )
 
 
@@ -95,33 +109,38 @@ async def get_purchase_order(
 async def update_purchase_order(
     order_id: str,
     order_data: PurchaseOrderUpdate,
-    current_user: UserResponse = Depends(require_role("Planner"))
+    current_user: UserResponse = Depends(get_current_user)
 ):
     """
     Update purchase order (only if status is Planned).
     """
-    return await purchase_order_service.update_purchase_order(order_id, order_data, current_user.id)
+    return await purchase_order_service.update_purchase_order(
+        order_id=order_id,
+        update_data=order_data,
+        user_id=current_user.id
+    )
 
 
 @router.put("/{order_id}/status", response_model=PurchaseOrderResponse)
 async def update_order_status(
     order_id: str,
     status_data: OrderStatusUpdate,
-    current_user: UserResponse = Depends(require_role("Supervisor"))
+    current_user: UserResponse = Depends(get_current_user)
 ):
     """
-    Update order status.
-    
-    Workflow: Planned → In Progress → Completed
-    Can cancel from any state
+    Update purchase order status (Planner/Supervisor only).
     """
-    return await purchase_order_service.update_order_status(order_id, status_data, current_user.id)
+    return await purchase_order_service.update_order_status(
+        order_id=order_id,
+        status_data=status_data,
+        user_id=current_user.id
+    )
 
 
 @router.post("/{order_id}/archive", response_model=PurchaseOrderResponse)
 async def archive_purchase_order(
     order_id: str,
-    current_user: UserResponse = Depends(require_role("Planner"))
+    current_user: UserResponse = Depends(get_current_user)
 ):
     """
     Archive a purchase order.
@@ -132,15 +151,26 @@ async def archive_purchase_order(
     return await purchase_order_service.archive_purchase_order(order_id, current_user.id)
 
 
-@router.delete("/{order_id}")
+@router.post("/{order_id}/cancel", response_model=PurchaseOrderResponse)
 async def cancel_purchase_order(
     order_id: str,
-    current_user: UserResponse = Depends(require_role("Planner"))
+    current_user: UserResponse = Depends(get_current_user)
 ):
     """
     Cancel purchase order.
     
     Cannot cancel if materials already issued or WIP exists.
+    """
+    return await purchase_order_service.cancel_purchase_order(order_id, current_user.id)
+
+
+@router.delete("/{order_id}")
+async def delete_purchase_order(
+    order_id: str,
+    current_user: UserResponse = Depends(get_current_user)
+):
+    """
+    Delete (cancel) purchase order.
     """
     return await purchase_order_service.cancel_purchase_order(order_id, current_user.id)
 
@@ -151,13 +181,7 @@ async def get_order_materials(
     current_user: UserResponse = Depends(get_current_user)
 ):
     """
-    Get calculated material requirements for order.
-    
-    Shows:
-    - Required quantity (with scrap %)
-    - Available quantity
-    - Shortage quantity
-    - Availability status
+    Get calculated material requirements for an order.
     """
     return await purchase_order_service.get_order_materials(order_id)
 
@@ -168,9 +192,7 @@ async def get_order_progress(
     current_user: UserResponse = Depends(get_current_user)
 ):
     """
-    Get order progress through stages.
-    
-    Returns stage completion status and timelines.
+    Get progress summary for a purchase order.
     """
     return await purchase_order_service.get_order_progress(order_id)
 
@@ -182,7 +204,7 @@ async def assign_team_to_order(
     current_user: UserResponse = Depends(require_role("Supervisor"))
 ):
     """
-    Assign team members to purchase order.
+    Assign team members to a purchase order.
     """
     return await purchase_order_service.assign_team(order_id, user_ids, current_user.id)
 
@@ -193,14 +215,15 @@ async def get_order_team(
     current_user: UserResponse = Depends(get_current_user)
 ):
     """
-    Get team assignments for order.
+    Get the team members assigned to a purchase order.
     """
     return await purchase_order_service.get_team_assignments(order_id)
 
-@router.post("/validate-purchase", response_model=PurchaseOrderValidation)
-async def validate_purchase_feasibility(
+
+@router.post("/validate-production", response_model=PurchaseOrderValidation)
+async def validate_production_feasibility(
     product_id: str = Query(..., description="Finished goods product ID"),
-    quantity: Decimal = Query(..., gt=0, description="Purchase quantity"),
+    quantity: Decimal = Query(..., gt=0, description="Production quantity"),
     target_location_id: Optional[str] = Query(None, description="Check inventory at specific location"),
     current_user: UserResponse = Depends(get_current_user)
 ):
@@ -211,17 +234,17 @@ async def validate_purchase_feasibility(
     - Checks material availability before creating order
     - Shows exact shortage quantities
     - Returns feasibility status (can_produce: true/false)
-    - Helps with purchase planning
+    - Helps with production planning
     
     **Use Cases:**
-    - Pre-purchase validation
+    - Pre-production validation
     - Material planning
     - Order feasibility check
     - Quick shortage preview
     
     **Parameters:**
     - **product_id**: Finished goods product ID
-    - **quantity**: Purchase quantity to validate
+    - **quantity**: Production quantity to validate
     - **target_location_id**: (Optional) Check specific warehouse
     
     **Response:**
@@ -229,7 +252,7 @@ async def validate_purchase_feasibility(
     - Material-wise shortage details
     - Summary of procurement needs
     """
-    return await purchase_order_service.validate_purchase_feasibility(
+    return await purchase_order_service.validate_production_feasibility(
         product_id=product_id,
         quantity=quantity,
         target_location_id=target_location_id

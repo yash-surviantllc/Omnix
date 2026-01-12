@@ -27,25 +27,25 @@ logger.info(f"Environment: {settings.ENVIRONMENT}")
 logger.info(f"Debug mode: {settings.DEBUG}")
 logger.info(f"Allowed origins: {settings.allowed_origins_list}")
 
-# Request logging middleware
-@app.middleware("http")
-async def log_requests(request: Request, call_next):
-    start_time = time.time()
-    
-    # Log incoming request
-    logger.info(f"Incoming request: {request.method} {request.url.path}")
-    
-    response = await call_next(request)
-    
-    # Log response
-    process_time = time.time() - start_time
-    logger.info(
-        f"Completed: {request.method} {request.url.path} "
-        f"Status: {response.status_code} "
-        f"Duration: {process_time:.3f}s"
-    )
-    
-    return response
+# Request logging middleware (disabled for testing reload stability)
+# @app.middleware("http")
+# async def log_requests(request: Request, call_next):
+#     start_time = time.time()
+#     
+#     # Log incoming request
+#     logger.info(f"Incoming request: {request.method} {request.url.path}")
+#     
+#     response = await call_next(request)
+#     
+#     # Log response
+#     process_time = time.time() - start_time
+#     logger.info(
+#         f"Completed: {request.method} {request.url.path} "
+#         f"Status: {response.status_code} "
+#         f"Duration: {process_time:.3f}s"
+#     )
+#     
+#     return response
 
 # Configure CORS
 app.add_middleware(
@@ -87,5 +87,8 @@ if __name__ == "__main__":
         "app.main:app",
         host="0.0.0.0",
         port=8000,
-        reload=settings.DEBUG
+        reload=settings.DEBUG,
+        reload_delay=2.0,  # Increase delay to prevent rapid reloads
+        reload_includes=["*.py"],
+        reload_excludes=["__pycache__", "*.pyc", ".git", "logs", "venv", "node_modules"]
     )

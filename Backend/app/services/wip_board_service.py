@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, date
 from decimal import Decimal, InvalidOperation
 from typing import Dict, List, Optional
 
-from app.core.websocket_manager import wip_ws_manager
+from app.services.websocket_manager import manager as ws_manager
 from app.database import get_db
 from app.schemas.wip import (
     AlertEventPayload,
@@ -145,8 +145,8 @@ class WIPBoardService:
         return WIPBoardResponse(
             stages=metrics_list,
             total_orders=total_orders,
-            total_units=total_units,
-            avg_cycle_time=avg_cycle_time,
+            total_units=float(total_units),  # Convert Decimal to float
+            avg_cycle_time=float(avg_cycle_time),  # Convert Decimal to float
             bottleneck_stage=bottleneck_stage,
             last_updated=datetime.utcnow(),
         )
@@ -345,10 +345,10 @@ class WIPBoardService:
             stage_name=stage_row["name"],
             sequence_number=stage_row["sequence_number"],
             orders_count=orders_count,
-            units_count=units_count,
-            avg_time_minutes=avg_time,
-            target_avg_time_minutes=target,
-            utilization_percentage=utilization,
+            units_count=float(units_count),  # Convert Decimal to float
+            avg_time_minutes=float(avg_time),  # Convert Decimal to float
+            target_avg_time_minutes=float(target),  # Convert Decimal to float
+            utilization_percentage=float(utilization),  # Convert Decimal to float
             health_status=health,
         )
 
@@ -549,7 +549,7 @@ class WIPBoardService:
             timestamp=datetime.utcnow(),
             data=metrics,
         )
-        await wip_ws_manager.broadcast(event.model_dump())
+        await ws_manager.broadcast(event.model_dump())
 
     async def _broadcast_transfer(self, transfer: WIPTransferResponse) -> None:
         event = TransferEventPayload(
@@ -557,7 +557,7 @@ class WIPBoardService:
             timestamp=datetime.utcnow(),
             data=transfer,
         )
-        await wip_ws_manager.broadcast(event.model_dump())
+        await ws_manager.broadcast(event.model_dump())
 
     def _to_decimal(self, value, default: str = "0") -> Decimal:
         if value is None:

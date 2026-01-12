@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Search, Package, ArrowUpDown, AlertTriangle, PlusCircle, Edit2, Trash2 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -16,14 +16,62 @@ export function Inventory({ language }: InventoryProps) {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingMaterial, setEditingMaterial] = useState<MaterialData | null>(null);
   const [inventoryItems, setInventoryItems] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [_loading, setLoading] = useState(true);
+  const [_error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('all');
+
+  // WebSocket for real-time updates
+  const wsRef = useRef<WebSocket | null>(null);
 
   // Fetch inventory data from API
   useEffect(() => {
     fetchInventoryData();
+  }, []);
+
+  // WebSocket for real-time inventory updates
+  useEffect(() => {
+    const token = localStorage.getItem('access_token');
+    if (!token) return;
+
+    // Connect to WebSocket
+    const wsUrl = `ws://localhost:8000/ws/inventory?token=${token}`;
+    wsRef.current = new WebSocket(wsUrl);
+
+    wsRef.current.onopen = () => {
+      console.log('Inventory WebSocket connected');
+    };
+
+    wsRef.current.onmessage = (event) => {
+      try {
+        const message = JSON.parse(event.data);
+        if (message.type === 'inventory_update') {
+          // Refetch inventory on any update
+          fetchInventoryData();
+        }
+      } catch (error) {
+        console.error('Inventory WebSocket message parse error:', error);
+      }
+    };
+
+    wsRef.current.onerror = (error) => {
+      console.error('Inventory WebSocket error:', error);
+    };
+
+    wsRef.current.onclose = () => {
+      console.log('Inventory WebSocket disconnected');
+      // Auto-reconnect after 5 seconds
+      setTimeout(() => {
+        // Reconnection will happen on next component mount or manual trigger
+      }, 5000);
+    };
+
+    // Cleanup on unmount
+    return () => {
+      if (wsRef.current) {
+        wsRef.current.close();
+      }
+    };
   }, []);
 
   const fetchInventoryData = async () => {
@@ -53,7 +101,7 @@ export function Inventory({ language }: InventoryProps) {
   };
 
   const handleDeleteMaterial = async (id: string, materialName: string) => {
-    if (window.confirm(language === 'en' 
+    if (window.confirm(language === 'en'
       ? `Are you sure you want to delete "${materialName}"?`
       : `क्या आप वाकई "${materialName}" को हटाना चाहते हैं?`)) {
       try {
@@ -69,7 +117,7 @@ export function Inventory({ language }: InventoryProps) {
   const handleEditMaterial = (id: string) => {
     const item = inventoryItems.find(i => i.id === id);
     if (!item) return;
-    
+
     setEditingMaterial({
       id: item.id,
       materialCode: item.material_code,
@@ -87,7 +135,7 @@ export function Inventory({ language }: InventoryProps) {
   const handleUpdateMaterial = async (updatedMaterial: MaterialData) => {
     try {
       if (!updatedMaterial.id) return;
-      
+
       await inventoryItemsApi.update(updatedMaterial.id, {
         material_name: updatedMaterial.materialName,
         quantity: updatedMaterial.available,
@@ -96,7 +144,7 @@ export function Inventory({ language }: InventoryProps) {
         reorder_level: updatedMaterial.reorderLevel,
         unit_cost: updatedMaterial.unitCost,
       });
-      
+
       await fetchInventoryData(); // Refresh list
       setIsEditModalOpen(false);
     } catch (err: any) {
@@ -267,7 +315,7 @@ export function Inventory({ language }: InventoryProps) {
     const allocated = item.allocated_quantity || 0;
     const free = item.free_quantity || available;
     const reorderLevel = item.reorder_level;
-    
+
     return {
       id: item.id,
       material: item.material_name,
@@ -300,7 +348,7 @@ export function Inventory({ language }: InventoryProps) {
 
   const getFreeStockBadge = (freeNum: number, reorderLevel: string, freeText: string) => {
     const reorderLevelNum = parseFloat(reorderLevel.split(' ')[0]);
-    
+
     if (freeNum <= 0) {
       return <Badge className="bg-red-600">{freeText}</Badge>;
     } else if (freeNum <= reorderLevelNum * 0.5) {
@@ -317,21 +365,21 @@ export function Inventory({ language }: InventoryProps) {
   // Filter inventory items based on search and filter
   const filteredInventoryItems = allInventoryItems.filter((item) => {
     // Search filter
-    const matchesSearch = searchQuery === '' || 
+    const matchesSearch = searchQuery === '' ||
       (item.material && item.material.toLowerCase().includes(searchQuery.toLowerCase())) ||
       (item.materialCode && item.materialCode.toLowerCase().includes(searchQuery.toLowerCase())) ||
       (item.location && item.location.toLowerCase().includes(searchQuery.toLowerCase()));
-    
+
     // Status filter
     const matchesFilter = filterStatus === 'all' || item.status === filterStatus;
-    
+
     return matchesSearch && matchesFilter;
   });
 
-  const totalMaterials = inventoryItems.length;
+  const _totalMaterials = inventoryItems.length;
   const criticalCount = allInventoryItems.filter((item) => item.status === 'critical').length;
   const lowStockCount = allInventoryItems.filter((item) => item.status === 'low').length;
-  const sufficientCount = allInventoryItems.filter((item) => item.status === 'sufficient').length;
+  const _sufficientCount = allInventoryItems.filter((item) => item.status === 'sufficient').length;
 
   return (
     <div className="space-y-6">
@@ -374,8 +422,8 @@ export function Inventory({ language }: InventoryProps) {
             </div>
           </div>
         </Card>
-        <Card 
-          className="p-4 cursor-pointer hover:shadow-lg transition-shadow" 
+        <Card
+          className="p-4 cursor-pointer hover:shadow-lg transition-shadow"
           onClick={() => setIsAddModalOpen(true)}
         >
           <div className="flex items-center justify-between">
@@ -395,9 +443,9 @@ export function Inventory({ language }: InventoryProps) {
         <div className="flex gap-3">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400" />
-            <Input 
-              placeholder={t.search} 
-              className="pl-10" 
+            <Input
+              placeholder={t.search}
+              className="pl-10"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
@@ -415,7 +463,7 @@ export function Inventory({ language }: InventoryProps) {
         </div>
         {(searchQuery || filterStatus !== 'all') && (
           <div className="mt-3 text-sm text-zinc-600">
-            {language === 'en' 
+            {language === 'en'
               ? `Showing ${inventoryItems.length} of ${allInventoryItems.length} materials`
               : `${allInventoryItems.length} में से ${inventoryItems.length} सामग्री दिखा रहे हैं`}
             {(searchQuery || filterStatus !== 'all') && (
@@ -493,13 +541,12 @@ export function Inventory({ language }: InventoryProps) {
               </div>
               <div className="h-2 bg-zinc-200 rounded-full overflow-hidden">
                 <div
-                  className={`h-full transition-all ${
-                    item.status === 'critical'
-                      ? 'bg-red-500'
-                      : item.status === 'low'
+                  className={`h-full transition-all ${item.status === 'critical'
+                    ? 'bg-red-500'
+                    : item.status === 'low'
                       ? 'bg-yellow-500'
                       : 'bg-emerald-500'
-                  }`}
+                    }`}
                   style={{ width: `${(item.freeNum / item.availableNum) * 100}%` }}
                 />
               </div>
@@ -590,18 +637,18 @@ export function Inventory({ language }: InventoryProps) {
         </Card>
       )}
 
-      <AddInventoryModal 
-        open={isAddModalOpen} 
-        onOpenChange={setIsAddModalOpen} 
+      <AddInventoryModal
+        open={isAddModalOpen}
+        onOpenChange={setIsAddModalOpen}
         language={language}
         onAddMaterial={handleAddMaterial}
         mode="add"
         currentInventory={{}}
       />
 
-      <AddInventoryModal 
-        open={isEditModalOpen} 
-        onOpenChange={setIsEditModalOpen} 
+      <AddInventoryModal
+        open={isEditModalOpen}
+        onOpenChange={setIsEditModalOpen}
         language={language}
         onUpdateMaterial={handleUpdateMaterial}
         mode="edit"

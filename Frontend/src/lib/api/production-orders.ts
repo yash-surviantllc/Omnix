@@ -14,6 +14,7 @@ export interface ProductionOrder {
   status: string;
   notes?: string;
   qr_code?: string;
+  progress_percentage?: number;
   materials_status?: string;
   days_until_due?: number;
   is_overdue?: boolean;
@@ -56,6 +57,24 @@ export interface CreateProductionOrderData {
   production_stage?: string;
   start_time?: string;
   end_time?: string;
+}
+
+export interface MultiSkuItem {
+  product_id: string;
+  quantity: number;
+  unit: string;
+  notes?: string;
+}
+
+export interface CreateMultiSkuOrderData {
+  customer_name?: string;
+  due_date: string;
+  priority: string;
+  shift_number?: string;
+  notes?: string;
+  start_time?: string;
+  end_time?: string;
+  items: MultiSkuItem[];
 }
 
 export interface UpdateProductionOrderData {
@@ -137,7 +156,7 @@ export const productionOrdersApi = {
   // List purchase orders
   async listOrders(params?: ListOrdersParams): Promise<ProductionOrder[]> {
     const queryParams = new URLSearchParams();
-    
+
     if (params?.page) queryParams.append('page', params.page.toString());
     if (params?.limit) queryParams.append('limit', params.limit.toString());
     if (params?.status) queryParams.append('status', params.status);
@@ -158,6 +177,11 @@ export const productionOrdersApi = {
   // Create purchase order
   async createOrder(data: CreateProductionOrderData): Promise<ProductionOrder> {
     return await apiClient.post<ProductionOrder>(PURCHASE_ORDER_BASE, data);
+  },
+
+  // Create multi-SKU purchase order
+  async createMultiSkuOrder(data: CreateMultiSkuOrderData): Promise<ProductionOrder> {
+    return await apiClient.post<ProductionOrder>(`${PURCHASE_ORDER_BASE}/multi-sku`, data);
   },
 
   // Duplicate purchase order
@@ -211,7 +235,7 @@ export const productionOrdersApi = {
       product_id: productId,
       quantity: quantity.toString(),
     });
-    
+
     if (locationId) {
       queryParams.append('target_location_id', locationId);
     }

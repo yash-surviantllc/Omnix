@@ -1,8 +1,39 @@
-from pydantic import BaseModel, Field
-from typing import List, Optional
+from pydantic import BaseModel, Field, field_validator
+from typing import List, Optional, Dict, Any
 from datetime import datetime, date
 from decimal import Decimal
 
+
+# ========================================
+# PO ITEM SCHEMAS (Multi-SKU Support)
+# ========================================
+
+class POItemBase(BaseModel):
+    product_id: str
+    quantity: Decimal = Field(..., gt=0)
+    unit: str = Field(default="pcs")
+    notes: Optional[str] = None
+
+
+class POItemCreate(POItemBase):
+    pass
+
+
+class POItemResponse(POItemBase):
+    id: str
+    purchase_order_id: str  # Changed from production_order_id
+    product_code: Optional[str] = None
+    product_name: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+
+# ========================================
+# ORDER MATERIAL SCHEMAS
+# ========================================
 
 class OrderMaterialBase(BaseModel):
     material_id: str
@@ -17,13 +48,12 @@ class OrderMaterialCreate(OrderMaterialBase):
 
 class OrderMaterialResponse(OrderMaterialBase):
     id: str
-    order_id: str
+    purchase_order_id: str  # Changed from order_id
     material_code: Optional[str] = None
     material_name: Optional[str] = None
     allocated_qty: Decimal
     issued_qty: Decimal
-    total_cost: Decimal
-    status: str  # Pending, Allocated, Issued, Completed
+    availability_status: str  # Changed from status
     created_at: datetime
     updated_at: datetime
     
@@ -31,26 +61,74 @@ class OrderMaterialResponse(OrderMaterialBase):
         from_attributes = True
 
 
-class PurchaseOrderBase(BaseModel):
+class PurchaseOrderBase(BaseModel):  # Changed from ProductionOrderBase
     product_id: str = Field(..., description="Finished goods product ID")
     quantity: Decimal = Field(..., gt=0, description="Order quantity")
     due_date: date = Field(..., description="Target completion date")
     priority: str = Field(default="Medium", description="Low, Medium, High, Urgent")
     notes: Optional[str] = None
     customer_name: Optional[str] = None
-    assigned_team: Optional[str] = None
     shift_number: Optional[str] = None
-    purchase_order_stage: Optional[str] = None
     start_time: Optional[datetime] = None
     end_time: Optional[datetime] = None
 
 
-class PurchaseOrderCreate(PurchaseOrderBase):
+class PurchaseOrderCreate(PurchaseOrderBase):  # Changed from ProductionOrderCreate
     """Create purchase order - BOM will be fetched automatically"""
     pass
 
 
-class PurchaseOrderUpdate(BaseModel):
+class PurchaseOrderMultiSKUCreate(BaseModel):  # Changed from ProductionOrderMultiSKUCreate
+    """Create purchase order with multiple SKUs"""
+    customer_name: Optional[str] = None
+    due_date: date = Field(..., description="Target completion date")
+    priority: str = Field(default="Medium", description="Low, Medium, High, Urgent")
+    shift_number: Optional[str] = None
+    notes: Optional[str] = None
+    start_time: Optional[datetime] = None
+    end_time: Optional[datetime] = None
+    items: List[POItemCreate] = Field(..., min_length=1, description="List of SKU items")
+    ocr_document_url: Optional[str] = None
+    ocr_extracted_data: Optional[Dict[str, Any]] = None
+
+    @field_validator('due_date', mode='before')
+    @classmethod
+    def parse_due_date(cls, v):
+        if isinstance(v, str):
+            try:
+                # Handle full ISO strings by taking date part
+                return date.fromisoformat(v.split('T')[0])
+            except ValueError:
+                raise ValueError('due_date must be in YYYY-MM-DD format')
+        return v
+
+
+class OCRExtractedItem(BaseModel):
+    """Item extracted from OCR"""
+    raw_text: str
+    product_code: Optional[str] = None
+    product_name: Optional[str] = None
+    quantity: Optional[Decimal] = None
+    unit: Optional[str] = None
+    mapped_product_id: Optional[str] = None
+    confidence: Optional[float] = None
+
+
+class OCRProcessRequest(BaseModel):
+    """Request to process OCR document"""
+    document_url: str
+    auto_map: bool = Field(default=False, description="Automatically map to existing SKUs")
+
+
+class OCRProcessResponse(BaseModel):
+    """Response from OCR processing"""
+    success: bool
+    extracted_items: List[OCRExtractedItem]
+    unmapped_items: List[OCRExtractedItem]
+    message: str
+
+
+class PurchaseOrderUpdate(BaseModel):  # Changed from ProductionOrderUpdate
     quantity: Optional[Decimal] = Field(None, gt=0)
     due_date: Optional[date] = None
     priority: Optional[str] = None
@@ -59,10 +137,10 @@ class PurchaseOrderUpdate(BaseModel):
     customer_name: Optional[str] = None
     assigned_team: Optional[str] = None
     shift_number: Optional[str] = None
-    purchase_order_stage: Optional[str] = None
+    production_stage: Optional[str] = None
 
 
-class PurchaseOrderResponse(PurchaseOrderBase):
+class PurchaseOrderResponse(PurchaseOrderBase):  # Changed from ProductionOrderResponse
     id: str
     order_number: str
     bom_id: Optional[str] = None
@@ -72,6 +150,7 @@ class PurchaseOrderResponse(PurchaseOrderBase):
     status: str
     qr_code: Optional[str] = None
     materials: List[OrderMaterialResponse] = []
+    items: List[POItemResponse] = []
     total_material_cost: Optional[Decimal] = None
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
@@ -84,7 +163,7 @@ class PurchaseOrderResponse(PurchaseOrderBase):
         from_attributes = True
 
 
-class PurchaseOrderListItem(BaseModel):
+class PurchaseOrderListItem(BaseModel):  # Changed from ProductionOrderListItem
     """Simplified order for list view"""
     id: str
     order_number: str
@@ -96,10 +175,15 @@ class PurchaseOrderListItem(BaseModel):
     due_date: date
     priority: str
     status: str
-    materials_status: str  # All Pending, Partially Allocated, Fully Allocated, etc.
+    materials_status: str
     days_until_due: int
     is_overdue: bool
+    items: List[POItemResponse] = []
+    progress_percentage: Optional[float] = None
     created_at: datetime
+    
+    class Config:
+        from_attributes = True
 
 
 class OrderStatusUpdate(BaseModel):
@@ -114,7 +198,7 @@ class OrderAssignment(BaseModel):
 
 class OrderAssignmentResponse(BaseModel):
     id: str
-    order_id: str
+    purchase_order_id: str  # Changed from order_id
     user_id: str
     user_name: str
     role: str
@@ -143,6 +227,7 @@ class OrderProgress(BaseModel):
     days_until_due: int
     is_overdue: bool
 
+
 class MaterialRequirement(BaseModel):
     """Material requirement for purchase order"""
     material_id: str
@@ -154,10 +239,11 @@ class MaterialRequirement(BaseModel):
     allocated_qty: Decimal = Decimal('0')
     issued_qty: Decimal = Decimal('0')
     shortage_qty: Decimal = Decimal('0')
-    availability_status: str  # Available, Partial, Shortage
+    availability_status: str
     
     class Config:
         from_attributes = True
+
 
 class TeamAssignment(BaseModel):
     """Team member assignment to order"""
@@ -168,7 +254,8 @@ class TeamAssignment(BaseModel):
     
     class Config:
         from_attributes = True
-    
+
+
 # ========================================
 # SHORTAGE VALIDATION SCHEMAS
 # ========================================
@@ -185,14 +272,14 @@ class OrderMaterialWithShortage(BaseModel):
     issued_qty: Decimal = Decimal('0')
     free_qty: Decimal = Decimal('0')
     shortage_qty: Decimal = Decimal('0')
-    shortage_status: str  # Sufficient, Moderate, Critical, Out of Stock
+    shortage_status: str
     procurement_needed: bool = False
     
     class Config:
         from_attributes = True
 
 
-class PurchaseOrderValidation(BaseModel):
+class PurchaseOrderValidation(BaseModel):  # Changed from ProductionOrderValidation
     """Purchase order validation result"""
     can_produce: bool
     product_id: str
@@ -209,7 +296,7 @@ class PurchaseOrderValidation(BaseModel):
         from_attributes = True
 
 
-class PurchaseOrderWithShortages(PurchaseOrderResponse):
+class PurchaseOrderWithShortages(PurchaseOrderResponse):  # Changed from ProductionOrderWithShortages
     """Purchase order response with shortage details"""
     shortage_summary: Optional[dict] = None
     has_shortages: bool = False

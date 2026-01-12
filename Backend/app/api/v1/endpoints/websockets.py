@@ -1,6 +1,7 @@
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, Query
 from typing import Optional
 import logging
+import json
 from app.api.deps import get_current_user_ws
 from app.services.websocket_manager import manager
 
@@ -27,24 +28,42 @@ async def dashboard_websocket(
         await websocket.close(code=1008, reason="Authentication failed")
         return
 
-    await manager.connect(websocket, current_user.id)
+    await manager.connect(websocket, str(current_user.id))
     
     try:
         # Send initial dashboard data
-        # initial_data = await dashboard_service.get_dashboard_data(current_user["id"], current_user["roles"])
+        # initial_data = await dashboard_service.get_dashboard_data(current_user.id, current_user.roles)
         # await manager.send_personal_message(initial_data.dict(), websocket)
         
-        while True:
-            data = await websocket.receive_text()
-            # Handle client messages if needed (e.g., subscribe/unsubscribe)
-            logger.info(f"Received message from {current_user['id']}: {data}")
+        try:
+            while True:
+                data = await websocket.receive_text()
+                # Handle client messages if needed (e.g., subscribe/unsubscribe)
+                logger.info(f"Received message from {current_user.id}: {data}")
+                
+        except WebSocketDisconnect:
+            manager.disconnect(websocket, str(current_user.id))
+            logger.info(f"Client {current_user.id} disconnected")
+        except Exception as e:
+            logger.error(f"WebSocket error for {current_user.id}: {str(e)}")
+            await websocket.send_text(json.dumps({
+                "type": "error",
+                "message": "An unexpected error occurred. Please try reconnecting.",
+                "details": str(e) if logger.level <= logging.DEBUG else None
+            }))
+            manager.disconnect(websocket, str(current_user.id))
             
-    except WebSocketDisconnect:
-        manager.disconnect(websocket, current_user["id"])
-        logger.info(f"Client {current_user['id']} disconnected")
     except Exception as e:
-        logger.error(f"WebSocket error for {current_user['id']}: {e}")
-        manager.disconnect(websocket, current_user["id"])
+        logger.error(f"Error in dashboard WebSocket for {current_user.id}: {str(e)}")
+        try:
+            await websocket.send_text(json.dumps({
+                "type": "error",
+                "message": "An error occurred. Please try reconnecting.",
+                "details": str(e) if logger.level <= logging.DEBUG else None
+            }))
+        except:
+            pass  # If we can't send the error message, just close the connection
+        manager.disconnect(websocket, str(current_user.id))
 
 
 @router.websocket("/boms")
@@ -77,7 +96,15 @@ async def boms_websocket(
         manager.disconnect(websocket, current_user["id"])
         logger.info(f"Client {current_user['id']} disconnected from BOMs")
     except Exception as e:
-        logger.error(f"WebSocket error for {current_user['id']}: {e}")
+        logger.error(f"WebSocket error for {current_user['id']}: {str(e)}")
+        try:
+            await websocket.send_text(json.dumps({
+                "type": "error",
+                "message": "An unexpected error occurred in BOM updates. Please try reconnecting.",
+                "details": str(e) if logger.level <= logging.DEBUG else None
+            }))
+        except:
+            pass  # WebSocket might be closed
         manager.disconnect(websocket, current_user["id"])
 
 
@@ -111,7 +138,15 @@ async def purchase_orders_websocket(
         manager.disconnect(websocket, current_user["id"])
         logger.info(f"Client {current_user['id']} disconnected from Purchase Orders")
     except Exception as e:
-        logger.error(f"WebSocket error for {current_user['id']}: {e}")
+        logger.error(f"WebSocket error for {current_user['id']}: {str(e)}")
+        try:
+            await websocket.send_text(json.dumps({
+                "type": "error",
+                "message": "An unexpected error occurred in Purchase Orders updates. Please try reconnecting.",
+                "details": str(e) if logger.level <= logging.DEBUG else None
+            }))
+        except:
+            pass  # WebSocket might be closed
         manager.disconnect(websocket, current_user["id"])
 
 
@@ -145,5 +180,13 @@ async def inventory_websocket(
         manager.disconnect(websocket, current_user["id"])
         logger.info(f"Client {current_user['id']} disconnected from Inventory")
     except Exception as e:
-        logger.error(f"WebSocket error for {current_user['id']}: {e}")
+        logger.error(f"WebSocket error for {current_user['id']}: {str(e)}")
+        try:
+            await websocket.send_text(json.dumps({
+                "type": "error",
+                "message": "An unexpected error occurred in Inventory updates. Please try reconnecting.",
+                "details": str(e) if logger.level <= logging.DEBUG else None
+            }))
+        except:
+            pass  # WebSocket might be closed
         manager.disconnect(websocket, current_user["id"])

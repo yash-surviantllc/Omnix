@@ -3,7 +3,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, Query, WebSocket, WebSocketDisconnect
 
 from app.api.deps import get_current_user, require_role
-from app.core.websocket_manager import wip_ws_manager
+from app.services.websocket_manager import manager as ws_manager
 from app.schemas.user import UserResponse
 from app.schemas.wip import (
     BottleneckResponse,
@@ -114,10 +114,11 @@ async def list_wip_alerts(
 
 @router.websocket("/ws")
 async def wip_board_websocket(websocket: WebSocket):
-    await wip_ws_manager.connect(websocket)
+    # For unauthenticated WIP board connections, use a default user ID
+    await ws_manager.connect(websocket, "wip_board_anonymous")
     try:
         while True:
             # keep the connection alive; clients primarily receive broadcasts
             await websocket.receive_text()
     except WebSocketDisconnect:
-        await wip_ws_manager.disconnect(websocket)
+        await ws_manager.disconnect(websocket, "wip_board_anonymous")

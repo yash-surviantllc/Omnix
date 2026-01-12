@@ -49,7 +49,8 @@ export interface WorkingOrder {
   work_order_number: string;
   purchase_order_id: string;
   operation: string;
-  workstation: string | null;
+  workstation_id: string | null;
+  workstation_name: string | null;
   assigned_team: string | null;
   target_qty: number;
   completed_qty: number;
@@ -217,7 +218,8 @@ export interface WIPAlertResponse {
 export interface WorkingOrderCreate {
   purchase_order_id: string;
   operation: string;
-  workstation?: string;
+  workstation_id?: string;
+  workstation_name?: string;
   assigned_team?: string;
   target_qty: number;
   unit: string;
@@ -229,7 +231,8 @@ export interface WorkingOrderCreate {
 
 export interface WorkingOrderUpdate {
   operation?: string;
-  workstation?: string;
+  workstation_id?: string;
+  workstation_name?: string;
   assigned_team?: string;
   target_qty?: number;
   completed_qty?: number;

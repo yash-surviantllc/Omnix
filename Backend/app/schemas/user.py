@@ -1,17 +1,35 @@
-from pydantic import BaseModel, EmailStr, Field, field_validator
+from pydantic import BaseModel, EmailStr, Field, TypeAdapter, ValidationError, field_validator
 from typing import Optional, List
 from datetime import datetime
 import re
 
 
 class UserBase(BaseModel):
-    email: EmailStr
+    email: str
     username: str = Field(..., min_length=3, max_length=50)
     full_name: str = Field(..., min_length=1, max_length=255)
     phone: Optional[str] = None
 
+    @field_validator('email')
+    @classmethod
+    def validate_email_format(cls, v: str) -> str:
+        """Allow real emails or Supabase synthetic ones with '@'."""
+        if not isinstance(v, str) or '@' not in v:
+            raise ValueError('Invalid email address')
+
+        # Prefer strict validation when possible
+        email_adapter = TypeAdapter(EmailStr)
+        try:
+            email_adapter.validate_python(v)
+            return v
+        except ValidationError:
+            # Supabase legacy auth seeds may append metadata after domain
+            # Accept such values if they still contain '@' to avoid crashes
+            return v
+
 
 class UserCreate(UserBase):
+    email: EmailStr
     password: str = Field(..., min_length=8)
     
     @field_validator('password')

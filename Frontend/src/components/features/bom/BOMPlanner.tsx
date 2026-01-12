@@ -17,16 +17,17 @@ export function BOMPlanner({ language }: BOMPlannerProps) {
   // State for products and BOMs
   const [products, setProducts] = useState<Product[]>([]);
   const [selectedProductId, setSelectedProductId] = useState<string>('');
+  const [selectedProductForCosts, setSelectedProductForCosts] = useState<string>(''); // For single-click cost display
   const [currentBOM, setCurrentBOM] = useState<BOM | null>(null);
   const [materials, setMaterials] = useState<BOMMaterialWithShortage[]>([]);
   const [productionQty, setProductionQty] = useState<number>(100);
-  
+
   // Loading and error states
   const [isLoadingProducts, setIsLoadingProducts] = useState(true);
   const [isLoadingBOM, setIsLoadingBOM] = useState(false);
   const [isCalculating, setIsCalculating] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  
+
   // Modal and form states
   const [showAddBOMModal, setShowAddBOMModal] = useState(false);
   const [showAddMaterialModal, setShowAddMaterialModal] = useState(false);
@@ -51,7 +52,6 @@ export function BOMPlanner({ language }: BOMPlannerProps) {
     scrapPercentage: '0'
   });
   const wsRef = useRef<WebSocket | null>(null);
-  const [wsConnected, setWsConnected] = useState(false);
 
   const translations = {
     en: {
@@ -388,7 +388,6 @@ export function BOMPlanner({ language }: BOMPlannerProps) {
 
     wsRef.current.onopen = () => {
       console.log('BOM WebSocket connected');
-      setWsConnected(true);
     };
 
     wsRef.current.onmessage = (event) => {
@@ -408,12 +407,10 @@ export function BOMPlanner({ language }: BOMPlannerProps) {
 
     wsRef.current.onerror = (error) => {
       console.error('BOM WebSocket error:', error);
-      setWsConnected(false);
     };
 
     wsRef.current.onclose = () => {
       console.log('BOM WebSocket disconnected');
-      setWsConnected(false);
       // Optional: Auto-reconnect
       setTimeout(() => {
         // Reconnect logic if needed
@@ -449,6 +446,13 @@ export function BOMPlanner({ language }: BOMPlannerProps) {
       fetchBOMForProduct(selectedProductId);
     }
   }, [selectedProductId]);
+
+  // Recalculate materials when production quantity changes
+  useEffect(() => {
+    if (currentBOM) {
+      calculateMaterials(currentBOM.id);
+    }
+  }, [productionQty]);
 
   const fetchProducts = async () => {
     setIsLoadingProducts(true);
@@ -526,7 +530,7 @@ export function BOMPlanner({ language }: BOMPlannerProps) {
 
   const handleSaveBOM = async () => {
     if (!currentBOM) return;
-    
+
     try {
       await bomApi.updateBOM(currentBOM.id, {
         batch_size: productionQty,
@@ -552,9 +556,9 @@ export function BOMPlanner({ language }: BOMPlannerProps) {
 
   const handleDeleteMaterial = async (materialId: string) => {
     if (!currentBOM) return;
-    
+
     if (!window.confirm(t.confirmDelete)) return;
-    
+
     try {
       await bomApi.removeMaterial(currentBOM.id, materialId);
       alert(language === 'en' ? 'Material deleted successfully!' : 'सामग्री सफलतापूर्वक हटाई गई!');
@@ -566,7 +570,7 @@ export function BOMPlanner({ language }: BOMPlannerProps) {
 
   const handleAddMaterial = async () => {
     if (!currentBOM) return;
-    
+
     try {
       await bomApi.addMaterial(currentBOM.id, {
         material_id: newMaterial.materialId,
@@ -575,7 +579,7 @@ export function BOMPlanner({ language }: BOMPlannerProps) {
         unit_cost: parseFloat(newMaterial.unitCost) || 0,
         scrap_percentage: parseFloat(newMaterial.scrapPercentage) || 0
       });
-      
+
       alert(language === 'en' ? 'Material added successfully!' : 'सामग्री सफलतापूर्वक जोड़ी गई!');
       setShowAddMaterialModal(false);
       setNewMaterial({
@@ -593,7 +597,7 @@ export function BOMPlanner({ language }: BOMPlannerProps) {
 
   const handleUpdateMaterial = async () => {
     if (!currentBOM || !editingMaterial) return;
-    
+
     try {
       await bomApi.updateMaterial(currentBOM.id, editingMaterial.material_id, {
         material_id: newMaterial.materialId,
@@ -602,7 +606,7 @@ export function BOMPlanner({ language }: BOMPlannerProps) {
         unit_cost: parseFloat(newMaterial.unitCost) || 0,
         scrap_percentage: parseFloat(newMaterial.scrapPercentage) || 0
       });
-      
+
       alert(language === 'en' ? 'Material updated successfully!' : 'सामग्री सफलतापूर्वक अपडेट की गई!');
       setShowEditMaterialModal(false);
       setEditingMaterial(null);
@@ -631,11 +635,11 @@ export function BOMPlanner({ language }: BOMPlannerProps) {
       };
 
       const createdBOM = await bomApi.createBOMWithProduct(bomData);
-      
-      alert(language === 'en' 
-        ? `BOM created successfully for ${newBOM.productCode} - ${newBOM.productName}!` 
+
+      alert(language === 'en'
+        ? `BOM created successfully for ${newBOM.productCode} - ${newBOM.productName}!`
         : `${newBOM.productCode} - ${newBOM.productName} के लिए BOM सफलतापूर्वक बनाया गया!`);
-      
+
       setShowAddBOMModal(false);
       setNewBOM({
         productCode: '',
@@ -644,10 +648,10 @@ export function BOMPlanner({ language }: BOMPlannerProps) {
         notes: '',
         materials: [{ itemCode: '', material: '', qty: '', unit: 'kg', unitCost: '' }]
       });
-      
+
       // Refresh products list to show the newly created product
       await fetchProducts();
-      
+
       // Set the selected product to the newly created one
       if (createdBOM.product_id) {
         setSelectedProductId(createdBOM.product_id);
@@ -695,14 +699,14 @@ export function BOMPlanner({ language }: BOMPlannerProps) {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <h1>{t.title}</h1>
         <div className="flex gap-2">
-          <Button 
+          <Button
             onClick={() => setShowAddBOMModal(true)}
             className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700"
           >
             <Plus className="w-4 h-4 mr-2" />
             {t.createNewBOM}
           </Button>
-          <Button 
+          <Button
             variant="outline"
             onClick={handleAutoCalculate}
             disabled={!currentBOM || isCalculating}
@@ -730,8 +734,15 @@ export function BOMPlanner({ language }: BOMPlannerProps) {
             {products.map((product) => (
               <div key={product.id} className="relative group">
                 <Button
-                  variant={selectedProductId === product.id ? 'default' : 'outline'}
-                  onClick={() => setSelectedProductId(product.id)}
+                  variant={selectedProductForCosts === product.id ? 'default' : 'outline'}
+                  onClick={() => {
+                    setSelectedProductForCosts(product.id);
+                    setSelectedProductId(product.id);
+                  }}
+                  onDoubleClick={() => {
+                    setSelectedProductDetails(product);
+                    setShowProductDetailsModal(true);
+                  }}
                   className="justify-start w-full h-[4.5rem] p-3"
                   disabled={isLoadingBOM}
                 >
@@ -747,36 +758,53 @@ export function BOMPlanner({ language }: BOMPlannerProps) {
                     </datalist>
                   </div>
                 </Button>
-                <button
-                  onClick={() => {
-                    setSelectedProductDetails(product);
-                    setShowProductDetailsModal(true);
-                  }}
-                  className="absolute right-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity p-1.5 hover:bg-white/20 rounded"
-                  title="View Details"
-                >
-                  <AlertCircle className="h-4 w-4" />
-                </button>
               </div>
             ))}
           </div>
         )}
-        
-        {/* Production Quantity Input */}
+
+        {/* Production Quantity Input with Cost Columns */}
         <div className="mt-4">
           <label className="block mb-2 text-zinc-600">Production Quantity</label>
-          <div className="flex gap-2 items-center">
-            <Input
-              type="number"
-              value={productionQty}
-              onChange={(e) => setProductionQty(Number(e.target.value))}
-              className="max-w-xs"
-              min="1"
-            />
-            {currentBOM && (
-              <span className="text-sm text-zinc-500">
-                Batch size: {currentBOM.batch_size}
-              </span>
+          <div className="flex gap-4 items-start">
+            {/* Production Quantity */}
+            <div className="flex-1">
+              <Input
+                type="number"
+                value={productionQty}
+                onChange={(e) => setProductionQty(Number(e.target.value))}
+                className="w-full"
+                min="1"
+              />
+              {currentBOM && (
+                <span className="text-sm text-zinc-500 mt-1 block">
+                  Batch size: {currentBOM.batch_size}
+                </span>
+              )}
+            </div>
+
+            {/* Unit Cost - shown when product is selected */}
+            {selectedProductForCosts && currentBOM && materials.length > 0 && (
+              <>
+                <div className="flex-1">
+                  <label className="block text-xs text-zinc-500 mb-1">Unit Cost (per 1 unit)</label>
+                  <div className="px-3 py-2 bg-zinc-50 border border-zinc-300 rounded-lg text-center">
+                    <span className="font-semibold text-emerald-600">
+                      ₹{materials.reduce((sum, mat) => sum + (mat.unit_cost * mat.quantity_per_unit), 0).toFixed(2)}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Total Cost - shown when product is selected */}
+                <div className="flex-1">
+                  <label className="block text-xs text-zinc-500 mb-1">Total Cost (for {productionQty} units)</label>
+                  <div className="px-3 py-2 bg-emerald-50 border border-emerald-300 rounded-lg text-center">
+                    <span className="font-semibold text-emerald-700">
+                      ₹{(materials.reduce((sum, mat) => sum + (mat.unit_cost * mat.quantity_per_unit), 0) * productionQty).toFixed(2)}
+                    </span>
+                  </div>
+                </div>
+              </>
             )}
           </div>
         </div>
@@ -797,184 +825,6 @@ export function BOMPlanner({ language }: BOMPlannerProps) {
         )}
       </Card>
 
-      {/* BOM Table - Mobile View */}
-      <div className="lg:hidden space-y-3">
-        {materials.length === 0 && !isLoadingBOM ? (
-          <Card className="p-8 text-center">
-            <p className="text-zinc-500">
-              {language === 'en' ? 'No materials in BOM' : 'BOM में कोई सामग्री नहीं'}
-            </p>
-          </Card>
-        ) : (
-          materials.map((item) => (
-          <Card key={item.id} className="p-4">
-            <div className="flex items-start justify-between mb-3">
-              <div>
-                <div className="font-medium">{item.material_name}</div>
-                {item.shortage_status === 'Sufficient' ? (
-                  <Badge className="bg-emerald-500 flex items-center gap-1 mt-1">
-                    <CheckCircle className="h-3 w-3" />
-                    {t.sufficient}
-                  </Badge>
-                ) : (
-                  <Badge className="bg-red-500 flex items-center gap-1 mt-1">
-                    <AlertCircle className="h-3 w-3" />
-                    {t.shortage}
-                  </Badge>
-                )}
-              </div>
-            </div>
-
-            <div className="space-y-2 text-sm">
-              <div className="flex justify-between">
-                <span className="text-zinc-600">{t.qtyPerUnit}:</span>
-                <span>{item.quantity_per_unit || item.quantity} {item.unit}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-zinc-600">{t.stock}:</span>
-                <span>{item.stock_qty} {item.unit}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-zinc-600">{t.orderedStock}:</span>
-                <span>{item.ordered_qty || 0} {item.unit}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-zinc-600">{t.requiredStock}:</span>
-                <span>{item.required_qty || 0} {item.unit}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-zinc-600">{t.unitCost}:</span>
-                <span>₹{item.unit_cost}</span>
-              </div>
-            </div>
-          </Card>
-        ))
-        )}
-      </div>
-
-      {/* BOM Table - Desktop View */}
-      <Card className="hidden lg:block overflow-hidden">
-        {materials.length === 0 && !isLoadingBOM ? (
-          <div className="p-8 text-center">
-            <p className="text-zinc-500">
-              {language === 'en' ? 'No materials in BOM' : 'BOM में कोई सामग्री नहीं'}
-            </p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-zinc-50 border-b">
-                <tr>
-                  <th className="text-left p-4">{t.material}</th>
-                  <th className="text-left p-4">{t.qtyPerUnit}</th>
-                  <th className="text-left p-4">{t.unit}</th>
-                  <th className="text-left p-4">{t.stock}</th>
-                  <th className="text-left p-4">{t.orderedStock}</th>
-                  <th className="text-left p-4">{t.requiredStock}</th>
-                  <th className="text-left p-4">{t.status}</th>
-                  <th className="text-left p-4">{t.unitCost}</th>
-                  <th className="text-left p-4">{t.actions}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {materials.map((item) => (
-                  <tr key={item.id} className="border-b hover:bg-zinc-50">
-                    <td className="p-4">{item.material_name}</td>
-                    <td className="p-4">{item.quantity_per_unit || item.quantity}</td>
-                    <td className="p-4">{item.unit}</td>
-                    <td className="p-4">
-                      <span className="font-medium">{item.stock_qty}</span>
-                      <span className="text-xs text-zinc-500 ml-1">{item.unit}</span>
-                    </td>
-                    <td className="p-4">
-                      <span className="text-blue-600 font-medium">{item.ordered_qty || 0}</span>
-                      <span className="text-xs text-zinc-500 ml-1">{item.unit}</span>
-                    </td>
-                    <td className="p-4">
-                      <span className="text-orange-600 font-medium">{item.required_qty || 0}</span>
-                      <span className="text-xs text-zinc-500 ml-1">{item.unit}</span>
-                    </td>
-                    <td className="p-4">
-                      {item.shortage_status === 'Sufficient' ? (
-                        <Badge className="bg-emerald-500 flex items-center gap-1">
-                          <CheckCircle className="h-3 w-3" />
-                          {t.sufficient}
-                        </Badge>
-                      ) : (
-                        <Badge className="bg-red-500 flex items-center gap-1">
-                          <AlertCircle className="h-3 w-3" />
-                          {t.shortage}
-                        </Badge>
-                      )}
-                    </td>
-                    <td className="p-4">₹{item.unit_cost}</td>
-                    <td className="p-4">
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => handleEditMaterial(item)}
-                          className="p-1.5 text-blue-600 hover:bg-blue-50 rounded transition-colors"
-                          title="Edit"
-                        >
-                          <Edit className="h-4 w-4" />
-                        </button>
-                        <button
-                          onClick={() => handleDeleteMaterial(item.id)}
-                          className="p-1.5 text-red-600 hover:bg-red-50 rounded transition-colors"
-                          title="Delete"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-        
-        {/* Add Material Button */}
-        {currentBOM && (
-          <div className="p-4 border-t">
-            <Button
-              onClick={() => setShowAddMaterialModal(true)}
-              className="bg-emerald-600 hover:bg-emerald-700"
-            >
-              <Plus className="w-4 h-4 mr-2" />
-              {t.addMaterial}
-            </Button>
-          </div>
-        )}
-      </Card>
-
-      {/* Stock Check Summary */}
-      {materials.length > 0 && (
-        <Card className="p-6 bg-blue-50 border-blue-200">
-          <h3 className="text-blue-900 mb-3">{t.stockCheck}</h3>
-          <div className="space-y-2">
-            {materials
-              .filter((item) => item.shortage_status === 'Shortage')
-              .map((item) => (
-                <div key={item.id} className="flex items-center justify-between p-3 bg-white rounded-lg">
-                  <div>
-                    <div className="font-medium">{item.material_name}</div>
-                    <div className="text-sm text-zinc-600">
-                      {item.shortage_display || `${language === 'en' ? 'Required' : 'आवश्यक'}: ${item.required_qty} ${item.unit}`}
-                    </div>
-                  </div>
-                  <Badge className="bg-red-500">
-                    {language === 'en' ? 'Order needed' : 'ऑर्डर चाहिए'}
-                  </Badge>
-                </div>
-              ))}
-            {materials.filter((item) => item.shortage_status === 'Shortage').length === 0 && (
-              <div className="text-center py-4 text-emerald-700">
-                {language === 'en' ? 'All materials are sufficient!' : 'सभी सामग्री पर्याप्त हैं!'}
-              </div>
-            )}
-          </div>
-        </Card>
-      )}
 
       {/* Add New BOM Modal */}
       {showAddBOMModal && (
@@ -1043,7 +893,7 @@ export function BOMPlanner({ language }: BOMPlannerProps) {
                 <label className="block mb-3 text-zinc-900 font-medium">
                   {t.bomMaterials} <span className="text-red-500">*</span>
                 </label>
-                
+
                 {/* Desktop View - Table */}
                 <div className="hidden lg:block">
                   <div className="border-2 border-zinc-200 rounded-lg overflow-hidden">
@@ -1069,7 +919,7 @@ export function BOMPlanner({ language }: BOMPlannerProps) {
                                 onChange={(e) => {
                                   const newMaterials = [...newBOM.materials];
                                   newMaterials[index].itemCode = e.target.value;
-                                  
+
                                   // Auto-fill material name and unit when item code is selected
                                   const selectedItem = inventoryItems.find(item => item.material_code === e.target.value);
                                   if (selectedItem) {
@@ -1182,7 +1032,7 @@ export function BOMPlanner({ language }: BOMPlannerProps) {
                           </Button>
                         )}
                       </div>
-                      
+
                       <div className="space-y-3">
                         <div>
                           <label className="block text-xs text-zinc-600 mb-1">{t.itemCode}</label>
@@ -1193,7 +1043,7 @@ export function BOMPlanner({ language }: BOMPlannerProps) {
                             onChange={(e) => {
                               const newMaterials = [...newBOM.materials];
                               newMaterials[index].itemCode = e.target.value;
-                              
+
                               // Auto-fill material name and unit when item code is selected
                               const selectedItem = inventoryItems.find(item => item.material_code === e.target.value);
                               if (selectedItem) {
@@ -1206,7 +1056,7 @@ export function BOMPlanner({ language }: BOMPlannerProps) {
                             placeholder={t.enterItemCode}
                           />
                         </div>
-                        
+
                         <div>
                           <label className="block text-xs text-zinc-600 mb-1">{t.material}</label>
                           <Input
@@ -1220,7 +1070,7 @@ export function BOMPlanner({ language }: BOMPlannerProps) {
                             placeholder="e.g., Cotton Fabric"
                           />
                         </div>
-                        
+
                         <div className="grid grid-cols-2 gap-2">
                           <div>
                             <label className="block text-xs text-zinc-600 mb-1">{t.quantity}</label>
@@ -1236,7 +1086,7 @@ export function BOMPlanner({ language }: BOMPlannerProps) {
                               step="0.01"
                             />
                           </div>
-                          
+
                           <div>
                             <label className="block text-xs text-zinc-600 mb-1">{t.unit}</label>
                             <select
@@ -1255,7 +1105,7 @@ export function BOMPlanner({ language }: BOMPlannerProps) {
                             </select>
                           </div>
                         </div>
-                        
+
                         <div>
                           <label className="block text-xs text-zinc-600 mb-1">{t.unitCost}</label>
                           <Input
@@ -1273,7 +1123,7 @@ export function BOMPlanner({ language }: BOMPlannerProps) {
                     </Card>
                   ))}
                 </div>
-                
+
                 <Button
                   onClick={() => setNewBOM({
                     ...newBOM,
@@ -1366,57 +1216,171 @@ export function BOMPlanner({ language }: BOMPlannerProps) {
         language={language}
       />
 
-      {/* Product Details Modal */}
+      {/* Product Details Modal - Shows on Double Click */}
       {showProductDetailsModal && selectedProductDetails && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <Card className="max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="p-6 border-b flex items-center justify-between">
-              <h2 className="text-xl font-semibold">Product Details</h2>
+          <Card className="max-w-6xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6 border-b flex items-center justify-between bg-gradient-to-r from-emerald-600 to-teal-600 text-white">
+              <div>
+                <h2 className="text-xl font-semibold">{selectedProductDetails.code} - {selectedProductDetails.name}</h2>
+                <p className="text-sm text-emerald-100">Bill of Materials Details</p>
+              </div>
               <button
                 onClick={() => setShowProductDetailsModal(false)}
-                className="p-2 hover:bg-zinc-100 rounded-full transition-colors"
+                className="p-2 hover:bg-white/10 rounded-full transition-colors"
               >
                 <Plus className="w-5 h-5 rotate-45" />
               </button>
             </div>
-            <div className="p-6 space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="text-sm text-zinc-600">Product Code</label>
-                  <p className="font-medium">{selectedProductDetails.code}</p>
-                </div>
-                <div>
-                  <label className="text-sm text-zinc-600">Product Name</label>
-                  <p className="font-medium">{selectedProductDetails.name}</p>
-                </div>
-                <div>
-                  <label className="text-sm text-zinc-600">Category</label>
-                  <p className="font-medium">{selectedProductDetails.category}</p>
-                </div>
-                <div>
-                  <label className="text-sm text-zinc-600">Unit</label>
-                  <p className="font-medium">{selectedProductDetails.unit}</p>
-                </div>
-                {selectedProductDetails.description && (
-                  <div className="col-span-2">
-                    <label className="text-sm text-zinc-600">Description</label>
-                    <p className="font-medium">{selectedProductDetails.description}</p>
+
+            <div className="p-6 space-y-6">
+              {/* Production Quantity Info */}
+              <div className="bg-zinc-50 p-4 rounded-lg">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-sm text-zinc-600">Production Quantity</label>
+                    <p className="font-semibold text-lg">{productionQty}</p>
                   </div>
-                )}
+                  {currentBOM && (
+                    <div>
+                      <label className="text-sm text-zinc-600">Batch size</label>
+                      <p className="font-semibold text-lg">{currentBOM.batch_size}</p>
+                    </div>
+                  )}
+                </div>
               </div>
-              {currentBOM && (
-                <div className="mt-6 pt-6 border-t">
-                  <h3 className="font-semibold mb-3">Production Info</h3>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="text-sm text-zinc-600">Batch Size</label>
-                      <p className="font-medium">{currentBOM.batch_size}</p>
-                    </div>
-                    <div>
-                      <label className="text-sm text-zinc-600">Production Quantity</label>
-                      <p className="font-medium">{productionQty}</p>
-                    </div>
+
+              {/* Materials Table */}
+              {materials.length > 0 ? (
+                <div>
+                  <h3 className="font-semibold text-lg mb-4">Materials Required</h3>
+                  <div className="border rounded-lg overflow-hidden">
+                    <table className="w-full">
+                      <thead className="bg-zinc-50 border-b">
+                        <tr>
+                          <th className="text-left p-4 text-sm font-semibold text-zinc-700">Material</th>
+                          <th className="text-left p-4 text-sm font-semibold text-zinc-700">Qty per Unit</th>
+                          <th className="text-left p-4 text-sm font-semibold text-zinc-700">Unit</th>
+                          <th className="text-left p-4 text-sm font-semibold text-zinc-700">Stock</th>
+                          <th className="text-left p-4 text-sm font-semibold text-zinc-700">Ordered Stock</th>
+                          <th className="text-left p-4 text-sm font-semibold text-zinc-700">Required Stock</th>
+                          <th className="text-left p-4 text-sm font-semibold text-zinc-700">Status</th>
+                          <th className="text-left p-4 text-sm font-semibold text-zinc-700">Unit Cost</th>
+                          <th className="text-left p-4 text-sm font-semibold text-zinc-700">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {materials.map((material) => (
+                          <tr key={material.id} className="border-b hover:bg-zinc-50">
+                            <td className="p-4">{material.material_name}</td>
+                            <td className="p-4">{material.quantity_per_unit || material.quantity}</td>
+                            <td className="p-4">{material.unit}</td>
+                            <td className="p-4">
+                              <span className={material.stock_qty > 0 ? 'text-emerald-600' : 'text-red-600'}>
+                                {material.stock_qty} {material.unit}
+                              </span>
+                            </td>
+                            <td className="p-4">
+                              <span className="text-blue-600">
+                                {material.ordered_qty || 0} {material.unit}
+                              </span>
+                            </td>
+                            <td className="p-4">
+                              <span className="font-semibold">
+                                {material.required_qty || 0} {material.unit}
+                              </span>
+                            </td>
+                            <td className="p-4">
+                              {material.shortage_status === 'Sufficient' ? (
+                                <Badge className="bg-emerald-500 flex items-center gap-1 w-fit">
+                                  <CheckCircle className="h-3 w-3" />
+                                  Sufficient
+                                </Badge>
+                              ) : (
+                                <Badge className="bg-red-500 flex items-center gap-1 w-fit">
+                                  <AlertCircle className="h-3 w-3" />
+                                  Shortage
+                                </Badge>
+                              )}
+                            </td>
+                            <td className="p-4">₹{material.unit_cost}</td>
+                            <td className="p-4">
+                              <div className="flex gap-2">
+                                <button
+                                  onClick={() => {
+                                    setEditingMaterial(material);
+                                    setNewMaterial({
+                                      materialId: material.material_id,
+                                      quantity: material.quantity_per_unit?.toString() || material.quantity.toString(),
+                                      unit: material.unit,
+                                      unitCost: material.unit_cost.toString(),
+                                      scrapPercentage: material.scrap_percentage?.toString() || '0'
+                                    });
+                                    setShowEditMaterialModal(true);
+                                    setShowProductDetailsModal(false);
+                                  }}
+                                  className="p-2 text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                                  title="Edit"
+                                >
+                                  <Edit className="h-4 w-4" />
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    if (window.confirm('Are you sure you want to delete this material?')) {
+                                      handleDeleteMaterial(material.id);
+                                      setShowProductDetailsModal(false);
+                                    }
+                                  }}
+                                  className="p-2 text-red-600 hover:bg-red-50 rounded transition-colors"
+                                  title="Delete"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
+
+                  {/* Add Material Button */}
+                  <div className="mt-4">
+                    <Button
+                      onClick={() => {
+                        setShowAddMaterialModal(true);
+                        setShowProductDetailsModal(false);
+                      }}
+                      className="bg-emerald-600 hover:bg-emerald-700"
+                    >
+                      <Plus className="w-4 h-4 mr-2" />
+                      Add Material
+                    </Button>
+                  </div>
+
+                  {/* Stock Check */}
+                  <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                    <h4 className="font-semibold text-blue-900 mb-2">Stock Check</h4>
+                    {materials.every(m => m.shortage_status === 'Sufficient') ? (
+                      <p className="text-emerald-600 font-medium">✓ All materials are sufficient!</p>
+                    ) : (
+                      <p className="text-red-600 font-medium">⚠ Some materials are in shortage</p>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center py-8 text-zinc-500">
+                  <p>No materials found for this product.</p>
+                  <Button
+                    onClick={() => {
+                      setShowAddMaterialModal(true);
+                      setShowProductDetailsModal(false);
+                    }}
+                    className="mt-4 bg-emerald-600 hover:bg-emerald-700"
+                  >
+                    <Plus className="w-4 h-4 mr-2" />
+                    Add Material
+                  </Button>
                 </div>
               )}
             </div>

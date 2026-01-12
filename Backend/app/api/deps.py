@@ -70,7 +70,8 @@ def require_role(required_role: str):
     Dependency factory to check if user has required role.
     """
     async def role_checker(current_user: UserResponse = Depends(get_current_user)):
-        if required_role not in current_user.roles and 'Admin' not in current_user.roles:
+        user_roles_lower = [r.lower() for r in current_user.roles]
+        if required_role.lower() not in user_roles_lower and 'admin' not in user_roles_lower:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"Role '{required_role}' required"
