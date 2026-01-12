@@ -1,15 +1,19 @@
 from enum import Enum
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from typing import Optional, List
 from datetime import datetime, date
 from decimal import Decimal
+
+
+class DecimalFriendlyModel(BaseModel):
+    model_config = ConfigDict(json_encoders={Decimal: lambda v: float(v)})
 
 
 # ============================================
 # WORKING ORDER SCHEMAS
 # ============================================
 
-class WorkingOrderBase(BaseModel):
+class WorkingOrderBase(DecimalFriendlyModel):
     purchase_order_id: str
     operation: str = Field(..., description="Operation name (e.g., Cutting, Sewing)")
     workstation: Optional[str] = None
@@ -26,7 +30,7 @@ class WorkingOrderCreate(WorkingOrderBase):
     pass
 
 
-class WorkingOrderUpdate(BaseModel):
+class WorkingOrderUpdate(DecimalFriendlyModel):
     operation: Optional[str] = None
     workstation: Optional[str] = None
     assigned_team: Optional[str] = None
@@ -58,7 +62,7 @@ class WorkingOrderResponse(WorkingOrderBase):
         from_attributes = True
 
 
-class WorkingOrderListItem(BaseModel):
+class WorkingOrderListItem(DecimalFriendlyModel):
     """Simplified working order for list views"""
     id: str
     work_order_number: str
@@ -82,7 +86,7 @@ class WorkingOrderListItem(BaseModel):
 # WIP STAGE METRICS SCHEMAS
 # ============================================
 
-class WIPStageMetricsBase(BaseModel):
+class WIPStageMetricsBase(DecimalFriendlyModel):
     stage_name: str
     stage_sequence: int
     target_time_minutes: Decimal = Field(..., gt=0)
@@ -92,7 +96,7 @@ class WIPStageMetricsCreate(WIPStageMetricsBase):
     is_active: bool = True
 
 
-class WIPStageMetricsUpdate(BaseModel):
+class WIPStageMetricsUpdate(DecimalFriendlyModel):
     target_time_minutes: Optional[Decimal] = Field(None, gt=0)
     is_active: Optional[bool] = None
 
@@ -111,7 +115,7 @@ class WIPStageMetricsResponse(WIPStageMetricsBase):
         from_attributes = True
 
 
-class WIPStageMetricsListItem(BaseModel):
+class WIPStageMetricsListItem(DecimalFriendlyModel):
     """Simplified stage metrics for WIP board"""
     id: str
     stage_name: str
@@ -132,7 +136,7 @@ class WIPStageMetricsListItem(BaseModel):
 # STAGE PERFORMANCE HISTORY SCHEMAS
 # ============================================
 
-class StagePerformanceHistoryBase(BaseModel):
+class StagePerformanceHistoryBase(DecimalFriendlyModel):
     stage_name: str
     date: date
 
@@ -162,7 +166,7 @@ class StagePerformanceHistoryResponse(StagePerformanceHistoryBase):
 # WIP DASHBOARD SCHEMAS
 # ============================================
 
-class WIPDashboardResponse(BaseModel):
+class WIPDashboardResponse(DecimalFriendlyModel):
     """Complete WIP dashboard data"""
     stages: List[WIPStageMetricsListItem]
     total_orders: int
@@ -172,7 +176,7 @@ class WIPDashboardResponse(BaseModel):
     last_updated: datetime
 
 
-class WIPSummaryStats(BaseModel):
+class WIPSummaryStats(DecimalFriendlyModel):
     """Summary statistics for WIP board"""
     total_orders: int
     total_units: int
@@ -183,7 +187,7 @@ class WIPSummaryStats(BaseModel):
     stages_delayed: int
 
 
-class BottleneckAlert(BaseModel):
+class BottleneckAlert(DecimalFriendlyModel):
     """Bottleneck alert information"""
     stage_name: str
     utilization_percentage: Decimal
@@ -217,7 +221,7 @@ class WIPAlertType(str, Enum):
     DELAY = "delay"
 
 
-class WIPStageBase(BaseModel):
+class WIPStageBase(DecimalFriendlyModel):
     name: str
     code: str = Field(..., max_length=50)
     sequence_number: int = Field(..., ge=1)
@@ -233,7 +237,7 @@ class WIPStageCreate(WIPStageBase):
     created_by: Optional[str] = None
 
 
-class WIPStageUpdate(BaseModel):
+class WIPStageUpdate(DecimalFriendlyModel):
     name: Optional[str] = None
     code: Optional[str] = Field(default=None, max_length=50)
     sequence_number: Optional[int] = Field(default=None, ge=1)
@@ -255,7 +259,7 @@ class WIPStageResponse(WIPStageBase):
         from_attributes = True
 
 
-class WIPStageMetrics(BaseModel):
+class WIPStageMetrics(DecimalFriendlyModel):
     stage_id: str
     stage_name: str
     sequence_number: int
@@ -267,7 +271,7 @@ class WIPStageMetrics(BaseModel):
     health_status: WIPHealthStatus
 
 
-class WIPBoardResponse(BaseModel):
+class WIPBoardResponse(DecimalFriendlyModel):
     stages: List[WIPStageMetrics]
     total_orders: int
     total_units: Decimal
@@ -276,7 +280,7 @@ class WIPBoardResponse(BaseModel):
     last_updated: datetime
 
 
-class StageOrderItem(BaseModel):
+class StageOrderItem(DecimalFriendlyModel):
     order_id: str
     order_number: str
     product_name: Optional[str] = None
@@ -286,13 +290,13 @@ class StageOrderItem(BaseModel):
     entered_stage_at: datetime
 
 
-class StageOrdersResponse(BaseModel):
+class StageOrdersResponse(DecimalFriendlyModel):
     stage_id: str
     stage_name: str
     orders: List[StageOrderItem]
 
 
-class StageMetricPoint(BaseModel):
+class StageMetricPoint(DecimalFriendlyModel):
     timestamp: datetime
     orders_in_stage: int
     units_in_stage: Decimal
@@ -301,13 +305,13 @@ class StageMetricPoint(BaseModel):
     health_status: WIPHealthStatus
 
 
-class StageMetricsDetailResponse(BaseModel):
+class StageMetricsDetailResponse(DecimalFriendlyModel):
     stage: WIPStageResponse
     latest_metrics: WIPStageMetrics
     history: List[StageMetricPoint]
 
 
-class WIPTransferCreate(BaseModel):
+class WIPTransferCreate(DecimalFriendlyModel):
     order_id: str
     from_stage_id: Optional[str] = None
     to_stage_id: str
@@ -331,7 +335,7 @@ class WIPTransferResponse(WIPTransferCreate):
         from_attributes = True
 
 
-class BottleneckResponse(BaseModel):
+class BottleneckResponse(DecimalFriendlyModel):
     stage_id: str
     stage_name: str
     avg_time_minutes: Decimal
@@ -342,7 +346,7 @@ class BottleneckResponse(BaseModel):
     severity: WIPAlertSeverity
 
 
-class TrendPoint(BaseModel):
+class TrendPoint(DecimalFriendlyModel):
     date: date
     orders_processed: int
     units_processed: Decimal
@@ -351,13 +355,13 @@ class TrendPoint(BaseModel):
     health_status: WIPHealthStatus
 
 
-class TrendResponse(BaseModel):
+class TrendResponse(DecimalFriendlyModel):
     stage_id: str
     stage_name: str
     points: List[TrendPoint]
 
 
-class WIPAlertResponse(BaseModel):
+class WIPAlertResponse(DecimalFriendlyModel):
     stage_id: str
     stage_name: str
     alert_type: WIPAlertType
@@ -377,13 +381,13 @@ class WIPEventBase(BaseModel):
     timestamp: datetime
 
 
-class StageUpdatePayload(WIPEventBase):
+class StageUpdatePayload(WIPEventBase, DecimalFriendlyModel):
     data: WIPStageMetrics
 
 
-class TransferEventPayload(WIPEventBase):
+class TransferEventPayload(WIPEventBase, DecimalFriendlyModel):
     data: WIPTransferResponse
 
 
-class AlertEventPayload(WIPEventBase):
+class AlertEventPayload(WIPEventBase, DecimalFriendlyModel):
     data: WIPAlertResponse

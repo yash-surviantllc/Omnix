@@ -180,7 +180,12 @@ class WIPBoardService:
         transfers = self._fetch_recent_transfers(db, days=history_days).get(stage_id, [])
 
         latest_metrics = self._build_metrics_for_stage(stage.model_dump(), tracking, transfers)
-        history = self._build_trend_points(transfers, history_days)
+        history = self._build_metric_history(
+            stage.model_dump(),
+            tracking,
+            transfers,
+            history_days,
+        )
 
         return StageMetricsDetailResponse(
             stage=stage,
@@ -385,6 +390,46 @@ class WIPBoardService:
         if avg_time <= target * Decimal("1.2") and utilization >= Decimal("60"):
             return WIPHealthStatus.YELLOW
         return WIPHealthStatus.RED
+
+    def _build_metric_history(
+        self,
+        stage_row: Dict,
+        tracking_rows: List[Dict],
+        transfer_rows: List[Dict],
+        days: int,
+    ) -> List[StageMetricPoint]:
+        stage_target = self._to_decimal(
+            stage_row.get("target_avg_time_minutes"), default="0"
+        )
+        grouped_transfers: Dict[date, List[Dict]] = defaultdict(list)
+        for row in transfer_rows:
+            created_at = self._parse_datetime(row.get("created_at")).date()
+            grouped_transfers[created_at].append(row)
+
+        history: List[StageMetricPoint] = []
+        for i in range(days):
+            day = datetime.utcnow().date() - timedelta(days=days - i - 1)
+            rows = grouped_transfers.get(day, [])
+            orders_in_stage = len({row.get("order_id") for row in rows if row.get("order_id")})
+            units_in_stage = sum(
+                (self._to_decimal(row.get("quantity")) for row in rows),
+                Decimal("0"),
+            )
+            avg_time = self._average_transfer_time(rows)
+            utilization = self._calculate_utilization(avg_time, stage_target)
+            health = self._determine_health(avg_time, stage_target, utilization)
+
+            history.append(
+                StageMetricPoint(
+                    timestamp=datetime.combine(day, datetime.min.time()),
+                    orders_in_stage=orders_in_stage,
+                    units_in_stage=units_in_stage,
+                    avg_time_minutes=avg_time,
+                    utilization_percentage=utilization,
+                    health_status=health,
+                )
+            )
+        return history
 
     def _build_trend_points(
         self, transfer_rows: List[Dict], days: int
