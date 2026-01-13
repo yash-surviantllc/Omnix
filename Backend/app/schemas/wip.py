@@ -11,7 +11,9 @@ from decimal import Decimal
 
 class WorkingOrderBase(BaseModel):
     purchase_order_id: str
+    product_id: Optional[str] = None # Added product_id linkage
     operation: str = Field(..., description="Operation name (e.g., Cutting, Sewing)")
+    shift: Optional[str] = "Morning" # Added shift field
     workstation_id: Optional[str] = None  # Added
     workstation_name: Optional[str] = None  # Renamed from workstation
     assigned_team: Optional[str] = None

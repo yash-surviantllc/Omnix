@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { useState, useEffect } from 'react';
 import { wipApi, type WorkingOrderCreate } from '@/lib/api/wip';
 import { purchaseOrdersApi, type PurchaseOrder } from '@/lib/api/production-orders';
+import { bomApi } from '@/lib/api/bom';
 
 type WorkingOrderProps = {
   language: 'en' | 'hi' | 'kn' | 'ta' | 'te' | 'mr' | 'gu' | 'pa';
@@ -51,21 +52,43 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
   // Expanded state for collapsible cards - tracks which work orders are expanded
   const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set());
 
-  // New Work Order Modal state
+  /* New Work Order Modal state */
   const [showNewWorkOrderModal, setShowNewWorkOrderModal] = useState(false);
   const [productionOrders, setProductionOrders] = useState<PurchaseOrder[]>([]);
-  const [newWorkOrderData, setNewWorkOrderData] = useState({
+
+  // BOM Calculation State
+  interface BOMRequirement {
+    material_name: string;
+    quantity_per_unit: number;
+    required_quantity: number;
+    unit: string;
+    available_stock: number;
+    status: 'Sufficient' | 'Low Stock';
+  }
+  const [bomRequirements, setBomRequirements] = useState<BOMRequirement[]>([]);
+  const [isLoadingBOM, setIsLoadingBOM] = useState(false);
+
+  const [newWorkOrderData, setNewWorkOrderData] = useState<{
+    purchase_order_id: string;
+    product_id?: string; // Added product_id
+    operation: string;
+    shift: string; // Added shift
+    scheduled_start: string; // Added scheduled_start
+    target_qty: string;
+    unit: string;
+    priority: 'Low' | 'Normal' | 'High' | 'Urgent';
+    notes: string;
+  }>({
     purchase_order_id: '',
     operation: '',
-    workstation: '',
-    assigned_team: '',
+    shift: 'Morning', // Default
+    scheduled_start: '',
     target_qty: '',
     unit: 'pcs',
-    priority: 'Normal' as 'Low' | 'Normal' | 'High' | 'Urgent',
-    scheduled_start: '',
-    scheduled_end: '',
+    priority: 'Normal',
     notes: ''
   });
+  const [poItems, setPoItems] = useState<any[]>([]); // To store items of selected PO
   const [isCreating, setIsCreating] = useState(false);
 
   // Toggle expanded state for a work order
@@ -80,6 +103,48 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
       return newSet;
     });
   };
+
+  // Fetch BOM when Product or Qty changes
+  useEffect(() => {
+    const fetchBOM = async () => {
+      if (!newWorkOrderData.product_id || !newWorkOrderData.target_qty) {
+        setBomRequirements([]);
+        return;
+      }
+
+      const qty = parseFloat(newWorkOrderData.target_qty);
+      if (isNaN(qty) || qty <= 0) return;
+
+      setIsLoadingBOM(true);
+      try {
+        // 1. Get Active BOM for Product
+        const bom = await bomApi.getActiveBOMByProduct(newWorkOrderData.product_id);
+
+        // 2. Calculate Requirements
+        const materials = await bomApi.getMaterialsWithShortages(bom.id, qty);
+
+        // Map to local state
+        const reqs: BOMRequirement[] = materials.map((m) => ({
+          material_name: m.material_name,
+          quantity_per_unit: m.quantity_per_unit,
+          required_quantity: m.required_qty,
+          unit: m.unit,
+          available_stock: m.available_qty,
+          status: m.shortage_status === 'Sufficient' ? 'Sufficient' : 'Low Stock'
+        }));
+
+        setBomRequirements(reqs);
+      } catch (err) {
+        console.error('Failed to fetch BOM requirements:', err);
+        setBomRequirements([]);
+      } finally {
+        setIsLoadingBOM(false);
+      }
+    };
+
+    const timer = setTimeout(fetchBOM, 500); // 500ms debounce
+    return () => clearTimeout(timer);
+  }, [newWorkOrderData.product_id, newWorkOrderData.target_qty]);
 
   // Fetch work orders from backend API
   const fetchWorkOrders = async () => {
@@ -568,6 +633,49 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
   };
 
   // Create new work order
+  // Fetch BOM when Product or Qty changes
+  useEffect(() => {
+    const fetchBOM = async () => {
+      if (!newWorkOrderData.product_id || !newWorkOrderData.target_qty) {
+        setBomRequirements([]);
+        return;
+      }
+
+      const qty = parseFloat(newWorkOrderData.target_qty);
+      if (isNaN(qty) || qty <= 0) return;
+
+      setIsLoadingBOM(true);
+      try {
+        // 1. Get Active BOM for Product
+        const bom = await bomApi.getActiveBOMByProduct(newWorkOrderData.product_id);
+
+        // 2. Calculate Requirements (using API or local if API fails/is overkill)
+        // We use getMaterialsWithShortages to get stock info too
+        const materials = await bomApi.getMaterialsWithShortages(bom.id, qty);
+
+        // Map to local state
+        const reqs: BOMRequirement[] = materials.map(m => ({
+          material_name: m.material_name,
+          quantity_per_unit: m.quantity_per_unit,
+          required_quantity: m.required_qty,
+          unit: m.unit,
+          available_stock: m.available_qty,
+          status: m.shortage_status === 'Sufficient' ? 'Sufficient' : 'Low Stock'
+        }));
+
+        setBomRequirements(reqs);
+      } catch (err) {
+        console.error('Failed to fetch BOM requirements:', err);
+        setBomRequirements([]);
+      } finally {
+        setIsLoadingBOM(false);
+      }
+    };
+
+    const timer = setTimeout(fetchBOM, 500); // 500ms debounce
+    return () => clearTimeout(timer);
+  }, [newWorkOrderData.product_id, newWorkOrderData.target_qty]);
+
   const handleCreateWorkOrder = async () => {
     if (!newWorkOrderData.purchase_order_id || !newWorkOrderData.operation || !newWorkOrderData.target_qty) {
       alert(language === 'en'
@@ -580,14 +688,15 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
     try {
       const payload: WorkingOrderCreate = {
         purchase_order_id: newWorkOrderData.purchase_order_id,
+        product_id: newWorkOrderData.product_id, // Pass product_id
         operation: newWorkOrderData.operation,
-        workstation_name: newWorkOrderData.workstation || undefined,
-        assigned_team: newWorkOrderData.assigned_team || undefined,
+        shift: newWorkOrderData.shift, // Pass shift
+        scheduled_start: newWorkOrderData.scheduled_start ? newWorkOrderData.scheduled_start : undefined, // Check if empty
+        workstation_name: 'Pending Assignment', // Default
+        assigned_team: 'Pending Assignment', // Default
         target_qty: parseFloat(newWorkOrderData.target_qty),
         unit: newWorkOrderData.unit,
         priority: newWorkOrderData.priority,
-        scheduled_start: newWorkOrderData.scheduled_start || undefined,
-        scheduled_end: newWorkOrderData.scheduled_end || undefined,
         notes: newWorkOrderData.notes || undefined
       };
 
@@ -599,15 +708,15 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
       setNewWorkOrderData({
         purchase_order_id: '',
         operation: '',
-        workstation: '',
-        assigned_team: '',
+        shift: 'Morning',
+        scheduled_start: '',
         target_qty: '',
         unit: 'pcs',
         priority: 'Normal',
-        scheduled_start: '',
-        scheduled_end: '',
         notes: ''
       });
+      // Clear selected PO items
+      setPoItems([]);
       fetchWorkOrders(); // Refresh the list
     } catch (err: any) {
       alert(`❌ ${language === 'en' ? 'Error creating work order' : 'कार्य आदेश बनाने में त्रुटि'}: ${err?.detail || err?.message || 'Unknown error'}`);
@@ -738,18 +847,18 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
                               <div
                                 key={idx}
                                 className={`
-                                  relative p-4 rounded-xl border transition-all shadow-sm
-                                  ${op.status === 'completed' ? 'bg-emerald-50/50 border-emerald-200 dark:bg-emerald-900/10 dark:border-emerald-800' :
+                                    relative p-3 rounded-xl border transition-all shadow-sm
+                                    ${op.status === 'completed' ? 'bg-emerald-50/50 border-emerald-200 dark:bg-emerald-900/10 dark:border-emerald-800' :
                                     op.status === 'in-progress' ? 'bg-blue-50/50 border-blue-200 dark:bg-blue-900/10 dark:border-blue-800' :
                                       'bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800'}
-                                `}
+                                  `}
                               >
                                 <div className="flex flex-col items-center text-center gap-2">
-                                  <span className="font-semibold text-zinc-900">{op.name}</span>
+                                  <span className="font-semibold text-xs text-zinc-900 line-clamp-1">{op.name}</span>
 
                                   <div className="flex items-baseline gap-1">
-                                    <span className="text-2xl font-bold tracking-tight">{op.completedUnits}</span>
-                                    <span className="text-xs text-zinc-500 font-medium">{t.units}</span>
+                                    <span className="text-xl font-bold tracking-tight">{op.completedUnits}</span>
+                                    <span className="text-[10px] text-zinc-500 font-medium">{t.units}</span>
                                   </div>
 
                                   <div className="w-full bg-zinc-100 h-1.5 rounded-full overflow-hidden mt-1">
@@ -761,13 +870,13 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
                                     />
                                   </div>
 
-                                  <div className="text-xs text-zinc-500 mt-1">
+                                  <div className="text-[10px] text-zinc-500 mt-0.5">
                                     {opPercent}% {t.of} {op.targetUnits}
                                   </div>
 
-                                  <div className="flex flex-col gap-0.5 text-[11px] text-zinc-500 mt-2">
-                                    <span>{t.workstation}: <strong className="text-zinc-700">{op.workstation}</strong></span>
-                                    <span>{t.assignedTo}: <strong className="text-zinc-700">{op.assignedTo}</strong></span>
+                                  <div className="flex flex-col gap-0.5 text-[10px] text-zinc-500 mt-1.5 w-full text-left bg-white/50 dark:bg-black/20 p-1.5 rounded-md">
+                                    <span className="flex justify-between"><span>{t.workstation}:</span> <strong className="text-zinc-700 dark:text-zinc-300 truncate ml-1">{op.workstation}</strong></span>
+                                    <span className="flex justify-between"><span>{t.assignedTo}:</span> <strong className="text-zinc-700 dark:text-zinc-300 truncate ml-1">{op.assignedTo}</strong></span>
                                   </div>
                                 </div>
                               </div>
@@ -853,15 +962,7 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
                   ) : (
                     // Collapsed View - Progress Summary
                     <div className="mt-4">
-                      <div className="flex items-center gap-3">
-                        <div className="flex-1 h-2 bg-zinc-100 rounded-full overflow-hidden">
-                          <div
-                            className="h-full bg-blue-600 rounded-full transition-all duration-500"
-                            style={{ width: `${overallProgressPercent}%` }}
-                          />
-                        </div>
-                        <span className="text-sm font-medium text-zinc-600">{overallProgressPercent}%</span>
-                      </div>
+                      {/* Collapsed view progress hidden as requested */}
                     </div>
                   )}
                 </div>
@@ -923,7 +1024,21 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
                 </label>
                 <select
                   value={newWorkOrderData.purchase_order_id}
-                  onChange={(e) => setNewWorkOrderData(prev => ({ ...prev, purchase_order_id: e.target.value }))}
+                  onChange={async (e) => {
+                    const poId = e.target.value;
+                    setNewWorkOrderData(prev => ({ ...prev, purchase_order_id: poId }));
+                    if (poId) {
+                      try {
+                        const poDetails = await purchaseOrdersApi.getOrder(poId);
+                        setPoItems((poDetails as any).items || []);
+                      } catch (err) {
+                        console.error("Failed to fetch PO items", err);
+                        setPoItems([]);
+                      }
+                    } else {
+                      setPoItems([]);
+                    }
+                  }}
                   className="w-full p-2 border border-zinc-300 rounded-md"
                 >
                   <option value="">{language === 'en' ? 'Select Purchase Order...' : 'खरीद आदेश चुनें...'}</option>
@@ -934,6 +1049,41 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
                   ))}
                 </select>
               </div>
+
+              {/* Product/SKU Selection */}
+              {poItems.length > 0 && (
+                <div>
+                  <label className="block text-sm font-medium text-zinc-700 mb-1">
+                    {language === 'en' ? 'Product / SKU' : 'उत्पाद / SKU'} <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    className="w-full p-2 border border-zinc-300 rounded-md"
+                    onChange={(e) => {
+                      const selectedCode = e.target.value;
+                      const selectedItem = poItems.find(item => item.product_code === selectedCode);
+                      if (selectedItem) {
+                        // Set product_id explicitly so backend links WO to this SKU
+                        setNewWorkOrderData(prev => ({
+                          ...prev,
+                          product_id: selectedItem.product_id, // Ensure this exists on item
+                          unit: selectedItem.unit || 'pcs',
+                          target_qty: selectedItem.quantity ? String(selectedItem.quantity) : prev.target_qty,
+                          notes: prev.notes // Keep notes logic as backup/visual
+                            ? `${prev.notes}\nSelected SKU: ${selectedCode} - ${selectedItem.product_name || ''}`
+                            : `Selected SKU: ${selectedCode} - ${selectedItem.product_name || ''}`
+                        }));
+                      }
+                    }}
+                  >
+                    <option value="">{language === 'en' ? 'Select Product from PO...' : 'PO उत्पाद चुनें...'}</option>
+                    {poItems.map((item, idx) => (
+                      <option key={idx} value={item.product_code}>
+                        {item.product_code} - {item.product_name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
               {/* Operation */}
               <div>
@@ -953,6 +1103,37 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
                   <option value="Packaging">{language === 'en' ? 'Packaging' : 'पैकेजिंग'}</option>
                   <option value="Finishing">{language === 'en' ? 'Finishing' : 'फिनिशिंग'}</option>
                 </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                {/* Shift */}
+                <div>
+                  <label className="block text-sm font-medium text-zinc-700 mb-1">
+                    {language === 'en' ? 'Shift' : 'शिफ्ट'}
+                  </label>
+                  <select
+                    value={newWorkOrderData.shift}
+                    onChange={(e) => setNewWorkOrderData(prev => ({ ...prev, shift: e.target.value }))}
+                    className="w-full p-2 border border-zinc-300 rounded-md"
+                  >
+                    <option value="Morning">{language === 'en' ? 'Morning' : 'सुबह'}</option>
+                    <option value="Evening">{language === 'en' ? 'Evening' : 'शाम'}</option>
+                    <option value="Night">{language === 'en' ? 'Night' : 'रात'}</option>
+                  </select>
+                </div>
+
+                {/* Start Date & Time */}
+                <div>
+                  <label className="block text-sm font-medium text-zinc-700 mb-1">
+                    {language === 'en' ? 'Start Date & Time' : 'प्रारंभ तिथि और समय'}
+                  </label>
+                  <Input
+                    type="datetime-local"
+                    value={newWorkOrderData.scheduled_start}
+                    onChange={(e) => setNewWorkOrderData(prev => ({ ...prev, scheduled_start: e.target.value }))}
+                    className="w-full"
+                  />
+                </div>
               </div>
 
               {/* Target Quantity */}
@@ -981,76 +1162,55 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
                 </div>
               </div>
 
-              {/* Workstation */}
-              <div>
-                <label className="block text-sm font-medium text-zinc-700 mb-1">
-                  {t.workstation}
-                </label>
-                <Input
-                  value={newWorkOrderData.workstation}
-                  onChange={(e) => setNewWorkOrderData(prev => ({ ...prev, workstation: e.target.value }))}
-                  placeholder={language === 'en' ? 'Enter workstation' : 'वर्कस्टेशन दर्ज करें'}
-                />
-              </div>
+              {/* BOM Requirements Table */}
+              {newWorkOrderData.product_id && (
+                <div className="bg-zinc-50 rounded-lg p-3 border border-zinc-200">
+                  <h4 className="text-sm font-medium text-zinc-700 mb-2 flex items-center justify-between">
+                    <span>{language === 'en' ? 'Raw Material Requirements' : 'कच्चे माल की आवश्यकताएं'}</span>
+                    {isLoadingBOM && <span className="text-xs text-zinc-500 animate-pulse">Calculating...</span>}
+                  </h4>
 
-              {/* Assigned Team */}
-              <div>
-                <label className="block text-sm font-medium text-zinc-700 mb-1">
-                  {t.assignedTo}
-                </label>
-                <select
-                  value={newWorkOrderData.assigned_team}
-                  onChange={(e) => setNewWorkOrderData(prev => ({ ...prev, assigned_team: e.target.value }))}
-                  className="w-full p-2 border border-zinc-300 rounded-md"
-                >
-                  <option value="">{language === 'en' ? 'Select Team...' : 'टीम चुनें...'}</option>
-                  <option value="Team A">Team A</option>
-                  <option value="Team B">Team B</option>
-                  <option value="Team C">Team C</option>
-                  <option value="Team D">Team D</option>
-                </select>
-              </div>
-
-              {/* Priority */}
-              <div>
-                <label className="block text-sm font-medium text-zinc-700 mb-1">
-                  {t.priority}
-                </label>
-                <select
-                  value={newWorkOrderData.priority}
-                  onChange={(e) => setNewWorkOrderData(prev => ({ ...prev, priority: e.target.value as 'Low' | 'Normal' | 'High' | 'Urgent' }))}
-                  className="w-full p-2 border border-zinc-300 rounded-md"
-                >
-                  <option value="Low">{t.low}</option>
-                  <option value="Normal">{t.normal}</option>
-                  <option value="High">{t.high}</option>
-                  <option value="Urgent">{t.urgent}</option>
-                </select>
-              </div>
-
-              {/* Schedule */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-zinc-700 mb-1">
-                    {t.startTime}
-                  </label>
-                  <Input
-                    type="datetime-local"
-                    value={newWorkOrderData.scheduled_start}
-                    onChange={(e) => setNewWorkOrderData(prev => ({ ...prev, scheduled_start: e.target.value }))}
-                  />
+                  {bomRequirements.length > 0 ? (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-xs">
+                        <thead>
+                          <tr className="border-b border-zinc-200 text-left text-zinc-500">
+                            <th className="pb-2 font-medium">Material</th>
+                            <th className="pb-2 font-medium text-right">Required</th>
+                            <th className="pb-2 font-medium text-right">Available</th>
+                            <th className="pb-2 font-medium text-right">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-zinc-100">
+                          {bomRequirements.map((req, idx) => (
+                            <tr key={idx}>
+                              <td className="py-2 text-zinc-700">{req.material_name}</td>
+                              <td className="py-2 text-right font-medium">
+                                {req.required_quantity.toFixed(2)} {req.unit}
+                              </td>
+                              <td className="py-2 text-right text-zinc-500">
+                                {req.available_stock.toFixed(2)} {req.unit}
+                              </td>
+                              <td className="py-2 text-right">
+                                <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${req.status === 'Sufficient'
+                                  ? 'bg-emerald-100 text-emerald-700'
+                                  : 'bg-red-100 text-red-700'
+                                  }`}>
+                                  {req.status}
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    !isLoadingBOM && <p className="text-xs text-zinc-400 italic text-center py-2">
+                      {language === 'en' ? 'No BOM found for this product.' : 'इस उत्पाद के लिए कोई BOM नहीं मिला।'}
+                    </p>
+                  )}
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-zinc-700 mb-1">
-                    {t.estimatedEnd}
-                  </label>
-                  <Input
-                    type="datetime-local"
-                    value={newWorkOrderData.scheduled_end}
-                    onChange={(e) => setNewWorkOrderData(prev => ({ ...prev, scheduled_end: e.target.value }))}
-                  />
-                </div>
-              </div>
+              )}
 
               {/* Notes */}
               <div>

@@ -26,6 +26,7 @@ export interface ProductionOrder {
   updated_at: string;
   created_by?: string;
   updated_by?: string;
+  items?: MultiSkuItem[];
 }
 
 export interface OrderMaterial {
@@ -61,6 +62,8 @@ export interface CreateProductionOrderData {
 
 export interface MultiSkuItem {
   product_id: string;
+  product_name?: string;
+  product_code?: string;
   quantity: number;
   unit: string;
   notes?: string;
@@ -204,8 +207,8 @@ export const productionOrdersApi = {
     return await apiClient.post<ProductionOrder>(`${PURCHASE_ORDER_BASE}/${orderId}/archive`);
   },
 
-  // Cancel/Delete order
-  async cancelOrder(orderId: string): Promise<{ message: string }> {
+  // Delete order (Hard delete if Draft/Planned/Cancelled, or Archive)
+  async deleteOrder(orderId: string): Promise<{ message: string }> {
     return await apiClient.delete<{ message: string }>(`${PURCHASE_ORDER_BASE}/${orderId}`);
   },
 

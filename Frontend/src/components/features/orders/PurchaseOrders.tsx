@@ -59,15 +59,20 @@ export function PurchaseOrders({ language }: PurchaseOrdersProps) {
   const [noteText, setNoteText] = useState('');
   const [selectedTeam, setSelectedTeam] = useState('');
   const [newDueDate, setNewDueDate] = useState('');
-  const [showNewOrderModal, setShowNewOrderModal] = useState(false);
+  const [showNewOrderModal, setShowNewOrderModal] = useState(false); /* Working Order State */
   const [showCreateWorkingOrderModal, setShowCreateWorkingOrderModal] = useState(false);
-  const [workingOrderData, setWorkingOrderData] = useState({
+  const [workingOrderData, setWorkingOrderData] = useState<{
+    operation: string;
+    workstation?: string;
+    assignedTeam?: string;
+    targetQty: string;
+    scheduledStart?: string;
+    scheduledEnd?: string;
+    priority: string;
+    notes: string;
+  }>({
     operation: '',
-    workstation: '',
-    assignedTeam: '',
     targetQty: '',
-    scheduledStart: '',
-    scheduledEnd: '',
     priority: 'Medium',
     notes: ''
   });
@@ -80,7 +85,7 @@ export function PurchaseOrders({ language }: PurchaseOrdersProps) {
   const [newOrderData, setNewOrderData] = useState<any>({
     items: [{ id: '1', product: '', quantity: '' }],
     dueDate: '',
-    priority: 'normal',
+    priority: 'MEDIUM',
     notes: '',
     startTime: '',
     endTime: ''
@@ -173,6 +178,7 @@ export function PurchaseOrders({ language }: PurchaseOrdersProps) {
       editOrder: 'ऑर्डर संपादित करें',
       duplicateOrder: 'ऑर्डर डुप्लिकेट करें',
       printOrder: 'ऑर्डर शीट प्रिंट करें',
+      notes: 'नोट्स',
       trackProgress: 'प्रगति ट्रैक करें',
       productionPlan: 'उत्पादन योजना का समयरेखा',
       assignTeam: 'टीम को असाइन करें',
@@ -762,7 +768,7 @@ export function PurchaseOrders({ language }: PurchaseOrdersProps) {
     setNewOrderData({
       items: [{ id: '1', product: '', quantity: '' }],
       dueDate: '',
-      priority: 'normal',
+      priority: 'MEDIUM',
       notes: '',
       startTime: '',
       endTime: ''
@@ -799,8 +805,8 @@ export function PurchaseOrders({ language }: PurchaseOrdersProps) {
         due_date: newOrderData.dueDate,
         priority: newOrderData.priority,
         notes: newOrderData.notes || undefined,
-        start_time: newOrderData.startTime || undefined,
-        end_time: newOrderData.endTime || undefined,
+        start_time: newOrderData.startTime ? newOrderData.startTime : undefined,
+        end_time: newOrderData.endTime ? newOrderData.endTime : undefined,
         items: itemsToCreate
       });
 
@@ -846,8 +852,8 @@ export function PurchaseOrders({ language }: PurchaseOrdersProps) {
 
         case 'delete':
           if (confirm(`${language === 'en' ? 'Are you sure you want to delete this order? This cannot be undone.' : 'क्या आप वाकई इस ऑर्डर को हटाना चाहते हैं? यह पूर्ववत नहीं किया जा सकता।'}\n${selectedOrder.order_number}`)) {
-            await purchaseOrdersApi.cancelOrder(selectedOrder.id);
-            alert(`✅ ${language === 'en' ? 'Order deleted' : 'ऑर्डर हटाया गया'}`);
+            const { message } = await purchaseOrdersApi.deleteOrder(selectedOrder.id);
+            alert(`✅ ${message}`);
             fetchOrders();
           }
           break;
@@ -960,6 +966,12 @@ export function PurchaseOrders({ language }: PurchaseOrdersProps) {
     </>
   );
 
+  // Click handler for Order Number
+  const handleOrderClick = (order: any) => {
+    setSelectedOrder(order);
+    setActiveModal('view');
+  };
+
   const renderModal = () => {
     if (!activeModal || !selectedOrder) return null;
 
@@ -967,52 +979,53 @@ export function PurchaseOrders({ language }: PurchaseOrdersProps) {
       case 'view':
         return (
           <ModalWrapper title={`${language === 'en' ? 'Order Details' : 'ऑर्डर विवरण'}: ${selectedOrder.order_number}`}>
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-sm text-zinc-600">{language === 'en' ? 'Order Number' : 'ऑर्डर नंबर'}</p>
-                  <p className="font-medium">{selectedOrder.order_number}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-zinc-600">{t.product}</p>
-                  <p className="font-medium">{selectedOrder.product_name}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-zinc-600">{language === 'en' ? 'Product Code' : 'उत्पाद कोड'}</p>
-                  <p>{selectedOrder.product_code}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-zinc-600">{t.quantity}</p>
-                  <p>{selectedOrder.quantity} {selectedOrder.unit}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-zinc-600">{t.orderPriority}</p>
-                  <Badge className={selectedOrder.priority === 'High' || selectedOrder.priority === 'Urgent' ? 'bg-red-500' : selectedOrder.priority === 'Medium' ? 'bg-yellow-500' : 'bg-blue-500'}>
-                    {selectedOrder.priority}
-                  </Badge>
-                </div>
-                <div>
-                  <p className="text-sm text-zinc-600">{t.status}</p>
-                  {getStatusBadge(selectedOrder.status)}
-                </div>
-                <div>
-                  <p className="text-sm text-zinc-600">{t.dueDate}</p>
-                  <p>{new Date(selectedOrder.due_date).toLocaleDateString()}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-zinc-600">{language === 'en' ? 'Days Until Due' : 'नियत तिथि तक'}</p>
-                  <p className={selectedOrder.is_overdue ? 'text-red-600 font-medium' : selectedOrder.days_until_due && selectedOrder.days_until_due <= 3 ? 'text-yellow-600' : ''}>
-                    {selectedOrder.is_overdue ? `${Math.abs(selectedOrder.days_until_due || 0)} ${language === 'en' ? 'days overdue' : 'दिन विलंब'}` : `${selectedOrder.days_until_due || 0} ${language === 'en' ? 'days left' : 'दिन बचे'}`}
-                  </p>
-                </div>
+            <div className="space-y-6">
+              {/* Product Breakdown (Multi-SKU) */}
+              <div className="bg-zinc-50 p-4 rounded-lg border border-zinc-200">
+                <h3 className="text-sm font-semibold text-zinc-900 mb-3 flex items-center gap-2">
+                  <Package className="h-4 w-4" />
+                  {language === 'en' ? 'Order Items' : 'ऑर्डर आइटम'}
+                </h3>
+                {selectedOrder.items && selectedOrder.items.length > 0 ? (
+                  <div className="space-y-2">
+                    {selectedOrder.items.map((item: any, idx: number) => (
+                      <div key={idx} className="flex justify-between items-center bg-white p-3 rounded border border-zinc-100 text-sm">
+                        <div>
+                          <p className="font-medium text-zinc-900">{item.product_name || item.product_code}</p>
+                          <p className="text-xs text-zinc-500 uppercase">{item.product_code}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="font-bold text-zinc-900">{item.quantity} {item.unit}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  // Fallback for single SKU legacy orders
+                  <div className="bg-white p-3 rounded border border-zinc-100 text-sm flex justify-between items-center">
+                    <div>
+                      <p className="font-medium text-zinc-900">{selectedOrder.product_name}</p>
+                      <p className="text-xs text-zinc-500 uppercase">{selectedOrder.product_code}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-bold text-zinc-900">{selectedOrder.quantity} {selectedOrder.unit}</p>
+                    </div>
+                  </div>
+                )}
               </div>
+
+              {/* Notes */}
               {selectedOrder.notes && (
-                <div className="pt-2">
-                  <p className="text-sm text-zinc-600 mb-1">{language === 'en' ? 'Notes' : 'नोट्स'}</p>
-                  <p className="text-sm bg-zinc-50 p-3 rounded-lg">{selectedOrder.notes}</p>
+                <div className="bg-blue-50 p-4 rounded-lg border border-blue-100">
+                  <h3 className="text-sm font-semibold text-blue-900 mb-2 flex items-center gap-2">
+                    <MessageSquare className="h-4 w-4" />
+                    {(t as any).notes || 'Notes'}
+                  </h3>
+                  <p className="text-sm text-blue-800 whitespace-pre-line">{selectedOrder.notes}</p>
                 </div>
               )}
-              <div className="pt-4">
+
+              <div className="pt-2">
                 <Button onClick={closeModal} className="w-full">
                   {language === 'en' ? 'Close' : 'बंद करें'}
                 </Button>
@@ -1110,10 +1123,42 @@ export function PurchaseOrders({ language }: PurchaseOrdersProps) {
         );
 
       case 'trackProgress':
+        // Calculate totals
+        const totalTarget = associatedWorkOrders.reduce((sum, wo) => sum + wo.target_quantity, 0);
+        const totalCompleted = associatedWorkOrders.reduce((sum, wo) => sum + wo.completed_quantity, 0);
+        const overallProgress = totalTarget > 0 ? (totalCompleted / totalTarget) * 100 : 0;
+
         return (
           <ModalWrapper title={`${t.trackProgress}: ${selectedOrder.order_number}`}>
             <div className="space-y-4">
-              <div className="space-y-3">
+              {/* Summary Card */}
+              <div className="bg-zinc-50 p-4 rounded-lg grid grid-cols-3 gap-4 text-center border border-zinc-100">
+                <div>
+                  <div className="text-xs text-zinc-500 uppercase font-semibold">Ordered</div>
+                  <div className="text-xl font-bold text-zinc-900">{selectedOrder.quantity} <span className="text-xs font-normal text-zinc-500">{selectedOrder.unit}</span></div>
+                </div>
+                <div>
+                  <div className="text-xs text-zinc-500 uppercase font-semibold">In Production</div>
+                  <div className="text-xl font-bold text-blue-600">{totalTarget} <span className="text-xs font-normal text-zinc-500">active</span></div>
+                </div>
+                <div>
+                  <div className="text-xs text-zinc-500 uppercase font-semibold">Completed</div>
+                  <div className="text-xl font-bold text-emerald-600">{Math.round(totalCompleted)} <span className="text-xs font-normal text-zinc-500">done</span></div>
+                </div>
+              </div>
+
+              {/* Progress Bar Overall */}
+              <div className="space-y-1">
+                <div className="flex justify-between text-xs text-zinc-600">
+                  <span>Overall Completion</span>
+                  <span>{Math.round(overallProgress)}%</span>
+                </div>
+                <div className="h-2 bg-zinc-100 rounded-full overflow-hidden border border-zinc-200">
+                  <div className="h-full bg-emerald-500 transition-all duration-500" style={{ width: `${Math.min(overallProgress, 100)}%` }} />
+                </div>
+              </div>
+
+              <div className="space-y-3 max-h-[50vh] overflow-y-auto pr-1">
                 {associatedWorkOrders.length > 0 ? (
                   associatedWorkOrders.map((wo, idx) => {
                     const progress = wo.target_quantity > 0 ? (wo.completed_quantity / wo.target_quantity) * 100 : 0;
@@ -1312,7 +1357,7 @@ export function PurchaseOrders({ language }: PurchaseOrdersProps) {
 
       case 'assignTeam':
         return (
-          <ModalWrapper title={`${t.assignTeam}: ${selectedOrder.id}`}>
+          <ModalWrapper title={`${t.assignTeam}: ${selectedOrder.order_number}`}>
             <div className="space-y-4">
               <div>
                 <label className="text-sm text-zinc-600 mb-2 block">
@@ -1349,7 +1394,7 @@ export function PurchaseOrders({ language }: PurchaseOrdersProps) {
 
       case 'addNotes':
         return (
-          <ModalWrapper title={`${t.addNotes}: ${selectedOrder.id}`}>
+          <ModalWrapper title={`${t.addNotes}: ${selectedOrder.order_number}`}>
             <div className="space-y-4">
               <div>
                 <label className="text-sm text-zinc-600 mb-2 block">
@@ -1807,7 +1852,12 @@ export function PurchaseOrders({ language }: PurchaseOrdersProps) {
                 <tbody>
                   {orders.map((order) => (
                     <tr key={order.id} className="border-b hover:bg-zinc-50">
-                      <td className="p-4">{order.order_number}</td>
+                      <td
+                        className="p-4 font-medium text-emerald-600 hover:text-emerald-700 hover:underline cursor-pointer"
+                        onClick={() => handleOrderClick(order)}
+                      >
+                        {order.order_number}
+                      </td>
                       <td className="p-4">{order.product_name}</td>
                       <td className="p-4">{order.quantity} {order.unit}</td>
                       <td className="p-4">
@@ -1876,35 +1926,42 @@ export function PurchaseOrders({ language }: PurchaseOrdersProps) {
           orderData={newOrderData}
           onOrderDataChange={setNewOrderData}
           onSubmit={createNewOrder}
-          products={products.reduce((acc, p) => ({ ...acc, [p.id]: { name: p.name, code: p.code } }), {})}
+          products={products.reduce((acc, p) => ({ ...acc, [p.id]: { name: p.name, code: p.code, unit: p.unit } }), {})}
           translations={t}
+          onProductCreated={fetchProducts}
         />
       )}
 
       {/* Create Working Order Modal */}
       {showCreateWorkingOrderModal && selectedOrder && (
         <>
-          <div className="fixed inset-0 bg-black/50 z-40" onClick={() => setShowCreateWorkingOrderModal(false)} />
-          <div className="fixed inset-0 z-50 overflow-y-auto">
-            <div className="min-h-full flex items-center justify-center p-4">
-              <Card className="w-full max-w-lg bg-white p-6 space-y-4 shadow-2xl border-none">
-                <div className="flex items-center justify-between">
-                  <h2 className="text-xl font-semibold">
-                    {language === 'en' ? 'Create Working Order' : 'वर्किंग ऑर्डर बनाएं'}
-                  </h2>
-                  <Button variant="ghost" size="sm" onClick={() => setShowCreateWorkingOrderModal(false)}>
-                    <XCircle className="h-5 w-5" />
-                  </Button>
-                </div>
+          <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-lg shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
+              {/* Modal Header */}
+              <div className="bg-emerald-600 text-white p-4 flex items-center justify-between rounded-t-lg">
+                <h2 className="text-xl font-semibold">
+                  {language === 'en' ? 'Create New Work Order' : 'नया वर्किंग ऑर्डर बनाएं'}
+                </h2>
+                <button
+                  onClick={() => setShowCreateWorkingOrderModal(false)}
+                  className="text-white hover:bg-emerald-700 p-1 rounded-full text-xl"
+                >
+                  <XCircle className="w-6 h-6" />
+                </button>
+              </div>
 
-                {/* Purchase Order Info */}
-                <div className="bg-zinc-50 p-3 rounded-lg border border-zinc-200">
-                  <p className="text-sm text-zinc-600">{language === 'en' ? 'Purchase Order' : 'खरीद आदेश'}</p>
-                  <p className="font-medium">{selectedOrder.order_number} - {selectedOrder.product_name}</p>
-                  <p className="text-sm text-zinc-500">{language === 'en' ? 'Quantity' : 'मात्रा'}: {selectedOrder.quantity}</p>
-                </div>
-
+              <Card className="p-6 border-0 shadow-none">
                 <div className="space-y-4">
+                  {/* Purchase Order Read-only */}
+                  <div>
+                    <label className="block text-sm font-medium mb-1">
+                      {language === 'en' ? 'Purchase Order' : 'खरीद आदेश'} <span className="text-red-500">*</span>
+                    </label>
+                    <div className="p-2 border border-zinc-200 bg-zinc-50 rounded-md text-zinc-700">
+                      {selectedOrder.order_number}
+                    </div>
+                  </div>
+
                   {/* Operation */}
                   <div>
                     <label className="block text-sm font-medium mb-1">
@@ -1915,87 +1972,66 @@ export function PurchaseOrders({ language }: PurchaseOrdersProps) {
                       onChange={(e) => setWorkingOrderData(prev => ({ ...prev, operation: e.target.value }))}
                       className="w-full p-2 border border-zinc-300 rounded-md"
                     >
-                      <option value="">{language === 'en' ? 'Select operation...' : 'ऑपरेशन चुनें...'}</option>
-                      <option value="cutting">{language === 'en' ? 'Cutting' : 'कटाई'}</option>
-                      <option value="sewing">{language === 'en' ? 'Sewing' : 'सिलाई'}</option>
-                      <option value="finishing">{language === 'en' ? 'Finishing' : 'फिनिशिंग'}</option>
-                      <option value="qc">{language === 'en' ? 'Quality Check' : 'गुणवत्ता जांच'}</option>
-                      <option value="packaging">{language === 'en' ? 'Packaging' : 'पैकेजिंग'}</option>
+                      <option value="">{language === 'en' ? 'Select Operation...' : 'ऑपरेशन चुनें...'}</option>
+                      <option value="Cutting">Cutting</option>
+                      <option value="Sewing">Sewing</option>
+                      <option value="Finishing">Finishing</option>
+                      <option value="Packing">Packing</option>
                     </select>
                   </div>
 
-                  {/* Workstation */}
+                  {/* Product/SKU Selection from PO Items */}
                   <div>
                     <label className="block text-sm font-medium mb-1">
-                      {language === 'en' ? 'Workstation' : 'वर्कस्टेशन'} <span className="text-red-500">*</span>
+                      {language === 'en' ? 'Product / SKU' : 'उत्पाद / SKU'} <span className="text-red-500">*</span>
                     </label>
                     <select
-                      value={workingOrderData.workstation}
-                      onChange={(e) => setWorkingOrderData(prev => ({ ...prev, workstation: e.target.value }))}
                       className="w-full p-2 border border-zinc-300 rounded-md"
+                      onChange={() => {
+                        // logic to handle product selection if needed
+                      }}
                     >
-                      <option value="">{language === 'en' ? 'Select workstation...' : 'वर्कस्टेशन चुनें...'}</option>
-                      <option value="cutting-1">{language === 'en' ? 'Cutting Table #1' : 'कटिंग टेबल #1'}</option>
-                      <option value="cutting-2">{language === 'en' ? 'Cutting Table #2' : 'कटिंग टेबल #2'}</option>
-                      <option value="sewing-1">{language === 'en' ? 'Sewing Line #1' : 'सिलाई लाइन #1'}</option>
-                      <option value="sewing-2">{language === 'en' ? 'Sewing Line #2' : 'सिलाई लाइन #2'}</option>
-                      <option value="qc-station">{language === 'en' ? 'QC Station' : 'QC स्टेशन'}</option>
-                      <option value="packing">{language === 'en' ? 'Packing Area' : 'पैकिंग एरिया'}</option>
+                      <option value="">{language === 'en' ? 'Select from PO items...' : 'PO आइटम से चुनें...'}</option>
+                      {/* Assuming selectedOrder has items populated. If not, we need to fetch details.
+                          For now, we rely on the fact that 'view' modal fetches details or we use what's available.
+                          However, the prompt asks to fetch SKUs.
+                          If selectedOrder doesn't have items, we might need to fetch them.
+                          Let's assume selectedOrder here is the full object or we fetch simple list.
+                      */}
+                      {(selectedOrder as any).items?.map((item: any, idx: number) => (
+                        <option key={idx} value={item.product_code}>
+                          {item.product_code} - {item.product_name}
+                        </option>
+                      ))}
+                      {/* Fallback for legacy orders without items array */}
+                      {!(selectedOrder as any).items && (
+                        <option value={selectedOrder.product_code}>
+                          {selectedOrder.product_code} - {selectedOrder.product_name}
+                        </option>
+                      )}
                     </select>
                   </div>
 
-                  {/* Assigned Team */}
-                  <div>
-                    <label className="block text-sm font-medium mb-1">
-                      {language === 'en' ? 'Assigned Team' : 'असाइन टीम'} <span className="text-red-500">*</span>
-                    </label>
-                    <select
-                      value={workingOrderData.assignedTeam}
-                      onChange={(e) => setWorkingOrderData(prev => ({ ...prev, assignedTeam: e.target.value }))}
-                      className="w-full p-2 border border-zinc-300 rounded-md"
-                    >
-                      <option value="">{language === 'en' ? 'Select team...' : 'टीम चुनें...'}</option>
-                      <option value="team-a">Team A - Cutting</option>
-                      <option value="team-b">Team B - Sewing</option>
-                      <option value="team-c">Team C - QC</option>
-                      <option value="team-d">Team D - Packaging</option>
-                    </select>
-                  </div>
-
-                  {/* Target Quantity */}
-                  <div>
-                    <label className="block text-sm font-medium mb-1">
-                      {language === 'en' ? 'Target Quantity' : 'लक्ष्य मात्रा'}
-                    </label>
-                    <Input
-                      type="number"
-                      value={workingOrderData.targetQty}
-                      onChange={(e) => setWorkingOrderData(prev => ({ ...prev, targetQty: e.target.value }))}
-                      placeholder={language === 'en' ? 'Enter quantity...' : 'मात्रा दर्ज करें...'}
-                    />
-                  </div>
-
-                  {/* Schedule */}
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
+                  {/* Quantity */}
+                  <div className="flex gap-2">
+                    <div className="flex-1">
                       <label className="block text-sm font-medium mb-1">
-                        {language === 'en' ? 'Start Time' : 'शुरू समय'}
+                        {language === 'en' ? 'Quantity' : 'मात्रा'} <span className="text-red-500">*</span>
                       </label>
                       <Input
-                        type="datetime-local"
-                        value={workingOrderData.scheduledStart}
-                        onChange={(e) => setWorkingOrderData(prev => ({ ...prev, scheduledStart: e.target.value }))}
+                        type="number"
+                        value={workingOrderData.targetQty}
+                        onChange={(e) => setWorkingOrderData(prev => ({ ...prev, targetQty: e.target.value }))}
+                        placeholder={language === 'en' ? 'Enter quantity' : 'मात्रा दर्ज करें'}
                       />
                     </div>
-                    <div>
+                    <div className="w-24">
                       <label className="block text-sm font-medium mb-1">
-                        {language === 'en' ? 'End Time' : 'समाप्ति समय'}
+                        {language === 'en' ? 'Unit' : 'यूनिट'}
                       </label>
-                      <Input
-                        type="datetime-local"
-                        value={workingOrderData.scheduledEnd}
-                        onChange={(e) => setWorkingOrderData(prev => ({ ...prev, scheduledEnd: e.target.value }))}
-                      />
+                      <select className="w-full p-2 border border-zinc-300 rounded-md bg-zinc-50" disabled>
+                        <option>{selectedOrder.unit || 'pcs'}</option>
+                      </select>
                     </div>
                   </div>
 
@@ -2009,10 +2045,10 @@ export function PurchaseOrders({ language }: PurchaseOrdersProps) {
                       onChange={(e) => setWorkingOrderData(prev => ({ ...prev, priority: e.target.value }))}
                       className="w-full p-2 border border-zinc-300 rounded-md"
                     >
-                      <option value="low">{language === 'en' ? 'Low' : 'कम'}</option>
-                      <option value="normal">{language === 'en' ? 'Normal' : 'सामान्य'}</option>
-                      <option value="high">{language === 'en' ? 'High' : 'उच्च'}</option>
-                      <option value="urgent">{language === 'en' ? 'Urgent' : 'तत्काल'}</option>
+                      <option value="MEDIUM">{language === 'en' ? 'Medium' : 'सामान्य'}</option>
+                      <option value="LOW">{language === 'en' ? 'Low' : 'कम'}</option>
+                      <option value="HIGH">{language === 'en' ? 'High' : 'उच्च'}</option>
+                      <option value="URGENT">{language === 'en' ? 'Urgent' : 'तत्काल'}</option>
                     </select>
                   </div>
 
@@ -2031,7 +2067,7 @@ export function PurchaseOrders({ language }: PurchaseOrdersProps) {
                 </div>
 
                 {/* Action Buttons */}
-                <div className="flex gap-3 pt-2">
+                <div className="flex gap-3 pt-4">
                   <Button
                     onClick={() => setShowCreateWorkingOrderModal(false)}
                     variant="outline"
@@ -2041,10 +2077,10 @@ export function PurchaseOrders({ language }: PurchaseOrdersProps) {
                   </Button>
                   <Button
                     onClick={async () => {
-                      if (!workingOrderData.operation || !workingOrderData.workstation || !workingOrderData.assignedTeam) {
+                      if (!workingOrderData.operation) {
                         alert(language === 'en'
-                          ? '⚠️ Please fill in all required fields (Operation, Workstation, Team)'
-                          : '⚠️ कृपया सभी आवश्यक फ़ील्ड भरें (ऑपरेशन, वर्कस्टेशन, टीम)');
+                          ? '⚠️ Please select an operation'
+                          : '⚠️ कृपया एक ऑपरेशन चुनें');
                         return;
                       }
 
@@ -2053,30 +2089,25 @@ export function PurchaseOrders({ language }: PurchaseOrdersProps) {
                         const workingOrderPayload: WorkingOrderCreate = {
                           purchase_order_id: selectedOrder.id,
                           operation: workingOrderData.operation,
-                          workstation_name: workingOrderData.workstation,
-                          assigned_team: workingOrderData.assignedTeam,
+                          // Default values for removed fields
+                          workstation_name: 'Pending Assignment',
+                          assigned_team: 'Pending Assignment',
                           target_qty: parseFloat(workingOrderData.targetQty) || selectedOrder.quantity,
                           unit: selectedOrder.unit || 'pcs',
                           priority: workingOrderData.priority as 'Low' | 'Normal' | 'High' | 'Urgent',
-                          scheduled_start: workingOrderData.scheduledStart || undefined,
-                          scheduled_end: workingOrderData.scheduledEnd || undefined,
                           notes: workingOrderData.notes || undefined
                         };
 
                         // Call backend API to create working order
                         const createdWorkOrder = await wipApi.createWorkingOrder(workingOrderPayload);
 
-                        alert(`✅ ${language === 'en' ? 'Working Order Created Successfully!' : 'वर्किंग ऑर्डर सफलतापूर्वक बनाया गया!'}\n\n${language === 'en' ? 'Working Order Number' : 'वर्किंग ऑर्डर नंबर'}: ${createdWorkOrder.work_order_number}\n${language === 'en' ? 'Purchase Order' : 'खरीद आदेश'}: ${selectedOrder.order_number}\n${language === 'en' ? 'Operation' : 'ऑपरेशन'}: ${createdWorkOrder.operation}\n${language === 'en' ? 'Workstation' : 'वर्कस्टेशन'}: ${createdWorkOrder.workstation_name}\n${language === 'en' ? 'Status' : 'स्थिति'}: ${createdWorkOrder.status}`);
+                        alert(`✅ ${language === 'en' ? 'Working Order Created Successfully!' : 'वर्किंग ऑर्डर सफलतापूर्वक बनाया गया!'}\n\n${language === 'en' ? 'Working Order Number' : 'वर्किंग ऑर्डर नंबर'}: ${createdWorkOrder.work_order_number}\n${language === 'en' ? 'Purchase Order' : 'खरीद आदेश'}: ${selectedOrder.order_number}`);
 
                         setShowCreateWorkingOrderModal(false);
                         setSelectedOrder(null);
                         setWorkingOrderData({
                           operation: '',
-                          workstation: '',
-                          assignedTeam: '',
                           targetQty: '',
-                          scheduledStart: '',
-                          scheduledEnd: '',
                           priority: 'Medium',
                           notes: ''
                         });

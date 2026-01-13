@@ -27,12 +27,13 @@ class WIPService:
         # Generate work order number (prefer server-side sequence RPC)
         work_order_number = await WIPService._get_next_work_order_number(db)
         
-        # Fetch product_id from purchase order
-        po_result = db.table('purchase_orders').select('product_id').eq('id', order_data.purchase_order_id).execute()
-        if not po_result.data:
-            raise Exception(f"Purchase Order {order_data.purchase_order_id} not found")
-            
-        product_id = po_result.data[0]['product_id']
+        # Fetch product_id from purchase order if not provided
+        product_id = order_data.product_id
+        if not product_id:
+            po_result = db.table('purchase_orders').select('product_id').eq('id', order_data.purchase_order_id).execute()
+            if not po_result.data:
+                raise Exception(f"Purchase Order {order_data.purchase_order_id} not found")
+            product_id = po_result.data[0]['product_id']
         
         # Insert working order
         insert_data = {
@@ -120,7 +121,8 @@ class WIPService:
         limit: int = 50,
         status: Optional[str] = None,
         operation: Optional[str] = None,
-        purchase_order_id: Optional[str] = None
+        purchase_order_id: Optional[str] = None,
+        search: Optional[str] = None
     ) -> List[WorkingOrderListItem]:
         """List working orders with filters"""
         db = get_db()
@@ -137,7 +139,12 @@ class WIPService:
         
         if purchase_order_id:
             # Check both possible columns
-            query = query.or_(f"purchase_order_id.eq.{purchase_order_id},production_order_id.eq.{purchase_order_id}")
+            query = query.or_(f"purchase_order_id.eq.{purchase_order_id}")
+
+        if search:
+            # Search by work order number or operation (ILIKE match)
+            # Note: exact UUID search handled via purchase_order_id filter usually
+            query = query.or_(f"work_order_number.ilike.%{search}%,operation.ilike.%{search}%")
         
         result = query.order('created_at', desc=True).range(offset, offset + limit - 1).execute()
         

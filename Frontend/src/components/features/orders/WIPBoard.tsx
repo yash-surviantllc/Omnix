@@ -24,6 +24,30 @@ export function WIPBoard({ language }: WIPBoardProps) {
   const [selectedStage, setSelectedStage] = useState<WIPBoardStageMetrics | null>(null);
   const [showChartModal, setShowChartModal] = useState(false);
 
+  // Quick Lookup State
+  const [searchQuery, setSearchQuery] = useState('');
+  const [lookupResult, setLookupResult] = useState<any[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [showLookupModal, setShowLookupModal] = useState(false);
+
+  const handleQuickLookup = async () => {
+    if (!searchQuery.trim()) return;
+    setIsSearching(true);
+    try {
+      // Use existing listWorkingOrders to find matches
+      // Note: We might need to ensure listWorkingOrders supports a general search param
+      // If wipApi.listWorkingOrders has a search param, good.
+      // Based on previous views, listWorkingOrders takes { search?: string }
+      const results = await wipApi.listWorkingOrders({ search: searchQuery });
+      setLookupResult(results);
+      setShowLookupModal(true);
+    } catch (err) {
+      console.error('Lookup failed', err);
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
   useEffect(() => {
     let unsubscribe: (() => void) | undefined;
 
@@ -96,7 +120,7 @@ export function WIPBoard({ language }: WIPBoardProps) {
     const avg_cycle_time =
       updatedStages.length > 0
         ? updatedStages.reduce((sum, stage) => sum + Number(stage.avg_time_minutes), 0) /
-          updatedStages.length
+        updatedStages.length
         : 0;
 
     const bottleneckCandidates = updatedStages.filter(
@@ -106,8 +130,8 @@ export function WIPBoard({ language }: WIPBoardProps) {
     const bottleneck_stage =
       bottleneckCandidates.length > 0
         ? bottleneckCandidates.reduce((prev, current) =>
-            current.utilization_percentage > prev.utilization_percentage ? current : prev,
-          ).stage_name
+          current.utilization_percentage > prev.utilization_percentage ? current : prev,
+        ).stage_name
         : null;
 
     return {
@@ -340,7 +364,7 @@ export function WIPBoard({ language }: WIPBoardProps) {
         <h1>{t.title}</h1>
         <Card className="p-8 text-center">
           <p className="text-red-500">{error}</p>
-          <button 
+          <button
             onClick={refreshBoardAndAlerts}
             className="mt-4 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
           >
@@ -353,9 +377,68 @@ export function WIPBoard({ language }: WIPBoardProps) {
 
   return (
     <div className="space-y-6">
-      <div>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <h1>{t.title}</h1>
+
+        {/* Quick Lookup */}
+        <div className="flex gap-2">
+          <div className="relative">
+            <input
+              type="text"
+              placeholder={language === 'en' ? 'Search PO/WO...' : 'PO/WO खोजें...'}
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleQuickLookup()}
+              className="pl-3 pr-10 py-2 border rounded-lg text-sm w-full sm:w-64 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            <button
+              onClick={handleQuickLookup}
+              disabled={isSearching}
+              className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-zinc-400 hover:text-blue-500"
+            >
+              {isSearching ? (
+                <div className="h-4 w-4 border-2 border-zinc-300 border-t-blue-500 rounded-full animate-spin" />
+              ) : (
+                <AlertCircle className="h-4 w-4 rotate-45 transform" /> // Search Icon improvised
+              )}
+            </button>
+          </div>
+        </div>
       </div>
+
+      {/* Lookup Modal */}
+      {showLookupModal && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setShowLookupModal(false)}>
+          <Card className="w-full max-w-2xl max-h-[80vh] overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="p-4 border-b flex items-center justify-between bg-zinc-50">
+              <h3 className="font-medium">{language === 'en' ? 'Search Results' : 'खोज परिणाम'} ({lookupResult.length})</h3>
+              <button onClick={() => setShowLookupModal(false)}><X className="h-5 w-5" /></button>
+            </div>
+            <div className="p-4 overflow-y-auto">
+              {lookupResult.length > 0 ? (
+                <div className="space-y-3">
+                  {lookupResult.map((res: any) => (
+                    <div key={res.id} className="p-3 border rounded-lg flex items-center justify-between gap-3">
+                      <div>
+                        <div className="font-medium text-blue-600">{res.work_order_number || res.id.slice(0, 8)}</div>
+                        <div className="text-sm text-zinc-600">PO: {res.purchase_order_number || 'N/A'} • {res.product_name || 'Product'}</div>
+                      </div>
+                      <div className="text-right">
+                        <Badge variant="outline" className="mb-1">{res.operation}</Badge>
+                        <div className="text-xs text-zinc-500">{res.status}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-8 text-zinc-500">
+                  {language === 'en' ? 'No orders found matching your search.' : 'आपकी खोज से मेल खाने वाले कोई ऑर्डर नहीं मिले।'}
+                </div>
+              )}
+            </div>
+          </Card>
+        </div>
+      )}
 
       {/* Bottleneck Alert */}
       {bottleneckStageData && (
@@ -369,11 +452,11 @@ export function WIPBoard({ language }: WIPBoardProps) {
               <p className="text-red-700 text-sm mb-2">
                 {language === 'en'
                   ? `${bottleneckStageData.stage_name} is delayed - ${Math.round(
-                      bottleneckStageData.utilization_percentage,
-                    )}% capacity utilization`
+                    bottleneckStageData.utilization_percentage,
+                  )}% capacity utilization`
                   : `${bottleneckStageData.stage_name} विलंबित है - ${Math.round(
-                      bottleneckStageData.utilization_percentage,
-                    )}% क्षमता उपयोग`}
+                    bottleneckStageData.utilization_percentage,
+                  )}% क्षमता उपयोग`}
               </p>
               <button className="text-sm text-red-900 underline">{t.askBot}</button>
             </div>
@@ -424,13 +507,12 @@ export function WIPBoard({ language }: WIPBoardProps) {
               </div>
               <div className="h-2 bg-zinc-200 rounded-full overflow-hidden">
                 <div
-                  className={`h-full transition-all ${
-                    stage.health_status === 'red'
-                      ? 'bg-red-500'
-                      : stage.health_status === 'yellow'
+                  className={`h-full transition-all ${stage.health_status === 'red'
+                    ? 'bg-red-500'
+                    : stage.health_status === 'yellow'
                       ? 'bg-yellow-500'
                       : 'bg-emerald-500'
-                  }`}
+                    }`}
                   style={{ width: `${Math.min(stage.utilization_percentage, 150)}%` }}
                 />
               </div>
@@ -484,13 +566,12 @@ export function WIPBoard({ language }: WIPBoardProps) {
                     <div className="flex items-center gap-2">
                       <div className="flex-1 h-2 bg-zinc-200 rounded-full overflow-hidden max-w-[100px]">
                         <div
-                          className={`h-full transition-all ${
-                            stage.health_status === 'red'
-                              ? 'bg-red-500'
-                              : stage.health_status === 'yellow'
+                          className={`h-full transition-all ${stage.health_status === 'red'
+                            ? 'bg-red-500'
+                            : stage.health_status === 'yellow'
                               ? 'bg-yellow-500'
                               : 'bg-emerald-500'
-                          }`}
+                            }`}
                           style={{
                             width: `${Math.min(stage.utilization_percentage, 150)}%`,
                           }}

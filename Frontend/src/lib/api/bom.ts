@@ -39,7 +39,7 @@ export interface BOMMaterialWithShortage {
   scrap_percentage: number;
   unit_cost: number;
   sequence_number?: number;
-  
+
   // Inventory & Shortage Info
   stock_qty: number;  // Current stock
   ordered_qty?: number;  // Ordered but not yet received
@@ -305,5 +305,10 @@ export const productsApi = {
   // Get product by ID
   getProduct: async (productId: string): Promise<Product> => {
     return apiClient.get<Product>(`/products/${productId}`);
+  },
+
+  // Create new product
+  createProduct: async (data: { code: string; name: string; category: string; unit: string; description?: string }): Promise<Product> => {
+    return apiClient.post<Product>('/products', data);
   },
 };

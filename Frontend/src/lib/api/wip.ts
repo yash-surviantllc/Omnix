@@ -217,7 +217,9 @@ export interface WIPAlertResponse {
 
 export interface WorkingOrderCreate {
   purchase_order_id: string;
+  product_id?: string; // Added product_id linkage
   operation: string;
+  shift?: string; // Added shift field
   workstation_id?: string;
   workstation_name?: string;
   assigned_team?: string;
@@ -295,6 +297,7 @@ export const wipApi = {
     status?: string;
     operation?: string;
     purchase_order_id?: string;
+    search?: string;
   }): Promise<WorkingOrder[]> => {
     const queryParams = new URLSearchParams();
     if (params?.page) queryParams.append('page', params.page.toString());
@@ -302,6 +305,7 @@ export const wipApi = {
     if (params?.status) queryParams.append('status', params.status);
     if (params?.operation) queryParams.append('operation', params.operation);
     if (params?.purchase_order_id) queryParams.append('purchase_order_id', params.purchase_order_id);
+    if (params?.search) queryParams.append('search', params.search);
 
     const url = `/wip/working-orders?${queryParams.toString()}`;
     return apiClient.get<WorkingOrder[]>(url);

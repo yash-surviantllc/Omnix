@@ -10,7 +10,10 @@ from app.services.purchase_order_service import purchase_order_service
 from app.api.deps import get_current_user, require_role
 from decimal import Decimal
 
+import logging
+
 router = APIRouter()
+logging.basicConfig(level=logging.INFO)
 
 
 @router.post("/", response_model=PurchaseOrderResponse, status_code=201)
@@ -66,7 +69,13 @@ async def create_multi_sku_order(
     - **due_date**: Target completion date
     - **shift_number**: Shift assignment
     """
-    return await purchase_order_service.create_multi_sku_order(order_data, current_user.id)
+    try:
+        logging.info(f"Received multi-sku order payload: {order_data.model_dump()}")
+        new_order = await purchase_order_service.create_multi_sku_order(order_data, current_user.id)
+        return new_order
+    except Exception as e:
+        logging.error(f"Error creating multi-sku order: {str(e)}")
+        raise e
 
 
 @router.get("/", response_model=List[PurchaseOrderListItem])
@@ -172,7 +181,11 @@ async def delete_purchase_order(
     """
     Delete (cancel) purchase order.
     """
-    return await purchase_order_service.cancel_purchase_order(order_id, current_user.id)
+    success = await purchase_order_service.delete_purchase_order(order_id, current_user.id)
+    if success:
+        return {"message": "Order deleted successfully"}
+    else:
+        return {"message": "Order cancelled/archived successfully"}
 
 
 @router.get("/{order_id}/materials", response_model=List[MaterialRequirement])

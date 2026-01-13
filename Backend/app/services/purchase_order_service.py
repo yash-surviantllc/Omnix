@@ -16,6 +16,7 @@ from app.schemas.purchase_order import (
     PurchaseOrderValidation # Added
 )
 from app.core.exceptions import NotFoundException, ValidationException
+from app.services.bom_service import bom_service # Added import
 
 
 class PurchaseOrderService:  # Changed from ProductionOrderService
@@ -268,7 +269,7 @@ class PurchaseOrderService:  # Changed from ProductionOrderService
             'quantity': float(order_data.quantity),
             'unit': product.get('unit', 'pcs'),
             'due_date': order_data.due_date.isoformat(),
-            'priority': order_data.priority,
+            'priority': order_data.priority.upper() if order_data.priority else 'MEDIUM',
             'status': 'Planned',
             'qr_code': qr_code,
             'bom_id': bom_id,
@@ -313,40 +314,61 @@ class PurchaseOrderService:  # Changed from ProductionOrderService
         db = get_db()
         material_totals: dict[str, dict[str, Decimal | str]] = {}
         sku_entries = []
-        total_quantity = Decimal('0')
+        total_quantity = 0.0
+        material_totals = {}  # Map material_id -> {'required_qty': float, 'unit': str}
         summary_parts: list[str] = []
 
-        for idx, item in enumerate(order_data.items, start=1):
-            item_quantity = Decimal(str(item.quantity))
-            if item_quantity <= 0:
-                raise ValidationException(detail="SKU item quantity must be greater than zero")
+        # First, validate all products and calculate totals
+        for item in order_data.items:
+            # Look up product to get code and unit
+            product_row = None
+            
+            # If product_code provided, use it
+            if item.product_code:
+                product_result = db.table('products').select('*').eq('code', item.product_code).execute()
+                if product_result.data:
+                    product_row = product_result.data[0]
+            
+            # If not found yet and product_id provided, use that
+            if not product_row and item.product_id:
+                product_result = db.table('products').select('*').eq('id', item.product_id).execute()
+                if product_result.data:
+                    product_row = product_result.data[0]
+            
+            if not product_row:
+                 # Assuming 'logging' is imported or handled elsewhere
+                 # Assuming 'ValueError' is appropriate here, or ValidationException
+                 raise ValidationException(detail=f"Product not found: {item.product_code or item.product_id}")
 
-            product_result = db.table('products').select('*').eq('id', item.product_id).execute()
-            if not product_result.data:
-                raise NotFoundException(detail=f"Product with ID {item.product_id} not found")
-            product_row = product_result.data[0]
             if product_row.get('category') != 'Finished Goods':
                 raise ValidationException(detail=f"Product {product_row.get('code')} is not a finished good")
 
-            bom_result = db.table('boms').select('id').eq('product_id', item.product_id).eq('is_active', True).execute()
+            # Get BOM for this product
+            # Use the code from the looked-up product
+            # Assuming 'bom_service' is imported or handled elsewhere
+            bom_result = db.table('boms').select('id').eq('product_id', product_row['id']).eq('is_active', True).execute()
             if not bom_result.data:
-                raise ValidationException(detail=f"No active BOM found for product {product_row.get('name')}")
+                raise ValidationException(detail=f"No active BOM found for product {product_row.get('name')}. Please create a BOM first.")
             bom_id = bom_result.data[0]['id']
 
             bom_items = db.table('bom_materials').select('*').eq('bom_id', bom_id).execute()
+            if not bom_items.data:
+                raise ValidationException(detail=f"BOM for product {product_row.get('name')} is empty. Please add materials to the BOM.")
+
+            item_quantity = float(item.quantity)
+            
+            # Calculate validation totals
             for bom_item in bom_items.data:
                 material_id = bom_item['material_id']
-                bom_quantity = Decimal(str(bom_item['quantity']))
-                scrap_pct = Decimal(str(bom_item.get('scrap_percentage', 0)))
-                required_qty = bom_quantity * item_quantity * (Decimal('1') + scrap_pct / Decimal('100'))
-                unit = bom_item.get('unit', 'pcs')
-                unit_cost = Decimal(str(bom_item.get('unit_cost', 0)))
-
+                bom_quantity = float(bom_item['quantity'])
+                scrap_pct = float(bom_item.get('scrap_percentage', 0))
+                required_qty = bom_quantity * item_quantity * (1.0 + scrap_pct / 100.0)
+                
                 if material_id not in material_totals:
                     material_totals[material_id] = {
                         'required_qty': required_qty,
-                        'unit': unit,
-                        'scrap_percentage': scrap_pct
+                        'unit': bom_item['unit'],
+                        'scrap_percentage': scrap_pct # Keep track of scrap for potential future use or consistency
                     }
                 else:
                     material_totals[material_id]['required_qty'] += required_qty
@@ -380,7 +402,7 @@ class PurchaseOrderService:  # Changed from ProductionOrderService
             'quantity': float(total_quantity),
             'unit': primary_product.get('unit', 'pcs'),
             'due_date': order_data.due_date.isoformat(),
-            'priority': order_data.priority,
+            'priority': order_data.priority.upper() if order_data.priority else 'MEDIUM',
             'status': 'Planned',
             'qr_code': qr_code,
             'bom_id': None,
@@ -748,6 +770,10 @@ class PurchaseOrderService:  # Changed from ProductionOrderService
         update_dict['updated_by'] = user_id
         update_dict['updated_at'] = datetime.utcnow().isoformat()
         
+        # Ensure priority is uppercase if present
+        if 'priority' in update_dict and update_dict['priority']:
+             update_dict['priority'] = update_dict['priority'].upper()
+
         db.table('purchase_orders').update(update_dict).eq('id', order_id).execute()
         
         # If quantity changed, recalculate materials
@@ -786,6 +812,33 @@ class PurchaseOrderService:  # Changed from ProductionOrderService
             status_data=OrderStatusUpdate(status='Cancelled', notes='Order cancelled by user'),
             user_id=user_id
         )
+
+    @staticmethod
+    async def delete_purchase_order(order_id: str, user_id: str) -> bool:
+        """Permanently delete a purchase order if possible, or archive/cancel it."""
+        db = get_db()
+        existing = db.table('purchase_orders').select('status').eq('id', order_id).execute()
+        if not existing.data:
+            raise NotFoundException(detail="Purchase order not found")
+            
+        status = existing.data[0]['status']
+        
+        # If it's Draft or Planned (and maybe Cancelled), we can hard delete
+        if status in ['Draft', 'Planned', 'Cancelled', 'DRAFT', 'PLANNED', 'CANCELLED']:
+            # Delete related items first due to FKs (though CASCADE should handle it, explicit is safer if CASCADE missing)
+            # Try direct delete relying on CASCADE
+            try:
+                db.table('purchase_orders').delete().eq('id', order_id).execute()
+                return True
+            except Exception as e:
+                # If delete fails (e.g. constraints), fall back to Archive
+                print(f"Delete failed, falling back to archive: {e}")
+                await PurchaseOrderService.archive_purchase_order(order_id, user_id)
+                return False
+        else:
+            # Otherwise, just archive/cancel
+            await PurchaseOrderService.cancel_purchase_order(order_id, user_id)
+            return False
 
     @staticmethod
     async def validate_production_feasibility(
