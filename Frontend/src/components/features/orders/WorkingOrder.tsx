@@ -24,6 +24,15 @@ interface WorkOrderOperation {
   targetUnits: number;
 }
 
+const STANDARD_OPERATIONS = [
+  'Cutting',
+  'Sewing',
+  'Assembly',
+  'Quality Check',
+  'Packing',
+  'Finishing'
+];
+
 interface WorkOrder {
   id: string;
   workOrderNumber: string; // Added work order number
@@ -48,6 +57,7 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
   const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [orderNotes, setOrderNotes] = useState<Record<string, string>>({}); // State for order notes
 
   // Expanded state for collapsible cards - tracks which work orders are expanded
   const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set());
@@ -183,16 +193,67 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
         const firstOp = group[0]; // Use first operation for common details
         const poInfo = poMap.get(firstOp.purchase_order_id);
 
-        // Map operations
-        const operations = group.map(wo => ({
-          name: wo.operation || 'Unknown Operation',
-          id: wo.id, // Include ID
-          completedUnits: Number(wo.completed_qty) || 0,
-          status: (wo.status?.toLowerCase().replace(' ', '-') as 'pending' | 'in-progress' | 'completed' | 'on-hold') || 'pending',
-          assignedTo: wo.assigned_team || 'Unassigned',
-          workstation: wo.workstation_name || `${wo.operation || 'Unknown'} Station`,
-          targetUnits: Number(wo.target_qty) || 0
-        }));
+        // Create map of existing operations
+        const existingOpsMap = new Map();
+        group.forEach(wo => {
+          if (wo.operation) existingOpsMap.set(wo.operation, wo);
+        });
+
+        // Merge with standard operations to ensure all stages are visible
+        const operations: WorkOrderOperation[] = STANDARD_OPERATIONS.map(opName => {
+          const wo = existingOpsMap.get(opName);
+
+          if (wo) {
+            // Existing operation
+            const rawStatus = wo.status || 'pending';
+            const normalizedStatus = rawStatus.toLowerCase().replace(' ', '-');
+            const validStatus = (['pending', 'in-progress', 'completed', 'on-hold'].includes(normalizedStatus)
+              ? normalizedStatus
+              : 'pending') as 'pending' | 'in-progress' | 'completed' | 'on-hold';
+
+            return {
+              name: wo.operation,
+              id: wo.id,
+              completedUnits: Number(wo.completed_qty) || 0,
+              status: validStatus,
+              assignedTo: wo.assigned_team || 'Unassigned',
+              workstation: wo.workstation_name || `${wo.operation} Station`,
+              targetUnits: Number(wo.target_qty) || 0
+            };
+          } else {
+            // Placeholder operation (Not Started)
+            return {
+              name: opName,
+              id: `placeholder-${opName}-${firstOp.id}`, // Temporary ID
+              completedUnits: 0,
+              status: 'pending',
+              assignedTo: 'Unassigned',
+              workstation: 'TBD',
+              targetUnits: Number(firstOp.target_qty) || 0 // Assume same target as others
+            };
+          }
+        });
+
+        // Add any non-standard operations that might exist (custom operations)
+        group.forEach(wo => {
+          if (wo.operation && !STANDARD_OPERATIONS.includes(wo.operation)) {
+            const rawStatus = wo.status || 'pending';
+            const normalizedStatus = rawStatus.toLowerCase().replace(' ', '-');
+            const validStatus = (['pending', 'in-progress', 'completed', 'on-hold'].includes(normalizedStatus)
+              ? normalizedStatus
+              : 'pending') as 'pending' | 'in-progress' | 'completed' | 'on-hold';
+
+            operations.push({
+              name: wo.operation,
+              id: wo.id,
+              completedUnits: Number(wo.completed_qty) || 0,
+              status: validStatus,
+              assignedTo: wo.assigned_team || 'Unassigned',
+              workstation: wo.workstation_name || `${wo.operation} Station`,
+              targetUnits: Number(wo.target_qty) || 0
+            });
+          }
+        });
 
         // Determine aggregate status
         let aggregateStatus: WorkOrder['status'] = 'pending';
@@ -599,7 +660,7 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
         if (op) {
           targetOpId = op.id;
           status = 'On Hold';
-          updateData = { status };
+          updateData = { status, notes: orderNotes[order.id] };
         }
       } else if (action === 'complete') {
         // Find first in-progress operation
@@ -647,14 +708,25 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
       setIsLoadingBOM(true);
       try {
         // 1. Get Active BOM for Product
+        console.log("Fetching BOM for product:", newWorkOrderData.product_id);
         const bom = await bomApi.getActiveBOMByProduct(newWorkOrderData.product_id);
+        console.log("BOM fetched:", bom);
+
+        if (!bom || !bom.id) {
+          console.warn('No active BOM found for product');
+          setBomRequirements([]);
+          return;
+        }
 
         // 2. Calculate Requirements (using API or local if API fails/is overkill)
         // We use getMaterialsWithShortages to get stock info too
         const materials = await bomApi.getMaterialsWithShortages(bom.id, qty);
+        console.log("BOM Materials Response:", materials);
 
-        // Map to local state
-        const reqs: BOMRequirement[] = materials.map(m => ({
+        // Map to local state - PARANOID CHECK: Ensure materials is an array
+        const safeMaterials = Array.isArray(materials) ? materials : [];
+
+        const reqs: BOMRequirement[] = safeMaterials.map(m => ({
           material_name: m.material_name,
           quantity_per_unit: m.quantity_per_unit,
           required_quantity: m.required_qty,
@@ -840,14 +912,14 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
                         <h4 className="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-3">
                           {language === 'en' ? 'Operation Progress' : 'ऑपरेशन प्रगति'}
                         </h4>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                        <div className="flex gap-4 overflow-x-auto pb-2 scrollbar-thin scrollbar-thumb-zinc-200 dark:scrollbar-thumb-zinc-700">
                           {order.operations.map((op, idx) => {
                             const opPercent = op.targetUnits > 0 ? Math.round((op.completedUnits / op.targetUnits) * 100) : 0;
                             return (
                               <div
                                 key={idx}
                                 className={`
-                                    relative p-3 rounded-xl border transition-all shadow-sm
+                                    relative p-3 rounded-xl border transition-all shadow-sm min-w-[240px] flex-1
                                     ${op.status === 'completed' ? 'bg-emerald-50/50 border-emerald-200 dark:bg-emerald-900/10 dark:border-emerald-800' :
                                     op.status === 'in-progress' ? 'bg-blue-50/50 border-blue-200 dark:bg-blue-900/10 dark:border-blue-800' :
                                       'bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800'}
@@ -915,6 +987,13 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
 
                         {/* Action Buttons - Bottom Layout */}
                         <div className="flex flex-col gap-3 pt-2">
+                          <Input
+                            placeholder={language === 'en' ? 'Add notes or pause reason...' : 'नोट्स या विराम का कारण जोड़ें...'}
+                            value={orderNotes[order.id] || ''}
+                            onChange={(e) => setOrderNotes(prev => ({ ...prev, [order.id]: e.target.value }))}
+                            className="bg-white"
+                          />
+
                           {order.status === 'pending' && (
                             <Button
                               className="w-full bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm h-12 text-base font-medium rounded-xl"
@@ -926,25 +1005,23 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
                           )}
 
                           {order.status === 'in-progress' && (
-                            <>
-                              <div className="flex justify-center">
-                                <Button
-                                  variant="ghost"
-                                  className="text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-800 rounded-full px-6"
-                                  onClick={(e) => { e.stopPropagation(); handleAction('pause', order.id); }}
-                                >
-                                  <Pause className="h-4 w-4 mr-2" />
-                                  {t.pause}
-                                </Button>
-                              </div>
+                            <div className="flex gap-3">
                               <Button
-                                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm h-12 text-base font-medium rounded-xl"
+                                variant="outline"
+                                className="flex-1 text-zinc-600 border-zinc-200 hover:bg-zinc-50 h-12 text-base font-medium rounded-xl"
+                                onClick={(e) => { e.stopPropagation(); handleAction('pause', order.id); }}
+                              >
+                                <Pause className="h-5 w-5 mr-2" />
+                                {t.pause}
+                              </Button>
+                              <Button
+                                className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm h-12 text-base font-medium rounded-xl"
                                 onClick={(e) => { e.stopPropagation(); handleAction('complete', order.id); }}
                               >
                                 <CheckCircle2 className="h-5 w-5 mr-2" />
                                 {t.complete}
                               </Button>
-                            </>
+                            </div>
                           )}
 
                           {order.status === 'on-hold' && (
@@ -1030,7 +1107,21 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
                     if (poId) {
                       try {
                         const poDetails = await purchaseOrdersApi.getOrder(poId);
-                        setPoItems((poDetails as any).items || []);
+                        // Handle both Multi-SKU (items) and Single-SKU (main product)
+                        if (poDetails.items && Array.isArray(poDetails.items) && poDetails.items.length > 0) {
+                          setPoItems(poDetails.items);
+                        } else if (poDetails.product_id) {
+                          // Fallback for single-SKU orders
+                          setPoItems([{
+                            product_id: poDetails.product_id,
+                            product_code: poDetails.product_code || 'SKU',
+                            product_name: poDetails.product_name,
+                            quantity: poDetails.quantity,
+                            unit: poDetails.unit
+                          }]);
+                        } else {
+                          setPoItems([]);
+                        }
                       } catch (err) {
                         console.error("Failed to fetch PO items", err);
                         setPoItems([]);
@@ -1051,7 +1142,7 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
               </div>
 
               {/* Product/SKU Selection */}
-              {poItems.length > 0 && (
+              {Array.isArray(poItems) && poItems.length > 0 && (
                 <div>
                   <label className="block text-sm font-medium text-zinc-700 mb-1">
                     {language === 'en' ? 'Product / SKU' : 'उत्पाद / SKU'} <span className="text-red-500">*</span>
@@ -1060,8 +1151,12 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
                     className="w-full p-2 border border-zinc-300 rounded-md"
                     onChange={(e) => {
                       const selectedCode = e.target.value;
-                      const selectedItem = poItems.find(item => item.product_code === selectedCode);
+                      // Safe check for poItems
+                      if (!Array.isArray(poItems)) return;
+
+                      const selectedItem = poItems.find(item => item && item.product_code === selectedCode);
                       if (selectedItem) {
+                        console.log("Selected PO Item:", selectedItem);
                         // Set product_id explicitly so backend links WO to this SKU
                         setNewWorkOrderData(prev => ({
                           ...prev,
@@ -1072,13 +1167,15 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
                             ? `${prev.notes}\nSelected SKU: ${selectedCode} - ${selectedItem.product_name || ''}`
                             : `Selected SKU: ${selectedCode} - ${selectedItem.product_name || ''}`
                         }));
+                      } else {
+                        console.warn("Item not found in poItems for code:", selectedCode);
                       }
                     }}
                   >
                     <option value="">{language === 'en' ? 'Select Product from PO...' : 'PO उत्पाद चुनें...'}</option>
                     {poItems.map((item, idx) => (
-                      <option key={idx} value={item.product_code}>
-                        {item.product_code} - {item.product_name}
+                      <option key={idx} value={item?.product_code || ''}>
+                        {item?.product_code || 'Unique SKU'} - {item?.product_name || 'Item'}
                       </option>
                     ))}
                   </select>

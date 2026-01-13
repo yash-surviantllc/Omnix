@@ -1,4 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { toast } from 'sonner';
+import { gateExitApi, GateExitResponse, GateExitStats, GateExitCreate } from '@/lib/api/gateExit';
 import { TruckIcon, Package, FileText, CheckCircle, Clock, Search, Plus, X, Send } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -34,7 +36,7 @@ export function GateExit({ language }: GateExitProps) {
   const [showExitModal, setShowExitModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState<'new' | 'history'>('new');
-  
+
   const [exitData, setExitData] = useState<Partial<GateExitRecord>>({
     exitType: 'dispatch',
     materials: [{ materialCode: '', materialName: '', qty: 0, uom: 'pcs' }],
@@ -42,7 +44,79 @@ export function GateExit({ language }: GateExitProps) {
   });
 
   // Exit history - now comes from backend API
-  const [exitHistory] = useState<GateExitRecord[]>([]);
+  const [exitHistory, setExitHistory] = useState<GateExitResponse[]>([]);
+  const [stats, setStats] = useState<GateExitStats | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    fetchExits();
+    fetchStats();
+  }, []);
+
+  const fetchExits = async () => {
+    try {
+      setLoading(true);
+      const data = await gateExitApi.list();
+      setExitHistory(data);
+    } catch (error) {
+      console.error('Error fetching exits:', error);
+      toast.error('Failed to load gate exits');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchStats = async () => {
+    try {
+      const data = await gateExitApi.getStats();
+      setStats(data);
+    } catch (error) {
+      console.error('Error fetching stats:', error);
+    }
+  };
+
+  const handleCreateExit = async () => {
+    try {
+      if (!exitData.destination || !exitData.linkedDocument || !exitData.exitType) {
+        toast.error('Please fill in all required fields');
+        return;
+      }
+
+      if (!exitData.materials || exitData.materials.length === 0 || !exitData.materials[0].materialName) {
+        toast.error('Please add at least one material with a name');
+        return;
+      }
+
+      const payload: GateExitCreate = {
+        exit_type: exitData.exitType!,
+        destination: exitData.destination!,
+        vehicle_no: exitData.vehicleNo,
+        driver_name: exitData.driverName,
+        linked_document: exitData.linkedDocument!,
+        remarks: exitData.remarks,
+        materials: exitData.materials.map(m => ({
+          material_name: m.materialName!,
+          quantity: Number(m.qty),
+          uom: m.uom!,
+          material_code: m.materialCode
+        }))
+      };
+
+      await gateExitApi.create(payload);
+      toast.success('Gate exit created successfully');
+      setShowExitModal(false);
+      setExitData({
+        exitType: 'dispatch',
+        materials: [{ materialCode: '', materialName: '', qty: 0, uom: 'pcs' }],
+        status: 'ready'
+      });
+      fetchExits();
+      fetchStats();
+    } catch (error) {
+      console.error('Error creating exit:', error);
+      toast.error('Failed to create gate exit');
+    }
+  };
 
   const translations = {
     en: {
@@ -516,21 +590,19 @@ export function GateExit({ language }: GateExitProps) {
       <div className="flex gap-2 border-b-2 border-zinc-200">
         <button
           onClick={() => setActiveTab('new')}
-          className={`px-6 py-3 font-medium transition-colors ${
-            activeTab === 'new'
-              ? 'border-b-4 border-indigo-600 text-indigo-600 -mb-0.5'
-              : 'text-zinc-600 hover:text-zinc-900'
-          }`}
+          className={`px-6 py-3 font-medium transition-colors ${activeTab === 'new'
+            ? 'border-b-4 border-indigo-600 text-indigo-600 -mb-0.5'
+            : 'text-zinc-600 hover:text-zinc-900'
+            }`}
         >
           {t.newExit}
         </button>
         <button
           onClick={() => setActiveTab('history')}
-          className={`px-6 py-3 font-medium transition-colors ${
-            activeTab === 'history'
-              ? 'border-b-4 border-indigo-600 text-indigo-600 -mb-0.5'
-              : 'text-zinc-600 hover:text-zinc-900'
-          }`}
+          className={`px-6 py-3 font-medium transition-colors ${activeTab === 'history'
+            ? 'border-b-4 border-indigo-600 text-indigo-600 -mb-0.5'
+            : 'text-zinc-600 hover:text-zinc-900'
+            }`}
         >
           {t.history}
         </button>
@@ -561,7 +633,7 @@ export function GateExit({ language }: GateExitProps) {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-zinc-600">{t.statuses.ready}</p>
-                  <h3 className="mt-1">8</h3>
+                  <h3 className="mt-1">{stats?.ready || 0}</h3>
                 </div>
                 <Clock className="w-8 h-8 text-zinc-500" />
               </div>
@@ -570,7 +642,7 @@ export function GateExit({ language }: GateExitProps) {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-zinc-600">{t.statuses.verified}</p>
-                  <h3 className="mt-1">12</h3>
+                  <h3 className="mt-1">{stats?.verified || 0}</h3>
                 </div>
                 <CheckCircle className="w-8 h-8 text-blue-500" />
               </div>
@@ -578,8 +650,8 @@ export function GateExit({ language }: GateExitProps) {
             <Card className="p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-zinc-600">{t.statuses.in_transit}</p>
-                  <h3 className="mt-1">6</h3>
+                  <p className="text-sm text-zinc-600">{t.statuses.dispatched}</p>
+                  <h3 className="mt-1">{stats?.dispatched || 0}</h3>
                 </div>
                 <TruckIcon className="w-8 h-8 text-yellow-500" />
               </div>
@@ -588,7 +660,7 @@ export function GateExit({ language }: GateExitProps) {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-zinc-600">Today</p>
-                  <h3 className="mt-1">15</h3>
+                  <h3 className="mt-1">{stats?.today_exits || 0}</h3>
                 </div>
                 <Package className="w-8 h-8 text-indigo-500" />
               </div>
@@ -630,45 +702,47 @@ export function GateExit({ language }: GateExitProps) {
                   {exitHistory
                     .filter(exit =>
                       exit.destination.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                      exit.id.toLowerCase().includes(searchQuery.toLowerCase())
+                      exit.exit_number.toLowerCase().includes(searchQuery.toLowerCase())
                     )
                     .map((exit) => {
-                      const Icon = getExitTypeIcon(exit.exitType);
+                      const Icon = getExitTypeIcon(exit.exit_type as any);
                       return (
                         <tr key={exit.id} className="hover:bg-zinc-50">
-                          <td className="p-4 font-medium text-indigo-600">{exit.id}</td>
+                          <td className="p-4 font-medium text-indigo-600">{exit.id.substring(0, 8)}...</td>
                           <td className="p-4">
                             <div className="flex items-center gap-2">
                               <Icon className="w-4 h-4 text-zinc-500" />
                               <span className="text-sm">
-                                {t.exitTypes[exit.exitType]}
+                                {t.exitTypes[exit.exit_type as keyof typeof t.exitTypes]}
                               </span>
                             </div>
                           </td>
                           <td className="p-4">{exit.destination}</td>
-                          <td className="p-4 font-mono text-sm">{exit.vehicleNo}</td>
+                          <td className="p-4 font-mono text-sm">{exit.vehicle_no || '-'}</td>
                           <td className="p-4">
                             <div className="text-sm">
-                              {exit.materials[0].materialName}
+                              {exit.materials[0]?.material_name}
                               {exit.materials.length > 1 && (
                                 <span className="text-zinc-500"> +{exit.materials.length - 1}</span>
                               )}
                             </div>
                             <div className="text-xs text-zinc-500">
-                              {exit.materials[0].qty} {exit.materials[0].uom}
+                              {exit.materials[0]?.quantity} {exit.materials[0]?.uom}
                             </div>
                           </td>
                           <td className="p-4">
                             <Badge variant="outline" className="border-zinc-300">
-                              {exit.linkedDocument}
+                              {exit.linked_document || '-'}
                             </Badge>
                           </td>
                           <td className="p-4">
                             <Badge className={getStatusColor(exit.status)}>
-                              {t.statuses[exit.status]}
+                              {t.statuses[exit.status as keyof typeof t.statuses] || exit.status}
                             </Badge>
                           </td>
-                          <td className="p-4 text-sm text-zinc-600">{exit.timestamp}</td>
+                          <td className="p-4 text-sm text-zinc-600">
+                            {new Date(exit.created_at).toLocaleDateString()}
+                          </td>
                           <td className="p-4">
                             <Button size="sm" variant="outline">
                               {t.viewDetails}
@@ -799,7 +873,7 @@ export function GateExit({ language }: GateExitProps) {
                 <label className="block mb-3 text-zinc-900 font-medium">
                   {t.materials} <span className="text-red-500">*</span>
                 </label>
-                
+
                 <div className="space-y-3">
                   {exitData.materials?.map((material, index) => (
                     <div key={index} className="flex gap-3 p-4 bg-zinc-50 rounded-lg border-2 border-zinc-200">
@@ -827,7 +901,7 @@ export function GateExit({ language }: GateExitProps) {
                           className="p-2 border border-zinc-300 rounded"
                         />
                       </div>
-                      
+
                       <div className="w-28">
                         <input
                           type="number"
@@ -841,7 +915,7 @@ export function GateExit({ language }: GateExitProps) {
                           className="w-full p-2 border border-zinc-300 rounded"
                         />
                       </div>
-                      
+
                       <div className="w-24">
                         <select
                           value={material.uom}
@@ -858,7 +932,7 @@ export function GateExit({ language }: GateExitProps) {
                           <option value="L">L</option>
                         </select>
                       </div>
-                      
+
                       {(exitData.materials?.length || 0) > 1 && (
                         <button
                           onClick={() => {
@@ -873,7 +947,7 @@ export function GateExit({ language }: GateExitProps) {
                     </div>
                   ))}
                 </div>
-                
+
                 <Button
                   onClick={() => setExitData({
                     ...exitData,
@@ -919,32 +993,12 @@ export function GateExit({ language }: GateExitProps) {
                 {t.cancel}
               </Button>
               <Button
-                onClick={() => {
-                  const summary = exitData.materials
-                    ?.filter(m => m.materialName && m.qty)
-                    .map(m => `${m.qty} ${m.uom} ${m.materialName}`)
-                    .join(', ');
-                    
-                  alert(`✅ ${language === 'en' ? 'Gate Exit Created!' : 'गेट एग्जिट बनाई गई!'}
-
-Destination: ${exitData.destination}
-Type: ${t.exitTypes[exitData.exitType || 'dispatch']}
-Document: ${exitData.linkedDocument}
-Materials: ${summary}
-Status: ${t.statuses.ready}`);
-                  
-                  setShowExitModal(false);
-                  setExitData({
-                    exitType: 'dispatch',
-                    materials: [{ materialCode: '', materialName: '', qty: 0, uom: 'pcs' }],
-                    status: 'ready'
-                  });
-                }}
+                onClick={handleCreateExit}
                 className="flex-1 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700"
-                disabled={!exitData.destination || !exitData.linkedDocument}
+                disabled={!exitData.destination || !exitData.linkedDocument || loading}
               >
                 <CheckCircle className="w-4 h-4 mr-2" />
-                {t.createRecord}
+                {loading ? 'Creating...' : t.createRecord}
               </Button>
             </div>
           </div>

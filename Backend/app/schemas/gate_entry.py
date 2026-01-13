@@ -37,6 +37,7 @@ class GateEntryBase(BaseModel):
 
 class GateEntryCreate(GateEntryBase):
     materials: List[GateEntryMaterialCreate] = Field(..., min_items=1)
+    photos: Optional[List[str]] = Field(default=[], description="List of photo URLs")
 
 
 class GateEntryUpdate(BaseModel):
@@ -56,6 +57,7 @@ class GateEntryResponse(GateEntryBase):
     entry_number: str
     status: str
     materials: List[GateEntryMaterialResponse] = []
+    photos: List[str] = []
     created_by: Optional[str] = None
     created_at: datetime
     updated_at: datetime

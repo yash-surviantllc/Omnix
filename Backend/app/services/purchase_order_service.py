@@ -269,7 +269,7 @@ class PurchaseOrderService:  # Changed from ProductionOrderService
             'quantity': float(order_data.quantity),
             'unit': product.get('unit', 'pcs'),
             'due_date': order_data.due_date.isoformat(),
-            'priority': order_data.priority.upper() if order_data.priority else 'MEDIUM',
+            'priority': order_data.priority.capitalize() if order_data.priority else 'Medium',
             'status': 'Planned',
             'qr_code': qr_code,
             'bom_id': bom_id,
@@ -299,6 +299,13 @@ class PurchaseOrderService:  # Changed from ProductionOrderService
             quantity=order_data.quantity,
             bom_id=bom_id
         )
+
+        # Initialize WIP Board tracking - place order in first stage
+        try:
+            await PurchaseOrderService._initialize_wip_board_tracking(created_order['id'], user_id)
+        except Exception as e:
+            # Log error but don't fail order creation
+            print(f"Failed to initialize WIP Board tracking for order {created_order['id']}: {str(e)}")
         
         return await PurchaseOrderService.get_order_by_id(created_order['id'])
     
@@ -324,7 +331,7 @@ class PurchaseOrderService:  # Changed from ProductionOrderService
             product_row = None
             
             # If product_code provided, use it
-            if item.product_code:
+            if getattr(item, 'product_code', None):
                 product_result = db.table('products').select('*').eq('code', item.product_code).execute()
                 if product_result.data:
                     product_row = product_result.data[0]
@@ -351,9 +358,14 @@ class PurchaseOrderService:  # Changed from ProductionOrderService
                 raise ValidationException(detail=f"No active BOM found for product {product_row.get('name')}. Please create a BOM first.")
             bom_id = bom_result.data[0]['id']
 
+
+            # bom_items = db.table('bom_materials').select('*').eq('bom_id', bom_id).execute()
+            # if not bom_items.data:
+            #    raise ValidationException(detail=f"BOM for product {product_row.get('name')} is empty. Please add materials to the BOM.")
+            
+            # Fetch BOM items to calculate requirements
             bom_items = db.table('bom_materials').select('*').eq('bom_id', bom_id).execute()
-            if not bom_items.data:
-                raise ValidationException(detail=f"BOM for product {product_row.get('name')} is empty. Please add materials to the BOM.")
+
 
             item_quantity = float(item.quantity)
             
@@ -402,7 +414,7 @@ class PurchaseOrderService:  # Changed from ProductionOrderService
             'quantity': float(total_quantity),
             'unit': primary_product.get('unit', 'pcs'),
             'due_date': order_data.due_date.isoformat(),
-            'priority': order_data.priority.upper() if order_data.priority else 'MEDIUM',
+            'priority': order_data.priority.capitalize() if order_data.priority else 'Medium',
             'status': 'Planned',
             'qr_code': qr_code,
             'bom_id': None,
@@ -772,7 +784,7 @@ class PurchaseOrderService:  # Changed from ProductionOrderService
         
         # Ensure priority is uppercase if present
         if 'priority' in update_dict and update_dict['priority']:
-             update_dict['priority'] = update_dict['priority'].upper()
+             update_dict['priority'] = update_dict['priority'].capitalize()
 
         db.table('purchase_orders').update(update_dict).eq('id', order_id).execute()
         

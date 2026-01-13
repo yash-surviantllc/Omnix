@@ -61,6 +61,7 @@ class GateEntryService:
             'destination_department': entry_data.destination_department,
             'status': 'arrived',
             'remarks': entry_data.remarks,
+            'photos': entry_data.photos,
             'created_by': user_id
         }
         
@@ -128,6 +129,7 @@ class GateEntryService:
             destination_department=entry['destination_department'],
             status=entry['status'],
             remarks=entry['remarks'],
+            photos=entry.get('photos', []),
             materials=materials,
             created_by=entry.get('created_by'),
             created_at=entry['created_at'],

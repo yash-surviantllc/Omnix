@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { bomApi, productsApi, type Product, type BOM, type BOMMaterialWithShortage } from '@/lib/api/bom';
 import { AddMaterialModal } from './AddMaterialModal';
 import { EditMaterialModal } from './EditMaterialModal';
-import { inventoryItemsApi, type InventoryItemResponse } from '@/services/inventoryItemsApi';
+import { inventoryItemsApi, type InventoryItemResponse } from '@/lib/api/inventory';
 
 type BOMPlannerProps = {
   language: 'en' | 'hi' | 'kn' | 'ta' | 'te' | 'mr' | 'gu' | 'pa';
@@ -542,17 +542,6 @@ export function BOMPlanner({ language }: BOMPlannerProps) {
     }
   };
 
-  const handleEditMaterial = (material: any) => {
-    setEditingMaterial(material);
-    setNewMaterial({
-      materialId: material.material_id,
-      quantity: material.quantity_per_unit.toString(),
-      unit: material.unit,
-      unitCost: material.unit_cost.toString(),
-      scrapPercentage: material.scrap_percentage?.toString() || '0'
-    });
-    setShowEditMaterialModal(true);
-  };
 
   const handleDeleteMaterial = async (materialId: string) => {
     if (!currentBOM) return;

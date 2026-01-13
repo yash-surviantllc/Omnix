@@ -85,15 +85,15 @@ export const dashboardApi = {
     return apiClient.get<QuickAction[]>('/dashboard/quick-actions');
   },
 
-  getOrdersSummary: async () => {
-    return apiClient.get('/dashboard/orders-summary');
+  getOrdersSummary: async (): Promise<OrderSummary> => {
+    return apiClient.get<OrderSummary>('/dashboard/orders-summary');
   },
 
-  getShortagesDetail: async () => {
-    return apiClient.get('/dashboard/shortages');
+  getShortagesDetail: async (): Promise<ShortageItem[]> => {
+    return apiClient.get<ShortageItem[]>('/dashboard/shortages');
   },
 
-  getReworkDetail: async () => {
-    return apiClient.get('/dashboard/rework');
+  getReworkDetail: async (): Promise<ReworkAlert[]> => {
+    return apiClient.get<ReworkAlert[]>('/dashboard/rework');
   },
 };

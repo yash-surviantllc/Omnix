@@ -78,6 +78,12 @@ class WorkingOrderListItem(BaseModel):
     priority: str
     scheduled_start: Optional[datetime] = None
     scheduled_end: Optional[datetime] = None
+    actual_start: Optional[datetime] = None
+    actual_end: Optional[datetime] = None
+    rejected_qty: Decimal = Decimal('0')
+    notes: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
     
     class Config:
         from_attributes = True

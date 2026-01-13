@@ -70,7 +70,8 @@ class BOMService:
             'is_template': False,
             'effective_date': date.today().isoformat(),
             'notes': bom_data.notes,
-            'created_by': user_id
+            'created_by': user_id,
+            'code': f"BOM-{bom_data.product_code}-V1" # Generate code
         }
         
         bom_result = db.table('boms').insert(bom_dict).execute()
@@ -81,48 +82,54 @@ class BOMService:
         
         # 4. Create BOM materials (linking to inventory_items via products table)
         # Note: We need to create product entries for inventory items if they don't exist
+        # 4. Create BOM materials (linking to inventory_items via products table)
         for idx, material in enumerate(bom_data.materials, start=1):
             item_code = material.get('itemCode')
             qty = material.get('qty', 0)
             unit = material.get('unit', 'kg')
             unit_cost = material.get('unitCost', 0)
+            material_name = material.get('material', f"Material {item_code}") # Fallback name
             
             if not item_code or not qty:
                 continue
             
-            # Get or create product for this inventory item
+            # Get or create product for this material
             inv_item = inventory_items.get(item_code)
-            if inv_item:
-                # Check if product exists for this inventory item
-                product_check = db.table('products').select('id').eq('code', item_code).execute()
-                
-                if product_check.data:
-                    material_product_id = product_check.data[0]['id']
-                else:
-                    # Create product for inventory item
-                    mat_product_dict = {
-                        'code': item_code,
-                        'name': inv_item['material_name'],
-                        'category': 'Raw Material',
-                        'unit': inv_item['unit'],
-                        'is_active': True,
-                        'created_by': user_id
-                    }
-                    mat_product_result = db.table('products').insert(mat_product_dict).execute()
-                    material_product_id = mat_product_result.data[0]['id']
-                
-                # Create BOM material entry
-                material_dict = {
-                    'bom_id': created_bom['id'],
-                    'material_id': material_product_id,
-                    'quantity': float(qty),
-                    'unit': unit,
-                    'unit_cost': float(unit_cost) if unit_cost else 0,
-                    'scrap_percentage': 0,
-                    'sequence_number': idx
+            
+            # Check if product exists
+            product_check = db.table('products').select('id').eq('code', item_code).execute()
+            
+            if product_check.data:
+                material_product_id = product_check.data[0]['id']
+            else:
+                # Create product for material
+                mat_product_dict = {
+                    'code': item_code,
+                    'name': inv_item['material_name'] if inv_item else material_name,
+                    'category': 'Raw Material',
+                    'unit': inv_item['unit'] if inv_item else unit,
+                    'is_active': True,
+                    'created_by': user_id
                 }
-                
-                db.table('bom_materials').insert(material_dict).execute()
+                mat_product_result = db.table('products').insert(mat_product_dict).execute()
+                if mat_product_result.data:
+                    material_product_id = mat_product_result.data[0]['id']
+                else:
+                    # Skip if product creation fails (shouldn't happen)
+                    continue
+            
+            # Create BOM material entry
+            material_dict = {
+                'bom_id': created_bom['id'],
+                'material_id': material_product_id,
+                'quantity': float(qty),
+                'unit': unit,
+                'unit_cost': float(unit_cost) if unit_cost else 0,
+                'scrap_percentage': 0,
+                'sequence_number': idx
+            }
+            
+            db.table('bom_materials').insert(material_dict).execute()
         
         # 5. Return the created BOM
         return await BOMService.get_bom_by_id(created_bom['id'])
@@ -136,7 +143,7 @@ class BOMService:
         db = get_db()
         
         # Validate product exists and is finished goods
-        product = db.table('products').select('id', 'category').eq('id', bom_data.product_id).execute()
+        product = db.table('products').select('id', 'category', 'code').eq('id', bom_data.product_id).execute()
         if not product.data:
             raise NotFoundException(detail="Product not found")
         if product.data[0].get('category') != 'Finished Goods':
@@ -165,7 +172,8 @@ class BOMService:
             'template_name': bom_data.template_name if bom_data.is_template else None,
             'effective_date': date.today().isoformat(),
             'notes': bom_data.notes,
-            'created_by': user_id
+            'created_by': user_id,
+            'code': f"BOM-{product.data[0]['code']}-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}" # Ensure unique code
         }
         
         bom_result = db.table('boms').insert(bom_dict).execute()

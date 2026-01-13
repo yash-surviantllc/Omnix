@@ -818,7 +818,8 @@ export function PurchaseOrders({ language }: PurchaseOrdersProps) {
       closeNewOrderModal();
     } catch (err: any) {
       console.error('Error creating order:', err);
-      alert(language === 'en' ? '❌ Failed to create order(s)' : '❌ ऑर्डर बनाने में विफल');
+      const errorMessage = err?.detail || err?.message || (language === 'en' ? 'Failed to create order(s)' : 'ऑर्डर बनाने में विफल');
+      alert(`❌ ${errorMessage}`);
     } finally {
       setIsLoading(false);
     }
@@ -967,9 +968,18 @@ export function PurchaseOrders({ language }: PurchaseOrdersProps) {
   );
 
   // Click handler for Order Number
-  const handleOrderClick = (order: any) => {
-    setSelectedOrder(order);
-    setActiveModal('view');
+  const handleOrderClick = async (order: any) => {
+    try {
+      // Fetch full order details to ensure items/materials are populated
+      const fullOrder = await purchaseOrdersApi.getOrder(order.id);
+      setSelectedOrder(fullOrder);
+      setActiveModal('view');
+    } catch (err) {
+      console.error("Failed to fetch order details:", err);
+      // Fallback to the list item if fetch fails (better than nothing)
+      setSelectedOrder(order);
+      setActiveModal('view');
+    }
   };
 
   const renderModal = () => {

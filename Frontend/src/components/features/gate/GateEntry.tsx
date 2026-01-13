@@ -4,8 +4,9 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { gateEntryApi, GateEntryListItem, GateEntryStats } from '@/services/gateEntryApi';
+import { gateEntryApi, GateEntryListItem, GateEntryStats, CreateGateEntryData } from '@/lib/api/gateEntry';
 import { toast } from 'sonner';
+
 
 type GateEntryProps = {
   language: 'en' | 'hi' | 'kn' | 'ta' | 'te' | 'mr' | 'gu' | 'pa';
@@ -30,6 +31,7 @@ type GateEntryRecord = {
   status: 'arrived' | 'under_verification' | 'accepted' | 'rejected';
   timestamp: string;
   remarks: string;
+  photos: string[];
 };
 
 export function GateEntry({ language }: GateEntryProps) {
@@ -41,12 +43,15 @@ export function GateEntry({ language }: GateEntryProps) {
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [loadingDetails, setLoadingDetails] = useState(false);
-  
+
   const [entryData, setEntryData] = useState<Partial<GateEntryRecord>>({
     entryType: 'material',
     materials: [{ materialCode: '', materialName: '', qty: 0, uom: 'kg' }],
-    status: 'arrived'
+    status: 'arrived',
+    photos: []
   });
+
+  const [newPhotoUrl, setNewPhotoUrl] = useState('');
 
   const [entryHistory, setEntryHistory] = useState<GateEntryListItem[]>([]);
   const [stats, setStats] = useState<GateEntryStats | null>(null);
@@ -100,7 +105,7 @@ export function GateEntry({ language }: GateEntryProps) {
   };
 
   const handleCreateEntry = async () => {
-    let createData: any = null;
+    let createData: CreateGateEntryData | null = null;
     try {
       // Validate required fields
       if (!entryData.vendor || !entryData.destinationDepartment) {
@@ -137,20 +142,23 @@ export function GateEntry({ language }: GateEntryProps) {
         })),
         ...(entryData.vehicleNo && { vehicle_no: entryData.vehicleNo }),
         ...(entryData.driverName && { driver_name: entryData.driverName }),
-        ...(entryData.linkedDocument && { linked_document: entryData.linkedDocument }),
-        ...(entryData.remarks && { remarks: entryData.remarks })
+
+        ...(entryData.remarks && { remarks: entryData.remarks }),
+        photos: entryData.photos || []
       };
 
+      if (!createData) return;
       const result = await gateEntryApi.create(createData);
-      
+
       toast.success(`Gate Entry ${result.entry_number} created successfully!`);
-      
+
       // Reset form
       setShowEntryModal(false);
       setEntryData({
         entryType: 'material',
         materials: [{ materialCode: '', materialName: '', qty: 0, uom: 'kg' }],
-        status: 'arrived'
+        status: 'arrived',
+        photos: []
       });
 
       // Refresh data
@@ -162,12 +170,12 @@ export function GateEntry({ language }: GateEntryProps) {
       console.error('Error creating gate entry:', error);
       console.error('Error response:', error.response?.data);
       console.error('Sent data:', createData);
-      
+
       // Handle validation errors
       if (error.response?.data?.detail) {
         if (Array.isArray(error.response.data.detail)) {
           // Pydantic validation errors
-          const errors = error.response.data.detail.map((e: any) => 
+          const errors = error.response.data.detail.map((e: any) =>
             `${e.loc.join('.')}: ${e.msg}`
           ).join(', ');
           toast.error(`Validation error: ${errors}`);
@@ -712,21 +720,19 @@ export function GateEntry({ language }: GateEntryProps) {
       <div className="flex gap-2 border-b-2 border-zinc-200">
         <button
           onClick={() => setActiveTab('new')}
-          className={`px-6 py-3 font-medium transition-colors ${
-            activeTab === 'new'
-              ? 'border-b-4 border-blue-600 text-blue-600 -mb-0.5'
-              : 'text-zinc-600 hover:text-zinc-900'
-          }`}
+          className={`px-6 py-3 font-medium transition-colors ${activeTab === 'new'
+            ? 'border-b-4 border-blue-600 text-blue-600 -mb-0.5'
+            : 'text-zinc-600 hover:text-zinc-900'
+            }`}
         >
           {t.newEntry}
         </button>
         <button
           onClick={() => setActiveTab('history')}
-          className={`px-6 py-3 font-medium transition-colors ${
-            activeTab === 'history'
-              ? 'border-b-4 border-blue-600 text-blue-600 -mb-0.5'
-              : 'text-zinc-600 hover:text-zinc-900'
-          }`}
+          className={`px-6 py-3 font-medium transition-colors ${activeTab === 'history'
+            ? 'border-b-4 border-blue-600 text-blue-600 -mb-0.5'
+            : 'text-zinc-600 hover:text-zinc-900'
+            }`}
         >
           {t.history}
         </button>
@@ -883,8 +889,8 @@ export function GateEntry({ language }: GateEntryProps) {
                           </td>
                           <td className="p-4 text-sm text-zinc-600">{formattedDate}</td>
                           <td className="p-4">
-                            <Button 
-                              size="sm" 
+                            <Button
+                              size="sm"
                               variant="outline"
                               onClick={() => handleViewDetails(entry.id)}
                               disabled={loadingDetails}
@@ -1023,7 +1029,7 @@ export function GateEntry({ language }: GateEntryProps) {
                 <label className="block mb-3 text-zinc-900 font-medium">
                   {t.materials} <span className="text-red-500">*</span>
                 </label>
-                
+
                 <div className="space-y-3">
                   {entryData.materials?.map((material, index) => (
                     <div key={index} className="flex gap-3 p-4 bg-zinc-50 rounded-lg border-2 border-zinc-200">
@@ -1051,7 +1057,7 @@ export function GateEntry({ language }: GateEntryProps) {
                           className="p-2 border border-zinc-300 rounded"
                         />
                       </div>
-                      
+
                       <div className="w-28">
                         <input
                           type="number"
@@ -1065,7 +1071,7 @@ export function GateEntry({ language }: GateEntryProps) {
                           className="w-full p-2 border border-zinc-300 rounded"
                         />
                       </div>
-                      
+
                       <div className="w-24">
                         <select
                           value={material.uom}
@@ -1082,7 +1088,7 @@ export function GateEntry({ language }: GateEntryProps) {
                           <option value="L">L</option>
                         </select>
                       </div>
-                      
+
                       {(entryData.materials?.length || 0) > 1 && (
                         <button
                           onClick={() => {
@@ -1097,7 +1103,7 @@ export function GateEntry({ language }: GateEntryProps) {
                     </div>
                   ))}
                 </div>
-                
+
                 <Button
                   onClick={() => setEntryData({
                     ...entryData,
@@ -1124,6 +1130,62 @@ export function GateEntry({ language }: GateEntryProps) {
                   className="w-full p-3 border-2 border-zinc-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
+
+              {/* Photos */}
+              <div>
+                <label className="block mb-2 text-zinc-900 font-medium">
+                  Photos (URLs)
+                </label>
+                <div className="flex gap-2 mb-3">
+                  <Input
+                    type="text"
+                    value={newPhotoUrl}
+                    onChange={(e) => setNewPhotoUrl(e.target.value)}
+                    placeholder="Enter photo URL..."
+                    className="flex-1"
+                  />
+                  <Button
+                    onClick={() => {
+                      if (!newPhotoUrl) return;
+                      setEntryData({
+                        ...entryData,
+                        photos: [...(entryData.photos || []), newPhotoUrl]
+                      });
+                      setNewPhotoUrl('');
+                    }}
+                    type="button"
+                    variant="outline"
+                  >
+                    <Plus className="w-4 h-4" />
+                  </Button>
+                </div>
+
+                {entryData.photos && entryData.photos.length > 0 && (
+                  <div className="flex flex-wrap gap-2">
+                    {entryData.photos.map((photo, index) => (
+                      <div key={index} className="relative group">
+                        <img
+                          src={photo}
+                          alt={`Entry photo ${index + 1}`}
+                          className="w-20 h-20 object-cover rounded border border-zinc-200"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).src = 'https://via.placeholder.com/80?text=Error';
+                          }}
+                        />
+                        <button
+                          onClick={() => {
+                            const newPhotos = entryData.photos?.filter((_, i) => i !== index);
+                            setEntryData({ ...entryData, photos: newPhotos });
+                          }}
+                          className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Modal Footer */}
@@ -1134,7 +1196,8 @@ export function GateEntry({ language }: GateEntryProps) {
                   setEntryData({
                     entryType: 'material',
                     materials: [{ materialCode: '', materialName: '', qty: 0, uom: 'kg' }],
-                    status: 'arrived'
+                    status: 'arrived',
+                    photos: []
                   });
                 }}
                 variant="outline"
@@ -1255,6 +1318,33 @@ export function GateEntry({ language }: GateEntryProps) {
                 </div>
               )}
             </div>
+
+            {/* Photos Display */}
+            {selectedEntry.photos && selectedEntry.photos.length > 0 && (
+              <div className="px-6 pb-6">
+                <label className="text-sm font-medium text-zinc-600 mb-2 block">Photos</label>
+                <div className="flex flex-wrap gap-3">
+                  {selectedEntry.photos.map((photo: string, index: number) => (
+                    <a
+                      key={index}
+                      href={photo}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="block border border-zinc-200 rounded overflow-hidden hover:opacity-80 transition-opacity"
+                    >
+                      <img
+                        src={photo}
+                        alt={`Entry photo ${index + 1}`}
+                        className="w-24 h-24 object-cover"
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).src = 'https://via.placeholder.com/96?text=Error';
+                        }}
+                      />
+                    </a>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Modal Footer */}
             <div className="sticky bottom-0 bg-white border-t-2 border-zinc-200 p-6">

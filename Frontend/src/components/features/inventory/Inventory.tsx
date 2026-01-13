@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { AddInventoryModal } from './AddInventoryModal';
 import { MaterialData, InventoryDisplayItem, Language } from '@/types/inventory';
-import { inventoryItemsApi, convertFromMaterialData } from '@/services/inventoryItemsApi';
+import { inventoryItemsApi, convertFromMaterialData } from '@/lib/api/inventory';
 
 type InventoryProps = {
   language: Language;
@@ -376,10 +376,9 @@ export function Inventory({ language }: InventoryProps) {
     return matchesSearch && matchesFilter;
   });
 
-  const _totalMaterials = inventoryItems.length;
   const criticalCount = allInventoryItems.filter((item) => item.status === 'critical').length;
   const lowStockCount = allInventoryItems.filter((item) => item.status === 'low').length;
-  const _sufficientCount = allInventoryItems.filter((item) => item.status === 'sufficient').length;
+
 
   return (
     <div className="space-y-6">

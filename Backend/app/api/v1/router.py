@@ -14,7 +14,9 @@ from app.api.v1.endpoints import (
     wip_board,
     alerts,
     gate_entries,
-    websockets
+    gate_exits,
+    websockets,
+    qc
 )
 
 api_router = APIRouter()
@@ -121,4 +123,18 @@ api_router.include_router(
     websockets.router,
     prefix="/ws",
     tags=["WebSockets"]
+)
+
+# Gate Exit routes
+api_router.include_router(
+    gate_exits.router,
+    prefix="/gate-exits",
+    tags=["Gate Exits"]
+)
+
+# QC routes
+api_router.include_router(
+    qc.router,
+    prefix="/qc",
+    tags=["Quality Control"]
 )

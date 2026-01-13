@@ -489,9 +489,13 @@ class WIPBoardService:
                 .execute()
             )
             if existing.data:
-                new_qty = self._to_decimal(existing.data.get("quantity_in_stage")) - qty
+                current_qty = self._to_decimal(existing.data.get("quantity_in_stage"))
+                if qty > current_qty:
+                    raise ValueError(f"Insufficient quantity in source stage. Available: {current_qty}, Requested: {qty}")
+                
+                new_qty = current_qty - qty
                 update_payload = {
-                    "quantity_in_stage": max(Decimal("0"), new_qty),
+                    "quantity_in_stage": new_qty,
                     "updated_at": now,
                 }
                 db.table("order_stage_tracking").update(update_payload).eq("id", existing.data["id"]).execute()

@@ -1,6 +1,6 @@
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, Query, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, Query, WebSocket, WebSocketDisconnect, HTTPException
 
 from app.api.deps import get_current_user, require_role
 from app.services.websocket_manager import manager as ws_manager
@@ -86,7 +86,10 @@ async def record_wip_transfer(
     transfer_data: WIPTransferCreate,
     current_user: UserResponse = Depends(require_role("Supervisor")),
 ):
-    return await wip_board_service.record_transfer(transfer_data, current_user.id)
+    try:
+        return await wip_board_service.record_transfer(transfer_data, current_user.id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.get("/bottlenecks", response_model=List[BottleneckResponse])

@@ -9,6 +9,7 @@ from app.schemas.material_transfer import (
     WIPStageWithUnits, OrderStageStatus
 )
 from app.core.exceptions import NotFoundException, ValidationException
+from app.services.websocket_manager import manager
 
 
 class MaterialTransferService:
@@ -275,6 +276,12 @@ class MaterialTransferService:
         
         db.table('material_transfers').update(update_dict).eq('id', transfer_id).execute()
         
+        # Broadcast update
+        await manager.broadcast_dashboard_update('transfers', {
+           'action': 'approved' if approval.approve else 'rejected',
+           'transfer_id': transfer_id
+        })
+
         return await MaterialTransferService.get_transfer_by_id(transfer_id)
     
     @staticmethod
@@ -362,6 +369,18 @@ class MaterialTransferService:
                 'executed_by': user_id,
                 'executed_at': datetime.utcnow().isoformat()
             }).eq('id', transfer_id).execute()
+            
+            # Broadcast update
+            await manager.broadcast_dashboard_update('transfers', {
+                'action': 'completed',
+                'transfer_id': transfer_id
+            })
+            
+            # Also broadcast inventory update since stock moved
+            await manager.broadcast_dashboard_update('inventory', {
+                'action': 'transfer',
+                'product_id': t['product_id']
+            })
             
             return await MaterialTransferService.get_transfer_by_id(transfer_id)
             
