@@ -29,8 +29,28 @@ export interface QCInspection {
     updated_at: string;
 }
 
+export interface QCStats {
+    total_inspections: number;
+    today_inspections: number;
+    pending_rework: number;
+    pass_rate: number;
+}
+
+export interface OrderLookupResponse {
+    order_type: 'purchase_order' | 'work_order';
+    order_id: string;
+    order_number: string;
+    product_id: string;
+    product_name?: string;
+    product_code?: string;
+    quantity: number;
+    completed_qty: number;
+    status: string;
+}
+
 export interface CreateQCInspectionPayload {
     purchase_order_id?: string;
+    work_order_id?: string;
     product_id: string;
     quantity_checked: number;
     passed_qty: number;
@@ -39,13 +59,6 @@ export interface CreateQCInspectionPayload {
     status: 'Pending' | 'In Progress' | 'Completed';
     notes?: string;
     defects: QCDefect[];
-}
-
-export interface QCStats {
-    total_inspections: number;
-    today_inspections: number;
-    pending_rework: number;
-    pass_rate: number;
 }
 
 export const qcApi = {
@@ -64,10 +77,14 @@ export const qcApi = {
     },
 
     getStats: async (): Promise<QCStats> => {
-        return apiClient.get<QCStats>('/qc/stats');
+        return apiClient.get<QCStats>('/qc/stats/');
     },
 
     getById: async (id: string): Promise<QCInspection> => {
         return apiClient.get<QCInspection>(`/qc/${id}`);
+    },
+
+    lookupOrder: async (orderNumber: string): Promise<OrderLookupResponse> => {
+        return apiClient.get<OrderLookupResponse>(`/qc/lookup/${encodeURIComponent(orderNumber)}`);
     }
 };

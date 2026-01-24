@@ -1,4 +1,5 @@
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { useEffect } from 'react';
 import { Login } from './components/features';
 import { AppLayout } from './components/layout/AppLayout';
 import { AppRoutes } from './components/AppRoutes';
@@ -27,6 +28,17 @@ export default function App() {
   // Use Zustand stores
   const { isAuthenticated, login } = useAuthStore();
   const { language, setCurrentView: setAppCurrentView } = useAppStore();
+  const location = useLocation();
+
+  // Sync URL with Store on Load/Change
+  useEffect(() => {
+    const path = location.pathname;
+    // Find view key that matches current path
+    const view = (Object.keys(viewToPath) as View[]).find(key => viewToPath[key] === path);
+    if (view) {
+      setAppCurrentView(view);
+    }
+  }, [location.pathname, setAppCurrentView]);
 
   const setCurrentView = (view: View | string) => {
     const path = viewToPath[view as View] || '/';

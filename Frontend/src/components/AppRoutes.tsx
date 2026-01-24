@@ -36,7 +36,7 @@ export function AppRoutes({ language, setCurrentView }: AppRoutesProps) {
     <Suspense fallback={<LoadingSpinner />}>
       <Routes>
         <Route path="/" element={<Dashboard onNavigate={setCurrentView} language={language} />} />
-        <Route path="/orders" element={<PurchaseOrders language={language} />} />
+        <Route path="/orders" element={<PurchaseOrders language={language} onNavigate={setCurrentView} />} />
         <Route path="/working-order" element={<WorkingOrder language={language} />} />
         <Route path="/bom" element={<BOMPlanner language={language} />} />
         <Route path="/wip" element={<WIPBoard language={language} />} />

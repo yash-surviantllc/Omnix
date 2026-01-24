@@ -26,7 +26,7 @@ class InventoryItemsService:
         
         offset = (page - 1) * limit
         
-        query = db.table('inventory_items').select('*').eq('is_active', True)
+        query = db.table('inventory_items').select('*')
         
         if status:
             query = query.eq('status', status)
@@ -45,24 +45,23 @@ class InventoryItemsService:
                     search_lower not in item['material_name'].lower()):
                     continue
             
-            # Handle backward compatibility for allocated_quantity and free_quantity
+            # inventory_items table doesn't have allocated_quantity or free_quantity
+            # It only has quantity field
             quantity = Decimal(str(item['quantity']))
-            allocated = Decimal(str(item.get('allocated_quantity', 0)))
-            free = Decimal(str(item.get('free_quantity', quantity)))
             
             items.append(InventoryItemListResponse(
                 id=item['id'],
                 material_code=item['material_code'],
                 material_name=item['material_name'],
                 quantity=quantity,
-                allocated_quantity=allocated,
-                free_quantity=free,
+                allocated_quantity=Decimal('0'),  # Not tracked in inventory_items
+                free_quantity=quantity,  # All quantity is free in inventory_items
                 unit=item['unit'],
                 location=item.get('location'),
-                reorder_level=Decimal(str(item['reorder_level'])),
+                reorder_level=Decimal(str(item.get('reorder_level', 0))),
                 status=item['status'],
                 unit_cost=Decimal(str(item['unit_cost'])),
-                total_value=Decimal(str(item['total_value']))
+                total_value=quantity * Decimal(str(item['unit_cost']))
             ))
         
         return items
@@ -72,18 +71,17 @@ class InventoryItemsService:
         """Get inventory item by ID."""
         db = get_db()
         
-        result = db.table('inventory_items').select('*').eq('id', item_id).eq('is_active', True).execute()
+        result = db.table('inventory_items').select('*').eq('id', item_id).execute()
         
         if not result.data:
             raise NotFoundException(detail="Inventory item not found")
         
         item = result.data[0]
         
-        # Handle backward compatibility for allocated_quantity and free_quantity
-        if 'allocated_quantity' not in item:
-            item['allocated_quantity'] = 0
-        if 'free_quantity' not in item:
-            item['free_quantity'] = item['quantity']
+        # Calculate virtual fields
+        item['free_quantity'] = Decimal(str(item['quantity']))
+        item['allocated_quantity'] = Decimal('0')
+        item['total_value'] = Decimal(str(item['quantity'])) * Decimal(str(item['unit_cost']))
         
         return InventoryItemResponse(**item)
     
@@ -98,7 +96,7 @@ class InventoryItemsService:
         # Check for duplicate material code
         existing = db.table('inventory_items').select('id').eq(
             'material_code', item_data.material_code
-        ).eq('is_active', True).execute()
+        ).execute()
         
         if existing.data:
             raise ValidationException(detail="Material code already exists")
@@ -106,7 +104,7 @@ class InventoryItemsService:
         # Check for duplicate material name
         existing_name = db.table('inventory_items').select('id').eq(
             'material_name', item_data.material_name
-        ).eq('is_active', True).execute()
+        ).execute()
         
         if existing_name.data:
             raise ValidationException(detail="Material name already exists")
@@ -124,13 +122,13 @@ class InventoryItemsService:
         
         # Determine initial status
         if item_data.quantity == 0:
-            item_dict['status'] = 'out_of_stock'
+            item_dict['status'] = 'Out of Stock'
         elif item_data.quantity <= item_data.reorder_level * Decimal('0.5'):
-            item_dict['status'] = 'critical'
+            item_dict['status'] = 'Critical'
         elif item_data.quantity <= item_data.reorder_level:
-            item_dict['status'] = 'low'
+            item_dict['status'] = 'Low Stock'
         else:
-            item_dict['status'] = 'sufficient'
+            item_dict['status'] = 'Sufficient'
         
         result = db.table('inventory_items').insert(item_dict).execute()
         
@@ -165,7 +163,7 @@ class InventoryItemsService:
         db = get_db()
         
         # Check if item exists
-        existing = db.table('inventory_items').select('*').eq('id', item_id).eq('is_active', True).execute()
+        existing = db.table('inventory_items').select('*').eq('id', item_id).execute()
         
         if not existing.data:
             raise NotFoundException(detail="Inventory item not found")
@@ -179,7 +177,7 @@ class InventoryItemsService:
             # Check for duplicate name (excluding current item)
             name_check = db.table('inventory_items').select('id').eq(
                 'material_name', item_data.material_name
-            ).neq('id', item_id).eq('is_active', True).execute()
+            ).neq('id', item_id).execute()
             
             if name_check.data:
                 raise ValidationException(detail="Material name already exists")
@@ -226,13 +224,8 @@ class InventoryItemsService:
         if item_data.unit_cost is not None:
             update_dict['unit_cost'] = float(item_data.unit_cost)
         
-        if item_data.allocated_quantity is not None:
-            # Validate allocated quantity doesn't exceed available quantity
-            current_qty = Decimal(str(update_dict.get('quantity', old_item['quantity'])))
-            if item_data.allocated_quantity > current_qty:
-                raise ValidationException(detail="Allocated quantity cannot exceed available quantity")
-            
-            update_dict['allocated_quantity'] = float(item_data.allocated_quantity)
+        # allocated_quantity - Dropped (Not in DB schema)
+        pass
         
         if item_data.description is not None:
             update_dict['description'] = item_data.description
@@ -249,17 +242,8 @@ class InventoryItemsService:
         db = get_db()
         
         # Check if item exists
-        existing = db.table('inventory_items').select('id').eq('id', item_id).eq('is_active', True).execute()
-        
-        if not existing.data:
-            raise NotFoundException(detail="Inventory item not found")
-        
-        # Soft delete
-        db.table('inventory_items').update({
-            'is_active': False,
-            'deleted_at': datetime.utcnow().isoformat(),
-            'updated_by': user_id
-        }).eq('id', item_id).execute()
+        # Hard delete as there is no is_active or deleted_at column in migration 002
+        db.table('inventory_items').delete().eq('id', item_id).execute()
         
         return {"message": "Inventory item deleted successfully"}
     
@@ -272,7 +256,7 @@ class InventoryItemsService:
         db = get_db()
         
         # Get current item
-        item = db.table('inventory_items').select('*').eq('id', adjustment.inventory_item_id).eq('is_active', True).execute()
+        item = db.table('inventory_items').select('*').eq('id', adjustment.inventory_item_id).execute()
         
         if not item.data:
             raise NotFoundException(detail="Inventory item not found")
@@ -333,7 +317,7 @@ class InventoryItemsService:
             'unit': unit,
             'unit_cost': float(unit_cost),
             'reason': reason,
-            'notes': notes,
+            # 'notes': notes, - Dropped (Not in DB schema)
             'reference_type': reference_type,
             'reference_number': reference_number,
             'created_by': user_id
@@ -398,7 +382,7 @@ class InventoryItemsService:
         """Get inventory summary KPIs."""
         db = get_db()
         
-        result = db.table('inventory_items').select('*').eq('is_active', True).execute()
+        result = db.table('inventory_items').select('*').execute()
         
         total_materials = len(result.data)
         low_stock_count = 0
@@ -410,16 +394,16 @@ class InventoryItemsService:
         for item in result.data:
             status = item['status']
             
-            if status == 'out_of_stock':
+            if status == 'Out of Stock':
                 out_of_stock_count += 1
-            elif status == 'critical':
+            elif status == 'Critical':
                 critical_count += 1
-            elif status == 'low':
+            elif status == 'Low Stock':
                 low_stock_count += 1
             else:
                 sufficient_count += 1
             
-            total_value += Decimal(str(item['total_value']))
+            total_value += (Decimal(str(item['quantity'])) * Decimal(str(item['unit_cost'])))
         
         return InventoryItemsSummary(
             total_materials=total_materials,

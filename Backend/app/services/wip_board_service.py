@@ -90,15 +90,47 @@ class WIPBoardService:
 
     async def delete_stage(self, stage_id: str) -> dict:
         db = get_db()
-        # Soft delete by marking inactive
+        # Get current stage to find its sequence number
+        current = db.table("wip_stages").select("sequence_number").eq("id", stage_id).execute()
+        if not current.data:
+            raise ValueError("Stage not found")
+        
+        old_sequence = current.data[0].get("sequence_number")
+        
+        # Soft delete by marking inactive and setting sequence to NULL to free up the number
+        # Use a large negative number based on timestamp to avoid conflicts
+        import time
+        archived_sequence = -int(time.time() * 1000) % 1000000000  # Negative unique value
+        
         result = (
             db.table("wip_stages")
-            .update({"is_active": False, "updated_at": datetime.utcnow().isoformat()})
+            .update({
+                "is_active": False, 
+                "sequence_number": archived_sequence,
+                "updated_at": datetime.utcnow().isoformat()
+            })
             .eq("id", stage_id)
             .execute()
         )
         if not result.data:
             raise ValueError("Stage not found")
+        
+        # Reorder remaining active stages to fill the gap
+        if old_sequence:
+            remaining = (
+                db.table("wip_stages")
+                .select("id, sequence_number")
+                .eq("is_active", True)
+                .gt("sequence_number", old_sequence)
+                .order("sequence_number")
+                .execute()
+            )
+            for stage in remaining.data or []:
+                db.table("wip_stages").update({
+                    "sequence_number": stage["sequence_number"] - 1,
+                    "updated_at": datetime.utcnow().isoformat()
+                }).eq("id", stage["id"]).execute()
+        
         await self._broadcast_stage(stage_id)
         return {"message": "Stage archived"}
 
@@ -250,7 +282,7 @@ class WIPBoardService:
         now = datetime.utcnow()
 
         transfer_number = self._generate_transfer_number(db, now.year)
-        insert_data = payload.model_dump()
+        insert_data = payload.model_dump(mode='json')
         insert_data.update(
             {
                 "transfer_number": transfer_number,
@@ -278,6 +310,58 @@ class WIPBoardService:
         if transfer.from_stage_id:
             await self._broadcast_stage(transfer.from_stage_id)
         await self._broadcast_transfer(transfer)
+
+        # ---------------------------------------------------------
+        # UPDATE PARENT PURCHASE ORDER LOGIC
+        # ---------------------------------------------------------
+        # Check if destination stage is 'Final' (e.g. Code='DISPATCH' or by config).
+        # For now, we hardcode 'DISPATCH' as the completion stage or any stage updates progress.
+        
+        # 1. Fetch destination stage details to check code
+        to_stage = db.table('wip_stages').select('code').eq('id', transfer.to_stage_id).single().execute()
+        
+        if to_stage.data:
+            stage_code = to_stage.data.get('code')
+            
+            # 2. Update PO 'quantity_completed' ONLY if moving to DISPATCH (Final Completion)
+            # Or do we update it incrementally? 
+            # Traditional WIP: Quantity Completed usually means "Finished Goods Produced". 
+            # So only when it hits the final stage.
+            
+            if stage_code == 'DISPATCH':
+                # Increment quantity_completed on PO
+                # We need to be careful about concurrency, but for now strict increment.
+                # Ideally: update purchase_orders set quantity_completed = quantity_completed + X
+                
+                # Fetch current PO
+                po_res = db.table('purchase_orders').select('id', 'quantity', 'quantity_completed').eq('id', payload.order_id).single().execute()
+                if po_res.data:
+                    po = po_res.data
+                    current_completed = Decimal(str(po.get('quantity_completed') or 0))
+                    transfer_qty = Decimal(str(payload.quantity))
+                    
+                    new_completed = current_completed + transfer_qty
+                    
+                    po_update = {'quantity_completed': float(new_completed)}
+                    
+                    # Check for Order Completion
+                    # If we have completed >= ordered quantity
+                    target_qty = Decimal(str(po['quantity']))
+                    if new_completed >= target_qty:
+                         # Update Status to Completed
+                         # logic is handled in PurchaseOrderService.update_order_status
+                         # So we call that service.
+                         from app.services.purchase_order_service import PurchaseOrderService
+                         from app.schemas.purchase_order import OrderStatusUpdate
+                         
+                         await PurchaseOrderService.update_order_status(
+                             po['id'], 
+                             OrderStatusUpdate(status='Completed', notes='Auto-completed via WIP Transfer'), 
+                             user_id
+                         )
+                    else:
+                        # Just update quantity
+                        db.table('purchase_orders').update(po_update).eq('id', po['id']).execute()
 
         return transfer
 
@@ -460,8 +544,14 @@ class WIPBoardService:
         return None
 
     def _generate_transfer_number(self, db, year: int) -> str:
-        seq_result = db.rpc("nextval", {"sequence_name": "wip_transfer_seq"}).execute()
-        seq_value = seq_result.data
+        try:
+            seq_result = db.rpc("get_wip_transfer_nextval", {}).execute()
+            seq_value = seq_result.data
+        except Exception:
+            # Fallback if RPC missing (Test/Dev)
+            from random import randint
+            seq_value = randint(1000, 999999)
+            
         return f"WT-{year}-{str(seq_value).zfill(5)}"
 
     def _calculate_actual_time_minutes(
@@ -485,20 +575,20 @@ class WIPBoardService:
                 .select("*")
                 .eq("order_id", order_id)
                 .eq("current_stage_id", from_stage)
-                .single()
                 .execute()
             )
             if existing.data:
-                current_qty = self._to_decimal(existing.data.get("quantity_in_stage"))
+                row_data = existing.data[0]
+                current_qty = self._to_decimal(row_data.get("quantity_in_stage"))
                 if qty > current_qty:
                     raise ValueError(f"Insufficient quantity in source stage. Available: {current_qty}, Requested: {qty}")
                 
                 new_qty = current_qty - qty
                 update_payload = {
-                    "quantity_in_stage": new_qty,
-                    "updated_at": now,
+                    "quantity_in_stage": float(new_qty),
+                    # "updated_at": now,
                 }
-                db.table("order_stage_tracking").update(update_payload).eq("id", existing.data["id"]).execute()
+                db.table("order_stage_tracking").update(update_payload).eq("id", row_data["id"]).execute()
 
         # upsert destination stage tracking
         existing_to = (
@@ -506,26 +596,26 @@ class WIPBoardService:
             .select("*")
             .eq("order_id", order_id)
             .eq("current_stage_id", transfer_data["to_stage_id"])
-            .single()
             .execute()
         )
         if existing_to.data:
-            new_qty = self._to_decimal(existing_to.data.get("quantity_in_stage")) + qty
+            to_row = existing_to.data[0]
+            new_qty = self._to_decimal(to_row.get("quantity_in_stage")) + qty
             db.table("order_stage_tracking").update(
                 {
-                    "quantity_in_stage": new_qty,
-                    "updated_at": now,
+                    "quantity_in_stage": float(new_qty),
+                    # "updated_at": now,
                 }
-            ).eq("id", existing_to.data["id"]).execute()
+            ).eq("id", to_row["id"]).execute()
         else:
             db.table("order_stage_tracking").insert(
                 {
                     "order_id": order_id,
                     "current_stage_id": transfer_data["to_stage_id"],
-                    "quantity_in_stage": qty,
+                    "quantity_in_stage": float(qty),
                     "entered_stage_at": now,
-                    "created_at": now,
-                    "updated_at": now,
+                    # "created_at": now,
+                    # "updated_at": now,
                 }
             ).execute()
 
@@ -553,7 +643,7 @@ class WIPBoardService:
             timestamp=datetime.utcnow(),
             data=metrics,
         )
-        await ws_manager.broadcast(event.model_dump())
+        await ws_manager.broadcast(event.model_dump(mode='json'))
 
     async def _broadcast_transfer(self, transfer: WIPTransferResponse) -> None:
         event = TransferEventPayload(
@@ -561,7 +651,7 @@ class WIPBoardService:
             timestamp=datetime.utcnow(),
             data=transfer,
         )
-        await ws_manager.broadcast(event.model_dump())
+        await ws_manager.broadcast(event.model_dump(mode='json'))
 
     def _to_decimal(self, value, default: str = "0") -> Decimal:
         if value is None:

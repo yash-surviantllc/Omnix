@@ -124,7 +124,7 @@ export function WIPBoard({ language }: WIPBoardProps) {
         : 0;
 
     const bottleneckCandidates = updatedStages.filter(
-      (stage) => stage.health_status !== 'green',
+      (stage) => stage.health_status !== 'Healthy',
     );
 
     const bottleneck_stage =
@@ -325,11 +325,11 @@ export function WIPBoard({ language }: WIPBoardProps) {
 
   const getHealthBadge = (health: string) => {
     switch (health) {
-      case 'green':
+      case 'Healthy':
         return <Badge className="bg-emerald-500">{t.healthy}</Badge>;
-      case 'yellow':
+      case 'Warning':
         return <Badge className="bg-yellow-500">{t.warning}</Badge>;
-      case 'red':
+      case 'Delayed':
         return <Badge className="bg-red-500">{t.delayed}</Badge>;
       default:
         return <Badge>{health}</Badge>;
@@ -507,9 +507,9 @@ export function WIPBoard({ language }: WIPBoardProps) {
               </div>
               <div className="h-2 bg-zinc-200 rounded-full overflow-hidden">
                 <div
-                  className={`h-full transition-all ${stage.health_status === 'red'
+                  className={`h-full transition-all ${stage.health_status === 'Delayed'
                     ? 'bg-red-500'
-                    : stage.health_status === 'yellow'
+                    : stage.health_status === 'Warning'
                       ? 'bg-yellow-500'
                       : 'bg-emerald-500'
                     }`}
@@ -566,9 +566,9 @@ export function WIPBoard({ language }: WIPBoardProps) {
                     <div className="flex items-center gap-2">
                       <div className="flex-1 h-2 bg-zinc-200 rounded-full overflow-hidden max-w-[100px]">
                         <div
-                          className={`h-full transition-all ${stage.health_status === 'red'
+                          className={`h-full transition-all ${stage.health_status === 'Delayed'
                             ? 'bg-red-500'
-                            : stage.health_status === 'yellow'
+                            : stage.health_status === 'Warning'
                               ? 'bg-yellow-500'
                               : 'bg-emerald-500'
                             }`}

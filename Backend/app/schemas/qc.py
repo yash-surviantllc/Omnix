@@ -20,6 +20,7 @@ class QCDefectResponse(QCDefectCreate):
 
 class QCInspectionCreate(BaseModel):
     purchase_order_id: Optional[str] = None
+    work_order_id: Optional[str] = None  # Link to working order
     product_id: str
     quantity_checked: float
     passed_qty: float
@@ -38,6 +39,9 @@ class QCInspectionResponse(BaseModel):
     id: str
     inspection_number: str
     purchase_order_id: Optional[str]
+    purchase_order_number: Optional[str] = None
+    work_order_id: Optional[str] = None
+    work_order_number: Optional[str] = None
     product_id: str
     product_name: Optional[str]
     product_code: Optional[str]

@@ -17,8 +17,8 @@ interface NewOrderData {
   dueDate: string;
   priority: string;
   notes: string;
-  startTime?: string;
-  endTime?: string;
+  startDate?: string;
+  endDate?: string;
 }
 
 interface NewOrderModalProps {
@@ -247,9 +247,9 @@ export function NewOrderModal({
                     onChange={(e) => updateField('priority', e.target.value)}
                     className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-sm h-10 bg-white"
                   >
-                    <option value="MEDIUM">{t.normal}</option>
-                    <option value="HIGH">{t.high}</option>
-                    <option value="URGENT">{t.urgent}</option>
+                    <option value="Normal">{t.normal}</option>
+                    <option value="High">{t.high}</option>
+                    <option value="Urgent">{t.urgent}</option>
                   </select>
                 </div>
               </div>
@@ -267,8 +267,8 @@ export function NewOrderModal({
                     </label>
                     <Input
                       type="datetime-local"
-                      value={orderData.startTime || ''}
-                      onChange={(e) => updateField('startTime', e.target.value)}
+                      value={orderData.startDate || ''}
+                      onChange={(e) => updateField('startDate', e.target.value)}
                       className="w-full h-10 rounded-lg bg-white border-blue-200 focus:ring-blue-500/20 shadow-sm"
                     />
                   </div>
@@ -278,8 +278,8 @@ export function NewOrderModal({
                     </label>
                     <Input
                       type="datetime-local"
-                      value={orderData.endTime || ''}
-                      onChange={(e) => updateField('endTime', e.target.value)}
+                      value={orderData.endDate || ''}
+                      onChange={(e) => updateField('endDate', e.target.value)}
                       className="w-full h-10 rounded-lg bg-white border-blue-200 focus:ring-blue-500/20 shadow-sm"
                     />
                   </div>

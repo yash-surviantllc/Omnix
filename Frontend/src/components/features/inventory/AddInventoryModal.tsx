@@ -44,7 +44,7 @@ export function AddInventoryModal({ open, onOpenChange, language, onAddMaterial,
     unit: '',
     location: '',
     reorderLevel: '',
-    status: 'sufficient',
+    status: 'Sufficient',
     unitCost: '',
   });
 
@@ -58,7 +58,7 @@ export function AddInventoryModal({ open, onOpenChange, language, onAddMaterial,
         unit: initialData.unit || '',
         location: initialData.location || '',
         reorderLevel: String(initialData.reorderLevel || ''),
-        status: initialData.status || 'sufficient',
+        status: initialData.status || 'Sufficient',
         unitCost: String(initialData.unitCost || ''),
       });
       setOriginalMaterialName(initialData.materialName || '');
@@ -71,7 +71,7 @@ export function AddInventoryModal({ open, onOpenChange, language, onAddMaterial,
         unit: '',
         location: '',
         reorderLevel: '',
-        status: 'sufficient',
+        status: 'Sufficient',
         unitCost: '',
       });
     }
@@ -337,8 +337,8 @@ export function AddInventoryModal({ open, onOpenChange, language, onAddMaterial,
       newErrors.reorderLevel = language === 'en' ? 'Reorder level must be a positive number' : 'पुन: ऑर्डर स्तर एक सकारात्मक संख्या होनी चाहिए';
     } else if (formData.available.trim() && Number(formData.reorderLevel) > Number(formData.available)) {
       // Reorder level cannot exceed available quantity
-      newErrors.reorderLevel = language === 'en' 
-        ? 'Reorder level cannot exceed available quantity' 
+      newErrors.reorderLevel = language === 'en'
+        ? 'Reorder level cannot exceed available quantity'
         : 'पुन: ऑर्डर स्तर उपलब्ध मात्रा से अधिक नहीं हो सकता';
     }
 
@@ -395,7 +395,7 @@ export function AddInventoryModal({ open, onOpenChange, language, onAddMaterial,
           unit: '',
           location: '',
           reorderLevel: '',
-          status: 'sufficient',
+          status: 'Sufficient',
           unitCost: '',
         });
         setErrors({});
@@ -403,8 +403,8 @@ export function AddInventoryModal({ open, onOpenChange, language, onAddMaterial,
     } catch (error) {
       console.error('Error adding material:', error);
       setSubmitError(
-        language === 'en' 
-          ? 'Failed to save material. Please try again.' 
+        language === 'en'
+          ? 'Failed to save material. Please try again.'
           : 'सामग्री सहेजने में विफल। कृपया पुनः प्रयास करें।'
       );
       setTimeout(() => setSubmitError(''), 5000);
@@ -419,11 +419,11 @@ export function AddInventoryModal({ open, onOpenChange, language, onAddMaterial,
       setErrors(prev => ({ ...prev, [field]: undefined }));
     }
   };
-  
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange} modal={true}>
-      <DialogContent 
-        className="max-w-2xl h-auto overflow-hidden p-0" 
+      <DialogContent
+        className="max-w-2xl h-auto overflow-hidden p-0"
         style={{ display: 'grid', visibility: 'visible', opacity: 1, maxHeight: '90vh' }}
       >
         {/* Enhanced Header with Gradient */}
@@ -637,9 +637,10 @@ export function AddInventoryModal({ open, onOpenChange, language, onAddMaterial,
                       <SelectValue placeholder={t.statusPlaceholder} />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="sufficient">{t.sufficient}</SelectItem>
-                      <SelectItem value="low">{t.low}</SelectItem>
-                      <SelectItem value="critical">{t.critical}</SelectItem>
+                      <SelectItem value="Sufficient">{t.sufficient}</SelectItem>
+                      <SelectItem value="Low Stock">{t.low}</SelectItem>
+                      <SelectItem value="Critical">{t.critical}</SelectItem>
+                      <SelectItem value="Out of Stock">Out of Stock</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -648,17 +649,17 @@ export function AddInventoryModal({ open, onOpenChange, language, onAddMaterial,
 
             {/* Action Buttons */}
             <div className="flex gap-3 justify-end pt-2">
-              <Button 
-                type="button" 
-                variant="outline" 
-                onClick={() => onOpenChange(false)} 
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => onOpenChange(false)}
                 disabled={isSubmitting}
                 className="px-6 py-2 text-sm font-medium hover:bg-zinc-100 transition-all min-w-[100px]"
               >
                 {t.cancel}
               </Button>
-              <Button 
-                type="submit" 
+              <Button
+                type="submit"
                 disabled={isSubmitting}
                 onClick={handleSubmit}
                 className="px-6 py-2 text-sm font-semibold bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white shadow-md hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed min-w-[120px]"

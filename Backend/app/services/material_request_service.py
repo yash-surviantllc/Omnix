@@ -51,9 +51,13 @@ class MaterialRequestService:
             ).execute()
             
             available_qty = Decimal('0')
-            for i in inv.data:
-                free = Decimal(str(i['available_qty'])) - Decimal(str(i['allocated_qty']))
-                available_qty += free
+            if inv.data:
+                # Sum up free quantity across all locations
+                # Free = Available - Allocated
+                available_qty = sum(
+                    Decimal(str(i['available_qty'])) - Decimal(str(i['allocated_qty']))
+                    for i in inv.data
+                )
             
             requested_qty = Decimal(str(item['requested_qty']))
             
@@ -124,9 +128,12 @@ class MaterialRequestService:
             ).execute()
             
             available_stock = Decimal('0')
-            for i in inv.data:
-                free = Decimal(str(i['available_qty'])) - Decimal(str(i['allocated_qty']))
-                available_stock += free
+            if inv.data:
+                # Sum up free quantity across all locations
+                available_stock = sum(
+                    Decimal(str(i['available_qty'])) - Decimal(str(i['allocated_qty']))
+                    for i in inv.data
+                )
             
             requested_qty = item.requested_qty
             

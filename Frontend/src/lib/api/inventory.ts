@@ -12,7 +12,7 @@ export interface InventoryItemResponse {
     unit: string;
     location: string | null;
     reorder_level: number;
-    status: 'sufficient' | 'low' | 'critical' | 'out_of_stock';
+    status: 'Sufficient' | 'Low Stock' | 'Critical' | 'Out of Stock';
     unit_cost: number;
     total_value: number;
     is_active: boolean;
@@ -61,7 +61,10 @@ export const inventoryItemsApi = {
                 if (value !== undefined) queryParams.append(key, value.toString());
             });
         }
-        return apiClient.get<InventoryItemResponse[]>(`/inventory-items/?${queryParams.toString()}`);
+        return apiClient.get<InventoryItemResponse[]>(`/inventory-items/?${queryParams.toString()}`, {
+            useCache: true,
+            ttl: 300 // 5 minutes
+        });
     },
 
     // Get inventory summary

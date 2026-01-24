@@ -32,7 +32,7 @@ export function ChatBot({ isOpen, onToggle, language, onNavigate }: ChatBotProps
     {
       id: '1',
       type: 'bot',
-      content: language === 'en' 
+      content: language === 'en'
         ? 'Hi! I\'m your Manufacturing Assistant. I can help you create BOMs, transfer materials, check stock, and more. How can I help you today?'
         : 'नमस्ते! मैं आपका निर्माण सहायक हूं। मैं BOM बनाने, सामग्री स्थानांतरण, स्टॉक जांच में मदद कर सकता हूं। आज मैं आपकी कैसे मदद कर सकता हूं?'
     }
@@ -179,50 +179,50 @@ export function ChatBot({ isOpen, onToggle, language, onNavigate }: ChatBotProps
 
   const processMessage = (text: string): Message => {
     const lowercaseText = text.toLowerCase();
-    
+
     // Check if it's a material request/transfer command
-    if (lowercaseText.includes('request') || lowercaseText.includes('move') || lowercaseText.includes('transfer') || 
-        lowercaseText.includes('स्थानांतरण') || lowercaseText.includes('material') || lowercaseText.includes('सामग्री') ||
-        lowercaseText.includes('send') || lowercaseText.includes('भेज') || lowercaseText.includes('needs') || lowercaseText.includes('need') ||
-        lowercaseText.includes('beku') || lowercaseText.includes('venum') || lowercaseText.includes('चाहिए') ||
-        (lowercaseText.match(/(\d+)\s*(kg|m|pcs|units?|metre|meter|किलो|मीटर|litres?)/i) && 
-         (lowercaseText.includes('cotton') || lowercaseText.includes('fabric') || lowercaseText.includes('thread') || 
-          lowercaseText.includes('कपास') || lowercaseText.includes('धागा') || lowercaseText.includes('cutting') || 
+    if (lowercaseText.includes('request') || lowercaseText.includes('move') || lowercaseText.includes('transfer') ||
+      lowercaseText.includes('स्थानांतरण') || lowercaseText.includes('material') || lowercaseText.includes('सामग्री') ||
+      lowercaseText.includes('send') || lowercaseText.includes('भेज') || lowercaseText.includes('needs') || lowercaseText.includes('need') ||
+      lowercaseText.includes('beku') || lowercaseText.includes('venum') || lowercaseText.includes('चाहिए') ||
+      (lowercaseText.match(/(\d+)\s*(kg|m|pcs|units?|metre|meter|किलो|मीटर|litres?)/i) &&
+        (lowercaseText.includes('cotton') || lowercaseText.includes('fabric') || lowercaseText.includes('thread') ||
+          lowercaseText.includes('कपास') || lowercaseText.includes('धागा') || lowercaseText.includes('cutting') ||
           lowercaseText.includes('sewing') || lowercaseText.includes('stitching') || lowercaseText.includes('qc')))) {
-      
+
       // Use Enhanced Material Request Processor
       const materialRequest = MaterialRequestProcessor.processRequestAdvanced(text, language);
       const responseText = MaterialRequestProcessor.generateResponseEnhanced(materialRequest, language === 'en' ? 'en' : 'hi');
-      
+
       return {
         id: Date.now().toString(),
         type: 'bot',
         content: responseText,
         materialRequest: materialRequest,
-        actionCard: materialRequest.status === 'partial_stock' || materialRequest.status === 'insufficient_stock' 
+        actionCard: materialRequest.status === 'Partial Stock' || materialRequest.status === 'Insufficient Stock'
           ? {
-              type: 'material_request',
-              data: materialRequest
-            }
+            type: 'material_request',
+            data: materialRequest
+          }
           : undefined
       };
     }
-    
+
     // BOM Creation
     if (lowercaseText.includes('bom') || lowercaseText.includes('ts-001') || lowercaseText.includes('hd-001') || lowercaseText.includes('tr-001') || lowercaseText.includes('t-shirt') || lowercaseText.includes('hoodie') || lowercaseText.includes('track pants')) {
-      const sku = lowercaseText.includes('ts-001') || lowercaseText.includes('t-shirt') || lowercaseText.includes('टी-शर्ट') ? 'TS-001' : 
-                  lowercaseText.includes('hd-001') || lowercaseText.includes('hoodie') || lowercaseText.includes('हुडी') ? 'HD-001' :
-                  'TR-001';
-      
+      const sku = lowercaseText.includes('ts-001') || lowercaseText.includes('t-shirt') || lowercaseText.includes('टी-शर्ट') ? 'TS-001' :
+        lowercaseText.includes('hd-001') || lowercaseText.includes('hoodie') || lowercaseText.includes('हुडी') ? 'HD-001' :
+          'TR-001';
+
       return {
         id: Date.now().toString(),
         type: 'bot',
-        content: language === 'en' 
+        content: language === 'en'
           ? `I can help you create a BOM for ${sku}. Please navigate to the BOM Planner section to create and manage BOMs with real-time data.`
           : `मैं ${sku} के लिए BOM बनाने में मदद कर सकता हूं। कृपया वास्तविक समय डेटा के साथ BOM बनाने और प्रबंधित करने के लिए BOM प्लानर अनुभाग पर जाएं।`
       };
     }
-    
+
     // Stock Inquiry
     if (lowercaseText.includes('stock') || lowercaseText.includes('inventory') || lowercaseText.includes('स्टॉक') || lowercaseText.includes('show')) {
       return {
@@ -233,12 +233,12 @@ export function ChatBot({ isOpen, onToggle, language, onNavigate }: ChatBotProps
           : `स्टॉक स्तर की जांच करने के लिए, कृपया इन्वेंटरी अनुभाग पर जाएं जहां आप सभी सामग्रियों के लिए वास्तविक समय स्टॉक डेटा देख सकते हैं।`
       };
     }
-    
+
     // Purchase Order Status
     if (lowercaseText.includes('po-') || lowercaseText.includes('purchase') || lowercaseText.includes('order') || lowercaseText.includes('status')) {
       const poMatch = text.match(/po[-\s]?(\d+)/i);
       const poId = poMatch ? `PO-${poMatch[1]}` : 'purchase order';
-      
+
       return {
         id: Date.now().toString(),
         type: 'bot',
@@ -247,7 +247,7 @@ export function ChatBot({ isOpen, onToggle, language, onNavigate }: ChatBotProps
           : `${poId} की स्थिति जांचने के लिए, कृपया खरीद आदेश अनुभाग पर जाएं जहां आप वास्तविक समय ऑर्डर विवरण देख सकते हैं।`
       };
     }
-    
+
     // Shortage Check
     if (lowercaseText.includes('shortage') || lowercaseText.includes('short') || lowercaseText.includes('कमी') || lowercaseText.includes('low stock')) {
       return {
@@ -258,7 +258,7 @@ export function ChatBot({ isOpen, onToggle, language, onNavigate }: ChatBotProps
           : `सामग्री की कमी की जांच करने के लिए, कृपया इन्वेंटरी अनुभाग पर जाएं जहां आप वास्तविक समय स्टॉक स्तर देख सकते हैं और कम स्टॉक आइटम की पहचान कर सकते हैं।`
       };
     }
-    
+
     // Default response with enhanced examples
     return {
       id: Date.now().toString(),
@@ -286,7 +286,7 @@ export function ChatBot({ isOpen, onToggle, language, onNavigate }: ChatBotProps
     };
 
     setMessages(prev => [...prev, userMessage]);
-    
+
     setTimeout(() => {
       const botResponse = processMessage(input);
       setMessages(prev => [...prev, botResponse]);
@@ -297,10 +297,10 @@ export function ChatBot({ isOpen, onToggle, language, onNavigate }: ChatBotProps
 
   const handleVoiceInput = () => {
     setIsListening(true);
-    
+
     // Simulate voice recognition
     setTimeout(() => {
-      const simulatedInput = language === 'en' 
+      const simulatedInput = language === 'en'
         ? "Move 5 bundles from Cutting to Sewing Line 2"
         : "5 बंडल को कटिंग से सिलाई लाइन 2 में ले जाएं";
       setInput(simulatedInput);
@@ -317,7 +317,7 @@ export function ChatBot({ isOpen, onToggle, language, onNavigate }: ChatBotProps
     const confirmMessage: Message = {
       id: Date.now().toString(),
       type: 'bot',
-      content: language === 'en' 
+      content: language === 'en'
         ? '✓ Action completed successfully! The system has been updated.'
         : '✓ क्रिया सफलतापूर्वक पूर्ण हुई! सिस्टम अपडेट हो गया है।'
     };
@@ -385,7 +385,7 @@ export function ChatBot({ isOpen, onToggle, language, onNavigate }: ChatBotProps
             >
               <div className={`max-w-[80%] ${message.type === 'user' ? 'bg-emerald-600 text-white' : 'bg-zinc-100'} rounded-lg p-3`}>
                 {message.content}
-                
+
                 {message.actionCard && (
                   <ActionCardComponent
                     card={message.actionCard}

@@ -23,7 +23,7 @@ interface StockCheckSummaryProps {
 }
 
 export function StockCheckSummary({ materials, translations: t, language }: StockCheckSummaryProps) {
-  const shortages = materials.filter((item) => item.status === 'shortage');
+  const shortages = materials.filter((item) => item.status === 'Shortage');
 
   return (
     <Card className="p-6 bg-blue-50 border-blue-200">

@@ -13,7 +13,6 @@ class InventoryItemBase(BaseModel):
     material_name: str = Field(..., min_length=1, max_length=255)
     category: Optional[str] = None
     quantity: Decimal = Field(default=0, ge=0)
-    allocated_quantity: Decimal = Field(default=0, ge=0)
     unit: str = Field(..., min_length=1, max_length=20)
     location: Optional[str] = None
     reorder_level: Decimal = Field(default=0, ge=0)
@@ -31,7 +30,6 @@ class InventoryItemUpdate(BaseModel):
     material_name: Optional[str] = Field(None, min_length=1, max_length=255)
     category: Optional[str] = None
     quantity: Optional[Decimal] = Field(None, ge=0)
-    allocated_quantity: Optional[Decimal] = Field(None, ge=0)
     unit: Optional[str] = Field(None, min_length=1, max_length=20)
     location: Optional[str] = None
     reorder_level: Optional[Decimal] = Field(None, ge=0)
@@ -43,9 +41,10 @@ class InventoryItemResponse(InventoryItemBase):
     """Schema for inventory item response"""
     id: str
     free_quantity: Decimal
+    allocated_quantity: Decimal = Decimal('0')
     status: str
     total_value: Decimal
-    is_active: bool
+    # is_active: bool - Dropped (Not in DB)
     created_at: datetime
     updated_at: datetime
     created_by: Optional[str] = None

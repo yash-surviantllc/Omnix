@@ -220,24 +220,7 @@ class StockAdjustment(BaseModel):
     reason: str
     notes: Optional[str] = None
 
-class InventoryListItem(BaseModel):
-    id: str
-    product_id: str
-    product_code: str
-    product_name: str
-    location_id: str
-    location_code: str
-    location_name: str
-    available_qty: Decimal
-    allocated_qty: Decimal
-    free_qty: Decimal
-    unit: str
-    lot_number: Optional[str] = None
-    reorder_level: Optional[Decimal] = None
-    status: str = "Sufficient" 
-    
-    class Config:
-        from_attributes = True
+
 
 
 class InventorySummary(BaseModel):

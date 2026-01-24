@@ -35,7 +35,7 @@ class GateExitService:
             'driver_name': data.driver_name,
             'linked_document': data.linked_document,
             'materials': materials_json,
-            'status': 'ready',
+            'status': 'Ready',
             'remarks': data.remarks,
             'created_by': user_id
         }
@@ -69,9 +69,9 @@ class GateExitService:
         all_data = db.table('gate_exits').select('status, created_at').execute()
         
         total = len(all_data.data)
-        ready = sum(1 for x in all_data.data if x['status'] == 'ready')
-        verified = sum(1 for x in all_data.data if x['status'] == 'verified')
-        dispatched = sum(1 for x in all_data.data if x['status'] == 'dispatched')
+        ready = sum(1 for x in all_data.data if x['status'] == 'Ready')
+        verified = sum(1 for x in all_data.data if x['status'] == 'Verified')
+        dispatched = sum(1 for x in all_data.data if x['status'] == 'Dispatched')
         
         today_str = datetime.now().date().isoformat()
         today = sum(1 for x in all_data.data if x['created_at'].startswith(today_str))

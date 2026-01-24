@@ -1,6 +1,6 @@
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from typing import Optional
+from typing import Optional, List, Union
 from app.core.security import decode_token
 from app.services.auth_service import auth_service
 from app.schemas.user import UserResponse
@@ -65,13 +65,28 @@ async def get_current_active_user(
     return current_user
 
 
-def require_role(required_role: str):
+def require_role(required_role: Union[str, List[str]]):
     """
     Dependency factory to check if user has required role.
+    Accepts a single role string or a list of allowed roles.
     """
     async def role_checker(current_user: UserResponse = Depends(get_current_user)):
-        user_roles_lower = [r.lower() for r in current_user.roles]
-        if required_role.lower() not in user_roles_lower and 'admin' not in user_roles_lower:
+        user_roles_lower = [r.lower() for r in current_user.roles] if current_user.roles else []
+        
+        # Admin bypass - always allow admin
+        if 'admin' in user_roles_lower:
+            return current_user
+            
+        allowed_roles = []
+        if isinstance(required_role, list):
+            allowed_roles = [r.lower() for r in required_role]
+        else:
+            allowed_roles = [required_role.lower()]
+            
+        # Check if user has ANY of the allowed roles
+        has_role = any(role in user_roles_lower for role in allowed_roles)
+        
+        if not has_role:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"Role '{required_role}' required"

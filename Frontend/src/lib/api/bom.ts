@@ -176,8 +176,11 @@ export const bomApi = {
     if (params?.is_template !== undefined) queryParams.append('is_template', params.is_template.toString());
     if (params?.search) queryParams.append('search', params.search);
 
-    const url = `/boms${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
-    return apiClient.get<BOMListItem[]>(url);
+    const url = `/boms/${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
+    return apiClient.get<BOMListItem[]>(url, {
+      useCache: true,
+      ttl: 60 // 1 minute
+    });
   },
 
   // Get BOM by ID
@@ -298,8 +301,11 @@ export const productsApi = {
     if (params?.is_active !== undefined) queryParams.append('is_active', params.is_active ? 'true' : 'false');
     if (params?.search) queryParams.append('search', params.search);
 
-    const url = `/products?${queryParams.toString()}`;
-    return apiClient.get<Product[]>(url);
+    const url = `/products/?${queryParams.toString()}`;
+    return apiClient.get<Product[]>(url, {
+      useCache: true,
+      ttl: 300 // 5 minutes
+    });
   },
 
   // Get product by ID

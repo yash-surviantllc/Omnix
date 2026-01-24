@@ -12,7 +12,7 @@ export interface WIPStageMetrics {
   avgTime: number;
   targetAvgTime: number;
   utilization: number;
-  health: 'healthy' | 'warning' | 'delayed';
+  health: 'Healthy' | 'Warning' | 'Delayed';
 }
 
 export interface WIPDashboard {
@@ -65,9 +65,13 @@ export interface WorkingOrder {
   notes: string | null;
   created_at: string;
   updated_at: string;
+  // Enhanced fields
+  product_name?: string;
+  product_code?: string;
+  purchase_order_number?: string;
 }
 
-export type WIPHealthStatus = 'green' | 'yellow' | 'red';
+export type WIPHealthStatus = 'Healthy' | 'Warning' | 'Delayed';
 export type WIPAlertSeverity = 'info' | 'warning' | 'critical';
 export type WIPAlertType = 'under_utilization' | 'over_utilization' | 'bottleneck' | 'delay';
 
@@ -337,7 +341,10 @@ export const wipApi = {
 
   listWIPStages: async (includeInactive = false): Promise<WIPStage[]> => {
     const query = includeInactive ? '?include_inactive=true' : '';
-    return apiClient.get<WIPStage[]>(`/wip-board/stages${query}`);
+    return apiClient.get<WIPStage[]>(`/wip-board/stages${query}`, {
+      useCache: true,
+      ttl: 3600 // 1 hour (stages rarely change)
+    });
   },
 
   createWIPStage: async (payload: WIPStageCreatePayload): Promise<WIPStage> => {
@@ -364,11 +371,11 @@ export const wipApi = {
   },
 
   recordWIPTransfer: async (payload: WIPTransferCreatePayload): Promise<WIPTransferResponse> => {
-    return apiClient.post<WIPTransferResponse>('/wip-board/transfer', payload);
+    return apiClient.post<WIPTransferResponse>('/wip-board/transfer/', payload);
   },
 
   listWIPBottlenecks: async (): Promise<BottleneckResponse[]> => {
-    return apiClient.get<BottleneckResponse[]>('/wip-board/bottlenecks');
+    return apiClient.get<BottleneckResponse[]>('/wip-board/bottlenecks/');
   },
 
   listWIPTrends: async (params?: { stage_id?: string; days?: number }): Promise<TrendResponse[]> => {
@@ -380,10 +387,11 @@ export const wipApi = {
       query.append('days', params.days.toString());
     }
     const suffix = query.toString() ? `?${query.toString()}` : '';
-    return apiClient.get<TrendResponse[]>(`/wip-board/trends${suffix}`);
+    const base = suffix ? `/wip-board/trends${suffix}` : '/wip-board/trends/';
+    return apiClient.get<TrendResponse[]>(base);
   },
 
   listWIPAlerts: async (): Promise<WIPAlertResponse[]> => {
-    return apiClient.get<WIPAlertResponse[]>('/wip-board/alerts');
+    return apiClient.get<WIPAlertResponse[]>('/wip-board/alerts/');
   },
 };

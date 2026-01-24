@@ -1,8 +1,16 @@
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
 
+import { cacheService } from './cache';
+
 export interface ApiError {
   detail: string;
   status: number;
+}
+
+export interface RequestOptions extends RequestInit {
+  useCache?: boolean;
+  ttl?: number; // seconds
+  forceRefresh?: boolean;
 }
 
 export class ApiClient {
@@ -55,7 +63,7 @@ export class ApiClient {
 
   private async refreshAccessToken(): Promise<void> {
     const refreshToken = this.getRefreshToken();
-    
+
     if (!refreshToken) {
       throw new Error('No refresh token available');
     }
@@ -74,7 +82,7 @@ export class ApiClient {
       }
 
       const data = await response.json();
-      
+
       // Update tokens in localStorage
       const authStorage = localStorage.getItem('auth-storage');
       if (authStorage) {
@@ -93,9 +101,18 @@ export class ApiClient {
 
   async request<T>(
     endpoint: string,
-    options: RequestInit = {}
+    options: RequestOptions = {}
   ): Promise<T> {
     const url = `${this.baseURL}${endpoint}`;
+
+    // Check cache for GET requests
+    if (options.method === 'GET' && options.useCache && !options.forceRefresh) {
+      const cached = cacheService.get<T>(url);
+      if (cached) {
+        return cached;
+      }
+    }
+
     const config: RequestInit = {
       ...options,
       headers: {
@@ -132,9 +149,9 @@ export class ApiClient {
             ...options.headers,
           },
         };
-        
+
         const retryResponse = await fetch(url, retryConfig);
-        
+
         if (!retryResponse.ok) {
           const errorData = await retryResponse.json().catch(() => ({
             detail: retryResponse.statusText || 'An error occurred',
@@ -148,7 +165,12 @@ export class ApiClient {
 
         const contentType = retryResponse.headers.get('content-type');
         if (contentType && contentType.includes('application/json')) {
-          return await retryResponse.json();
+          const data = await retryResponse.json();
+          // Cache successful GET responses
+          if (options.method === 'GET' && options.useCache) {
+            cacheService.set(url, data, options.ttl);
+          }
+          return data;
         }
 
         return {} as T;
@@ -167,7 +189,12 @@ export class ApiClient {
 
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
-        return await response.json();
+        const data = await response.json();
+        // Cache successful GET responses
+        if (options.method === 'GET' && options.useCache) {
+          cacheService.set(url, data, options.ttl);
+        }
+        return data;
       }
 
       return {} as T;
@@ -183,11 +210,11 @@ export class ApiClient {
     }
   }
 
-  async get<T>(endpoint: string, options?: RequestInit): Promise<T> {
+  async get<T>(endpoint: string, options?: RequestOptions): Promise<T> {
     return this.request<T>(endpoint, { ...options, method: 'GET' });
   }
 
-  async post<T>(endpoint: string, data?: unknown, options?: RequestInit): Promise<T> {
+  async post<T>(endpoint: string, data?: unknown, options?: RequestOptions): Promise<T> {
     return this.request<T>(endpoint, {
       ...options,
       method: 'POST',
@@ -195,7 +222,7 @@ export class ApiClient {
     });
   }
 
-  async put<T>(endpoint: string, data?: unknown, options?: RequestInit): Promise<T> {
+  async put<T>(endpoint: string, data?: unknown, options?: RequestOptions): Promise<T> {
     return this.request<T>(endpoint, {
       ...options,
       method: 'PUT',
@@ -203,7 +230,7 @@ export class ApiClient {
     });
   }
 
-  async delete<T>(endpoint: string, options?: RequestInit): Promise<T> {
+  async delete<T>(endpoint: string, options?: RequestOptions): Promise<T> {
     return this.request<T>(endpoint, { ...options, method: 'DELETE' });
   }
 }

@@ -1,5 +1,5 @@
 import { useMemo, useState, useEffect } from 'react';
-import { ArrowLeftRight, X, Check, AlertCircle, History, Search, ArrowRight, MapPin, Package } from 'lucide-react';
+import { ArrowLeftRight, X, Check, AlertCircle, History, Search, ArrowRight, MapPin } from 'lucide-react';
 
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { MaterialCard } from './components/MaterialCard';
 import { apiClient } from '@/lib/api/client';
 import { Language } from '@/types/inventory';
-import { InventoryItemResponse } from '@/services/inventoryItemsApi';
+import { InventoryItemResponse } from '@/lib/api/inventory';
 
 const translations = {
   en: {
@@ -165,7 +165,7 @@ const translations = {
 
 type MaterialTransferProps = {
   language: Language;
-  refreshMaterialTransferData: (showSuccess?: boolean) => void;
+  refreshMaterialTransferData?: (showSuccess?: boolean) => void;
 };
 
 export function MaterialTransfer({ language, refreshMaterialTransferData }: MaterialTransferProps) {
@@ -183,11 +183,11 @@ export function MaterialTransfer({ language, refreshMaterialTransferData }: Mate
   const [workingOrders, setWorkingOrders] = useState<any[]>([]);
   const [showStageTransferModal, setShowStageTransferModal] = useState(false);
   const [stageTransferData, setStageTransferData] = useState({
-    fromStage: '',
-    toStage: '',
-    orderRef: '',
-    productCode: '',
-    materials: [{ name: '', quantity: '', uom: 'pcs' }]
+    fromStageId: '',
+    toStageId: '',
+    orderId: '',
+    quantity: '',
+    notes: ''
   });
 
   // Fetch inventory data on component mount
@@ -324,7 +324,7 @@ export function MaterialTransfer({ language, refreshMaterialTransferData }: Mate
 
       setSuccessMessage('Transfer created successfully.');
       resetTransferState();
-      refreshMaterialTransferData(false);
+      refreshMaterialTransferData?.(false);
     } catch (error: any) {
       setSubmitError(error?.detail || 'Failed to create transfer. Please try again.');
     } finally {
@@ -334,11 +334,11 @@ export function MaterialTransfer({ language, refreshMaterialTransferData }: Mate
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'completed':
+      case 'Completed':
         return 'bg-green-100 text-green-800 border-green-300';
-      case 'in_progress':
+      case 'In Progress':
         return 'bg-blue-100 text-blue-800 border-blue-300';
-      case 'pending':
+      case 'Pending':
         return 'bg-yellow-100 text-yellow-800 border-yellow-300';
       default:
         return 'bg-gray-100 text-gray-800 border-gray-300';
@@ -357,21 +357,19 @@ export function MaterialTransfer({ language, refreshMaterialTransferData }: Mate
       <div className="flex gap-2 border-b border-zinc-200">
         <button
           onClick={() => setActiveTab('new')}
-          className={`px-4 py-2 border-b-2 transition-colors ${
-            activeTab === 'new'
+          className={`px-4 py-2 border-b-2 transition-colors ${activeTab === 'new'
               ? 'border-emerald-600 text-emerald-900'
               : 'border-transparent text-zinc-600 hover:text-zinc-900'
-          }`}
+            }`}
         >
           {t.newTransfer}
         </button>
         <button
           onClick={() => setActiveTab('history')}
-          className={`px-4 py-2 border-b-2 transition-colors ${
-            activeTab === 'history'
+          className={`px-4 py-2 border-b-2 transition-colors ${activeTab === 'history'
               ? 'border-emerald-600 text-emerald-900'
               : 'border-transparent text-zinc-600 hover:text-zinc-900'
-          }`}
+            }`}
         >
           <div className="flex items-center gap-2">
             <History className="w-4 h-4" />
@@ -406,7 +404,7 @@ export function MaterialTransfer({ language, refreshMaterialTransferData }: Mate
               {wipStages.map((stage, index) => (
                 <div key={stage.id} className="flex items-center">
                   <div className="text-center">
-                    <div className={`px-4 py-2 rounded-lg border-2 ${ stage.health === 'healthy' ? 'bg-green-50 border-green-300 text-green-900' : stage.health === 'warning' ? 'bg-yellow-50 border-yellow-300 text-yellow-900' : 'bg-red-50 border-red-300 text-red-900'}`}>
+                    <div className={`px-4 py-2 rounded-lg border-2 ${stage.health === 'healthy' ? 'bg-green-50 border-green-300 text-green-900' : stage.health === 'warning' ? 'bg-yellow-50 border-yellow-300 text-yellow-900' : 'bg-red-50 border-red-300 text-red-900'}`}>
                       <div className="text-sm">{stage.name}</div>
                       <div className="text-xs mt-1 opacity-75">{stage.items} units</div>
                     </div>
@@ -449,7 +447,7 @@ export function MaterialTransfer({ language, refreshMaterialTransferData }: Mate
                 )}
               </div>
             </div>
-            
+
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {filteredMaterials.map((material) => (
                 <MaterialCard
@@ -623,9 +621,8 @@ export function MaterialTransfer({ language, refreshMaterialTransferData }: Mate
                     setTransferData({ ...transferData, toLocation: e.target.value });
                     setErrors({ ...errors, toLocation: '' });
                   }}
-                  className={`w-full p-3 border rounded-lg ${
-                    errors.toLocation ? 'border-red-500' : 'border-zinc-200'
-                  } focus:outline-none focus:ring-2 focus:ring-emerald-500`}
+                  className={`w-full p-3 border rounded-lg ${errors.toLocation ? 'border-red-500' : 'border-zinc-200'
+                    } focus:outline-none focus:ring-2 focus:ring-emerald-500`}
                 >
                   <option value="">{t.selectDestination}</option>
                   {Object.entries(t.locations).map(([key, value]) => (
@@ -653,9 +650,8 @@ export function MaterialTransfer({ language, refreshMaterialTransferData }: Mate
                     setTransferData({ ...transferData, transferReason: e.target.value });
                     setErrors({ ...errors, transferReason: '' });
                   }}
-                  className={`w-full p-3 border rounded-lg ${
-                    errors.transferReason ? 'border-red-500' : 'border-zinc-200'
-                  } focus:outline-none focus:ring-2 focus:ring-emerald-500`}
+                  className={`w-full p-3 border rounded-lg ${errors.transferReason ? 'border-red-500' : 'border-zinc-200'
+                    } focus:outline-none focus:ring-2 focus:ring-emerald-500`}
                 >
                   <option value="">{t.selectReason}</option>
                   {Object.entries(t.reasons).map(([key, value]) => (
@@ -697,17 +693,17 @@ export function MaterialTransfer({ language, refreshMaterialTransferData }: Mate
           </div>
         </div>
       )}
-      
+
       {/* Stage Transfer Modal */}
       {showStageTransferModal && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-lg shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
             {/* Modal Header */}
             <div className="sticky top-0 bg-gradient-to-r from-blue-600 to-indigo-600 text-white p-6 flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <ArrowRight className="w-6 h-6" />
                 <div>
-                  <h2 className="text-2xl">{t.wipStageTransfer}</h2>
+                  <h2 className="text-xl font-semibold">{t.wipStageTransfer}</h2>
                   <p className="text-sm text-blue-100">{t.stageTransferSubtitle}</p>
                 </div>
               </div>
@@ -720,7 +716,7 @@ export function MaterialTransfer({ language, refreshMaterialTransferData }: Mate
             </div>
 
             {/* Modal Body */}
-            <div className="p-8 space-y-6">
+            <div className="p-6 space-y-6">
               {/* Stage Selection */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
@@ -728,34 +724,34 @@ export function MaterialTransfer({ language, refreshMaterialTransferData }: Mate
                     {t.fromStage} <span className="text-red-500">*</span>
                   </label>
                   <select
-                    value={stageTransferData.fromStage}
-                    onChange={(e) => setStageTransferData({ ...stageTransferData, fromStage: e.target.value })}
-                    className="w-full p-3 border-2 border-zinc-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    value={stageTransferData.fromStageId}
+                    onChange={(e) => setStageTransferData({ ...stageTransferData, fromStageId: e.target.value })}
+                    className="w-full p-2.5 border border-zinc-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
                     <option value="">{t.selectFromStage}</option>
                     {wipStages.map((stage) => (
-                      <option key={stage.id} value={stage.name}>
+                      <option key={stage.id} value={stage.id}>
                         {stage.name} ({stage.items} units)
                       </option>
                     ))}
                   </select>
                 </div>
-                
+
                 <div>
                   <label className="block mb-2 text-zinc-900 font-medium">
                     {t.toStage} <span className="text-red-500">*</span>
                   </label>
                   <select
-                    value={stageTransferData.toStage}
-                    onChange={(e) => setStageTransferData({ ...stageTransferData, toStage: e.target.value })}
-                    className="w-full p-3 border-2 border-zinc-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    value={stageTransferData.toStageId}
+                    onChange={(e) => setStageTransferData({ ...stageTransferData, toStageId: e.target.value })}
+                    className="w-full p-2.5 border border-zinc-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
                     <option value="">{t.selectToStage}</option>
                     {wipStages.map((stage) => (
-                      <option 
-                        key={stage.id} 
-                        value={stage.name}
-                        disabled={stage.name === stageTransferData.fromStage}
+                      <option
+                        key={stage.id}
+                        value={stage.id}
+                        disabled={stage.id === stageTransferData.fromStageId}
                       >
                         {stage.name} ({stage.items} units)
                       </option>
@@ -764,182 +760,104 @@ export function MaterialTransfer({ language, refreshMaterialTransferData }: Mate
                 </div>
               </div>
 
-              {/* Stage Flow Preview */}
-              {stageTransferData.fromStage && stageTransferData.toStage && (
-                <div className="p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border-2 border-blue-200">
-                  <div className="flex items-center justify-center gap-4">
-                    <div className="px-4 py-2 bg-blue-600 text-white rounded-lg shadow-md font-medium">
-                      {stageTransferData.fromStage}
-                    </div>
-                    <ArrowRight className="w-8 h-8 text-blue-600 animate-pulse" />
-                    <div className="px-4 py-2 bg-indigo-600 text-white rounded-lg shadow-md font-medium">
-                      {stageTransferData.toStage}
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Work Order & Product Code */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block mb-2 text-zinc-900 font-medium">
-                    {t.orderReference} <span className="text-red-500">*</span>
-                  </label>
-                  <select
-                    value={stageTransferData.orderRef}
-                    onChange={(e) => setStageTransferData({ ...stageTransferData, orderRef: e.target.value })}
-                    className="w-full p-3 border-2 border-zinc-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="">{t.enterOrderRef}</option>
-                    {workingOrders.map((order) => (
-                      <option key={order.id} value={order.work_order_number}>
-                        {order.work_order_number} - {order.operation} ({order.status})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                
-                <div>
-                  <label className="block mb-2 text-zinc-900 font-medium">
-                    {t.productCode} <span className="text-red-500">*</span>
-                  </label>
-                  <Input
-                    type="text"
-                    value={stageTransferData.productCode}
-                    onChange={(e) => setStageTransferData({ ...stageTransferData, productCode: e.target.value })}
-                    placeholder={t.enterProductCode}
-                    className="border-2"
-                  />
-                </div>
+              {/* Work Order */}
+              <div>
+                <label className="block mb-2 text-zinc-900 font-medium">
+                  {t.orderReference} <span className="text-red-500">*</span>
+                </label>
+                <select
+                  value={stageTransferData.orderId}
+                  onChange={(e) => setStageTransferData({ ...stageTransferData, orderId: e.target.value })}
+                  className="w-full p-2.5 border border-zinc-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">{t.enterOrderRef}</option>
+                  {workingOrders.map((order) => (
+                    <option key={order.id} value={order.id}>
+                      {order.work_order_number || order.workOrderNumber} - {order.operation} ({order.status})
+                    </option>
+                  ))}
+                </select>
               </div>
 
-              {/* Materials */}
+              {/* Quantity */}
               <div>
-                <label className="block mb-3 text-zinc-900 font-medium">
-                  Materials <span className="text-red-500">*</span>
+                <label className="block mb-2 text-zinc-900 font-medium">
+                  {t.quantity} <span className="text-red-500">*</span>
                 </label>
-                
-                <div className="space-y-3">
-                  {stageTransferData.materials.map((material, index) => (
-                    <div key={index} className="flex gap-3 p-4 bg-zinc-50 rounded-lg border-2 border-zinc-200">
-                      <div className="flex-1">
-                        <input
-                          type="text"
-                          value={material.name}
-                          onChange={(e) => {
-                            const newMaterials = [...stageTransferData.materials];
-                            newMaterials[index].name = e.target.value;
-                            setStageTransferData({ ...stageTransferData, materials: newMaterials });
-                          }}
-                          placeholder={t.enterMaterialName}
-                          className="w-full p-2 border border-zinc-300 rounded"
-                        />
-                      </div>
-                      
-                      <div className="w-32">
-                        <input
-                          type="number"
-                          value={material.quantity}
-                          onChange={(e) => {
-                            const newMaterials = [...stageTransferData.materials];
-                            newMaterials[index].quantity = e.target.value;
-                            setStageTransferData({ ...stageTransferData, materials: newMaterials });
-                          }}
-                          placeholder={t.quantity}
-                          className="w-full p-2 border border-zinc-300 rounded"
-                        />
-                      </div>
-                      
-                      <div className="w-24">
-                        <select
-                          value={material.uom}
-                          onChange={(e) => {
-                            const newMaterials = [...stageTransferData.materials];
-                            newMaterials[index].uom = e.target.value;
-                            setStageTransferData({ ...stageTransferData, materials: newMaterials });
-                          }}
-                          className="w-full p-2 border border-zinc-300 rounded"
-                        >
-                          <option value="pcs">pcs</option>
-                          <option value="kg">kg</option>
-                          <option value="m">m</option>
-                          <option value="L">L</option>
-                        </select>
-                      </div>
-                      
-                      {stageTransferData.materials.length > 1 && (
-                        <button
-                          onClick={() => {
-                            const newMaterials = stageTransferData.materials.filter((_, i) => i !== index);
-                            setStageTransferData({ ...stageTransferData, materials: newMaterials });
-                          }}
-                          className="p-2 text-red-600 hover:bg-red-50 rounded transition-colors"
-                        >
-                          <X className="w-5 h-5" />
-                        </button>
-                      )}
-                    </div>
-                  ))}
-                </div>
-                
-                <Button
-                  onClick={() => setStageTransferData({
-                    ...stageTransferData,
-                    materials: [...stageTransferData.materials, { name: '', quantity: '', uom: 'pcs' }]
-                  })}
-                  variant="outline"
-                  className="w-full mt-3 border-2 border-blue-300 text-blue-700 hover:bg-blue-50"
-                >
-                  <Package className="w-4 h-4 mr-2" />
-                  {t.addMaterial}
-                </Button>
+                <Input
+                  type="number"
+                  value={stageTransferData.quantity}
+                  onChange={(e) => setStageTransferData({ ...stageTransferData, quantity: e.target.value })}
+                  placeholder="Enter quantity to transfer"
+                  className="border-zinc-300"
+                />
+              </div>
+
+              {/* Notes */}
+              <div>
+                <label className="block mb-2 text-zinc-900 font-medium">
+                  Notes
+                </label>
+                <textarea
+                  value={stageTransferData.notes}
+                  onChange={(e) => setStageTransferData({ ...stageTransferData, notes: e.target.value })}
+                  placeholder="Add optional notes..."
+                  className="w-full p-2.5 border border-zinc-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[80px]"
+                />
               </div>
             </div>
 
             {/* Modal Footer */}
-            <div className="sticky bottom-0 bg-white border-t-2 border-zinc-200 p-6 flex gap-3">
+            <div className="sticky bottom-0 bg-white border-t border-zinc-200 p-6 flex gap-3">
               <Button
                 onClick={() => {
                   setShowStageTransferModal(false);
                   setStageTransferData({
-                    fromStage: '',
-                    toStage: '',
-                    orderRef: '',
-                    productCode: '',
-                    materials: [{ name: '', quantity: '', uom: 'pcs' }]
+                    fromStageId: '',
+                    toStageId: '',
+                    orderId: '',
+                    quantity: '',
+                    notes: ''
                   });
                 }}
                 variant="outline"
-                className="flex-1 border-2"
+                className="flex-1"
               >
                 {t.cancel}
               </Button>
               <Button
-                onClick={() => {
-                  const summary = stageTransferData.materials
-                    .filter(m => m.name && m.quantity)
-                    .map(m => `${m.quantity} ${m.uom} ${m.name}`)
-                    .join(', ');
-                    
-                  alert(`✅ ${language === 'en' ? 'Stage Transfer Initiated!' : 'स्टेज स्थानांतरण शुरू किया गया!'}
-
-From: ${stageTransferData.fromStage}
-To: ${stageTransferData.toStage}
-Order: ${stageTransferData.orderRef}
-Product Code: ${stageTransferData.productCode}
-Materials: ${summary}`);
+                onClick={async () => {
+                  if (!stageTransferData.toStageId || !stageTransferData.orderId || !stageTransferData.quantity) return;
                   
-                  setShowStageTransferModal(false);
-                  setStageTransferData({
-                    fromStage: '',
-                    toStage: '',
-                    orderRef: '',
-                    productCode: '',
-                    materials: [{ name: '', quantity: '', uom: 'pcs' }]
-                  });
+                  try {
+                    await apiClient.post('/material-transfers/wip-stage-transfer', {
+                      order_id: stageTransferData.orderId,
+                      from_stage_id: stageTransferData.fromStageId || null,
+                      to_stage_id: stageTransferData.toStageId,
+                      quantity: parseFloat(stageTransferData.quantity),
+                      notes: stageTransferData.notes || undefined
+                    });
+
+                    alert(language === 'en' ? '✅ Stage Transfer Successful!' : '✅ स्टेज स्थानांतरण सफल!');
+                    
+                    setShowStageTransferModal(false);
+                    setStageTransferData({
+                      fromStageId: '',
+                      toStageId: '',
+                      orderId: '',
+                      quantity: '',
+                      notes: ''
+                    });
+                    // Refresh data
+                    fetchWipStages();
+                    fetchWorkingOrders();
+                  } catch (err: any) {
+                    console.error('Stage transfer failed', err);
+                    alert(`❌ Error: ${err?.detail || 'Failed to transfer'}`);
+                  }
                 }}
                 className="flex-1 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
-                disabled={!stageTransferData.fromStage || !stageTransferData.toStage || !stageTransferData.orderRef || !stageTransferData.productCode}
+                disabled={!stageTransferData.toStageId || !stageTransferData.orderId || !stageTransferData.quantity}
               >
                 <Check className="w-4 h-4 mr-2" />
                 {t.initiateTransfer}

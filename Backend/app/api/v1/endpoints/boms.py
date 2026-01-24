@@ -81,8 +81,7 @@ async def list_boms(
         limit=limit,
         product_id=product_id,
         is_active=is_active,
-        is_template=is_template,
-        search=search
+        search=search,
     )
 
 

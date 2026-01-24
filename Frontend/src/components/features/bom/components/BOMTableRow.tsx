@@ -32,7 +32,7 @@ export function BOMTableRow({
   translations: t
 }: BOMTableRowProps) {
   const getStatusBadge = () => {
-    if (status === 'sufficient') {
+    if (status === 'Sufficient') {
       return (
         <Badge className="bg-emerald-500 flex items-center gap-1">
           <CheckCircle className="h-3 w-3" />

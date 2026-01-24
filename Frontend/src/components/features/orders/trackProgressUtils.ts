@@ -8,7 +8,7 @@ export type SkuDisplayEntry = {
   completed: number;
   shortage: number;
   unit: string;
-  status: 'ready' | 'in_progress' | 'queued';
+  status: 'Ready' | 'In Progress' | 'Queued';
   assignedTeam?: string;
   lastUpdated?: string;
 };
@@ -30,7 +30,7 @@ export const buildSkuDisplayEntries = (
       completed: progress.completed_qty,
       shortage: progress.shortage_qty || 0,
       unit: progress.unit || order.unit || 'pcs',
-      status: (progress.status || '').toLowerCase() === 'ready' ? 'ready' : (progress.status || '').toLowerCase() === 'queued' ? 'queued' : 'in_progress',
+      status: progress.status === 'Ready' ? 'Ready' : progress.status === 'Queued' ? 'Queued' : 'In Progress',
       assignedTeam: progress.assigned_team,
       lastUpdated: progress.last_updated,
     })) as SkuDisplayEntry[];
@@ -44,7 +44,7 @@ export const buildSkuDisplayEntries = (
     completed: 0,
     shortage: 0,
     unit: order.unit || 'pcs',
-    status: idx === 0 ? 'ready' : idx === 1 ? 'in_progress' : 'queued',
+    status: idx === 0 ? 'Ready' : idx === 1 ? 'In Progress' : 'Queued',
     assignedTeam: undefined,
     lastUpdated: undefined,
   }));
@@ -60,12 +60,12 @@ export const resolveStageTimeline = (order: PurchaseOrder, overallProgress?: num
   const inferredProgress = overallProgress ?? (order as any).progress ?? 0;
   return DEFAULT_STAGE_SEQUENCE.map((stageName, idx): StageProgress => {
     if (idx < 2) {
-      return { stage_name: stageName, progress: 100, status: 'complete' };
+      return { stage_name: stageName, progress: 100, status: 'Complete' };
     }
     if (idx === 2) {
-      return { stage_name: stageName, progress: inferredProgress, status: inferredProgress >= 100 ? 'complete' : inferredProgress > 0 ? 'in_progress' : 'pending' };
+      return { stage_name: stageName, progress: inferredProgress, status: inferredProgress >= 100 ? 'Complete' : inferredProgress > 0 ? 'In Progress' : 'Pending' };
     }
-    return { stage_name: stageName, progress: 0, status: 'pending' };
+    return { stage_name: stageName, progress: 0, status: 'Pending' };
   });
 };
 
@@ -126,9 +126,9 @@ export type StatusMeta = {
 };
 
 export const getStatusMeta = (status: string | undefined, progressValue: number | undefined, language: 'en' | 'hi'): StatusMeta => {
-  const safeStatus = (status || '').toLowerCase();
-  const complete = safeStatus === 'complete' || (progressValue !== undefined && progressValue >= 100);
-  const inProgress = safeStatus === 'in_progress' || safeStatus === 'active' || (progressValue !== undefined && progressValue > 0 && progressValue < 100);
+  const safeStatus = status || '';
+  const complete = safeStatus === 'Complete' || (progressValue !== undefined && progressValue >= 100);
+  const inProgress = safeStatus === 'In Progress' || safeStatus === 'Active' || (progressValue !== undefined && progressValue > 0 && progressValue < 100);
 
   if (complete) {
     return { badge: 'bg-emerald-500', label: language === 'hi' ? 'पूर्ण' : 'Complete', isComplete: true };

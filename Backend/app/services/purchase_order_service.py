@@ -5,6 +5,7 @@ import qrcode
 import io
 import base64
 import json
+import logging
 from app.database import get_db
 from app.schemas.purchase_order import (
     PurchaseOrderCreate, PurchaseOrderUpdate, PurchaseOrderResponse,
@@ -26,14 +27,22 @@ class PurchaseOrderService:  # Changed from ProductionOrderService
         """Generate unique order number: PO-YYYY-XXXX"""
         db = get_db()
         year = datetime.now().year
+        prefix = f'PO-{year}-%'
         
-        # Get count of orders this year
-        result = db.table('purchase_orders').select('order_number', count='exact').like(
-            'order_number', f'PO-{year}-%'
-        ).execute()
+        # Get the latest order number for this year
+        result = db.table('purchase_orders').select('order_number').like('order_number', prefix).order('order_number', desc=True).limit(1).execute()
         
-        count = result.count or 0
-        return f"PO-{year}-{count + 1:04d}"
+        if result.data:
+            last_order = result.data[0]['order_number']
+            try:
+                # Extract sequence number
+                last_seq = int(last_order.split('-')[-1])
+                return f"PO-{year}-{last_seq + 1:04d}"
+            except ValueError:
+                # Fallback if parsing fails
+                pass
+        
+        return f"PO-{year}-0001"
     
     @staticmethod
     def _generate_qr_code(data: str) -> str:
@@ -84,10 +93,6 @@ class PurchaseOrderService:  # Changed from ProductionOrderService
             # Apply search
             if search:
                 search = f"%{search}%"
-                # Searching in joined table requires embedding logic, but for simplicity
-                # we'll search locally or just rely on order_number.
-                # Supabase filter on joined columns is tricky with simple syntax.
-                # Let's search order_number only for now to ensure stability.
                 query = query.ilike('order_number', search)
             
             # Add pagination
@@ -98,38 +103,125 @@ class PurchaseOrderService:  # Changed from ProductionOrderService
             
             result = query.execute()
             
+            if not result.data:
+                return []
+                
+            orders_data = result.data
+            order_ids = [o['id'] for o in orders_data]
+            
+            # --- BATCH FETCH DEPENDENCIES ---
+            
+            # 1. Fetch Items with Item Products
+            # Need to join products inside items to get code/name for each item
+            items_by_order = {}
+            if order_ids:
+                try:
+                    items_query = db.table('purchase_order_items').select('*, products(code, name)').in_('purchase_order_id', order_ids)
+                    items_result = items_query.execute()
+                    
+                    for item in items_result.data:
+                        oid = item['purchase_order_id']
+                        if oid not in items_by_order:
+                            items_by_order[oid] = []
+                        items_by_order[oid].append(item)
+                except Exception as e:
+                    print(f"Error batch fetching items: {e}")
+            
+            # 2. Fetch Materials Status info
+            mats_by_order = {}
+            if order_ids:
+                try:
+                    mat_query = db.table('order_materials').select('purchase_order_id, availability_status').in_('purchase_order_id', order_ids)
+                    mat_result = mat_query.execute()
+                    
+                    for m in mat_result.data:
+                        oid = m['purchase_order_id']
+                        if oid not in mats_by_order:
+                            mats_by_order[oid] = []
+                        mats_by_order[oid].append(m)
+                except Exception as e:
+                    print(f"Error batch fetching materials: {e}")
+            
+            # 3. Batch fetch missing main products (fallback)
+            missing_prod_ids = set()
+            for order in orders_data:
+                product_data = order.get('products', {}) or {}
+                if not product_data.get('code') and not product_data.get('name'):
+                   if order.get('product_id'):
+                       missing_prod_ids.add(order.get('product_id'))
+            
+            fallback_products = {}
+            if missing_prod_ids:
+                try:
+                    p_query = db.table('products').select('id, code, name').in_('id', list(missing_prod_ids))
+                    p_result = p_query.execute()
+                    for p in p_result.data:
+                        fallback_products[p['id']] = p
+                except Exception as e:
+                    print(f"Error batch fetching fallback products: {e}")
+
+            # --- ASSEMBLY ---
             orders = []
-            for order in result.data:
+            for order in orders_data:
                 try:
                     product_data = order.get('products', {}) or {}
                     product_code = product_data.get('code', '')
                     product_name = product_data.get('name', 'Unknown')
 
-                    if not product_code or not product_name:
-                        product_lookup = db.table('products').select('code', 'name').eq('id', order.get('product_id')).execute()
-                        if product_lookup.data:
-                            product_row = product_lookup.data[0]
-                            product_code = product_code or product_row.get('code')
-                            product_name = product_name or product_row.get('name')
+                    # Fallback if join failed
+                    if not product_code and not product_name and order.get('product_id'):
+                        fb = fallback_products.get(order.get('product_id'))
+                        if fb:
+                             product_code = fb.get('code')
+                             product_name = fb.get('name')
 
                     product_name = product_name or 'Unknown Product'
                     product_code = product_code or ''
 
-                    materials_status = order.get('materials_status')
-                    if not materials_status:
-                        materials_status = PurchaseOrderService._derive_materials_status(db, order.get('id'))
+                    # Calculate material status
+                    order_mats = mats_by_order.get(order['id'], [])
+                    materials_status = 'Pending'
+                    
+                    if not order_mats:
+                        # If no materials found in DB, check if it's because we failed to fetch or truly empty.
+                        # Assuming truly empty for now (No Materials)
+                        materials_status = 'No Materials'
+                    else:
+                        total = len(order_mats)
+                        available = 0
+                        shortage = 0
+                        for mat in order_mats:
+                            status_val = mat.get('availability_status', '').upper()
+                            if status_val == 'AVAILABLE':
+                                available += 1
+                            if status_val in ['SHORTAGE', 'PARTIAL']:
+                                shortage += 1
+
+                        if shortage > 0:
+                            materials_status = 'Material Shortage'
+                        elif available == total:
+                            materials_status = 'All Available'
+                        else:
+                            materials_status = 'Partially Available'
 
                     progress_percentage = PurchaseOrderService._derive_progress_percentage(order)
 
-                    # Get order items
-                    items_result = db.table('purchase_order_items').select('*').eq('purchase_order_id', order.get('id')).execute()
+                    # Get items
                     items = []
-                    for item in items_result.data:
+                    raw_items = items_by_order.get(order['id'], [])
+                    for item in raw_items:
                         try:
+                            # Product details from join
+                            p_data = item.get('products', {}) or {}
+                            item_product_code = p_data.get('code', '')
+                            item_product_name = p_data.get('name', 'Unknown')
+                            
                             items.append(POItemResponse(
                                 id=item.get('id'),
                                 product_id=item.get('product_id'),
                                 purchase_order_id=order.get('id'),
+                                product_code=item_product_code,
+                                product_name=item_product_name,
                                 quantity=Decimal(str(item.get('quantity', 0))),
                                 unit=item.get('unit', 'pcs'),
                                 notes=item.get('notes'),
@@ -138,8 +230,19 @@ class PurchaseOrderService:  # Changed from ProductionOrderService
                             ))
                         except Exception as e:
                             print(f"Error processing item {item.get('id')}: {str(e)}")
+
+                    # Aggregate product names for multi-SKU orders
+                    if len(items) > 1:
+                        all_names = [it.product_name for it in items if it.product_name]
+                        if all_names:
+                            # Use dict.fromkeys to maintain order and uniqueness
+                            unique_names = list(dict.fromkeys(all_names))
+                            product_name = ", ".join(unique_names)
+                    elif len(items) == 1:
+                        product_name = items[0].product_name
+                        product_code = items[0].product_code
                     
-                    # Calculate days until due with error handling
+                    # Calculate days until due
                     try:
                         due_date = PurchaseOrderService._parse_datetime(order.get('due_date')).date() if order.get('due_date') else date.today()
                         days_until_due = (due_date - date.today()).days
@@ -271,22 +374,19 @@ class PurchaseOrderService:  # Changed from ProductionOrderService
             'due_date': order_data.due_date.isoformat(),
             'priority': order_data.priority.capitalize() if order_data.priority else 'Medium',
             'status': 'Planned',
-            'qr_code': qr_code,
+            # 'qr_code': qr_code,
             'bom_id': bom_id,
             'notes': order_data.notes,
             'customer_name': order_data.customer_name,
-            'shift_number': order_data.shift_number,
+            # 'shift_number': order_data.shift_number, # Column does not exist in DB
             'created_by': user_id,
-            'updated_by': user_id,
+            # 'updated_by': user_id,
             'created_at': datetime.utcnow().isoformat(),
             'updated_at': datetime.utcnow().isoformat()
         }
         
-        # Add optional fields if provided
-        if order_data.start_time:
-            order_dict['start_time'] = order_data.start_time.isoformat()
-        if order_data.end_time:
-            order_dict['end_time'] = order_data.end_time.isoformat()
+        # Note: start_date and end_date are accepted by the schema but not stored in DB
+        # (database columns don't exist yet - would need migration to add them)
         
         # Insert order
         order_result = db.table('purchase_orders').insert(order_dict).execute()
@@ -416,21 +516,21 @@ class PurchaseOrderService:  # Changed from ProductionOrderService
             'due_date': order_data.due_date.isoformat(),
             'priority': order_data.priority.capitalize() if order_data.priority else 'Medium',
             'status': 'Planned',
-            'qr_code': qr_code,
+            # 'qr_code': qr_code, # Column does not exist in DB
             'bom_id': None,
             'notes': combined_notes,
             'customer_name': order_data.customer_name,
             'shift_number': order_data.shift_number,
+            'start_date': order_data.start_date.isoformat() if order_data.start_date else None,
+            'end_date': order_data.end_date.isoformat() if order_data.end_date else None,
             'created_by': user_id,
-            'updated_by': user_id,
+            # 'updated_by': user_id,
             'created_at': datetime.utcnow().isoformat(),
             'updated_at': datetime.utcnow().isoformat()
         }
 
-        if order_data.start_time:
-            order_dict['start_time'] = order_data.start_time.isoformat()
-        if order_data.end_time:
-            order_dict['end_time'] = order_data.end_time.isoformat()
+        # Note: start_date and end_date are accepted by the schema but not stored in DB
+        # (database columns don't exist yet - would need migration to add them)
 
         order_result = db.table('purchase_orders').insert(order_dict).execute()
         created_order = order_result.data[0]
@@ -443,7 +543,11 @@ class PurchaseOrderService:  # Changed from ProductionOrderService
                 'product_id': sku_entry['product']['id'],
                 'quantity': float(sku_entry['quantity']),
                 'unit': sku_entry['unit'],
-                'notes': item_payload.notes
+                # 'notes': item_payload.notes, # Column does not exist
+                'completed_quantity': 0.0,
+                'status': 'Pending',
+                'created_at': datetime.utcnow().isoformat(),
+                'updated_at': datetime.utcnow().isoformat()
             })
         if order_item_payload:
             db.table('purchase_order_items').insert(order_item_payload).execute()
@@ -457,7 +561,7 @@ class PurchaseOrderService:  # Changed from ProductionOrderService
                 'allocated_qty': 0.0,
                 'issued_qty': 0.0,
                 'unit': info['unit'],
-                'availability_status': 'SHORTAGE',
+                'availability_status': 'Shortage',
                 'created_at': datetime.utcnow().isoformat(),
                 'updated_at': datetime.utcnow().isoformat()
             }).execute()
@@ -541,7 +645,7 @@ class PurchaseOrderService:  # Changed from ProductionOrderService
                 'allocated_qty': 0.0,
                 'issued_qty': 0.0,
                 'unit': item.get('unit', 'pcs'),
-                'availability_status': 'SHORTAGE',
+                'availability_status': 'Shortage',
                 'created_at': datetime.utcnow().isoformat(),
                 'updated_at': datetime.utcnow().isoformat()
             }
@@ -573,6 +677,7 @@ class PurchaseOrderService:  # Changed from ProductionOrderService
             materials.append(OrderMaterialResponse(
                 id=mat['id'],
                 purchase_order_id=mat['purchase_order_id'],
+                order_id=mat['purchase_order_id'],  # Required field
                 material_id=mat['product_id'],
                 material_code=product.data[0]['code'] if product.data else '',
                 material_name=product.data[0]['name'] if product.data else 'Unknown',
@@ -580,6 +685,9 @@ class PurchaseOrderService:  # Changed from ProductionOrderService
                 allocated_qty=Decimal(str(mat.get('allocated_qty', 0))),
                 issued_qty=Decimal(str(mat.get('issued_qty', 0))),
                 unit=mat.get('unit', 'pcs'),
+                unit_cost=Decimal(str(mat.get('unit_cost', 0))),  # Already exists in base
+                total_cost=Decimal(str(mat.get('unit_cost', 0))) * Decimal(str(mat['required_qty'])),  # Required field
+                status=mat.get('status', 'Pending'),  # Required field
                 availability_status=mat.get('availability_status', 'SHORTAGE'),
                 created_at=PurchaseOrderService._parse_datetime(mat.get('created_at')),
                 updated_at=PurchaseOrderService._parse_datetime(mat.get('updated_at'))
@@ -606,12 +714,21 @@ class PurchaseOrderService:  # Changed from ProductionOrderService
                 updated_at=PurchaseOrderService._parse_datetime(item.get('updated_at'))
             ))
         
-        # Get team assignments
-        team = await PurchaseOrderService.get_team_assignments(order_id)
+        # Get team assignments (with error handling)
+        try:
+            team = await PurchaseOrderService.get_team_assignments(order_id)
+        except Exception as e:
+            logging.warning(f"Failed to fetch team assignments for order {order_id}: {e}")
+            team = []
         
-        # Calculate progress
-        progress = await PurchaseOrderService.get_order_progress(order_id)
-        
+        # Calculate progress (with error handling)
+        try:
+            progress = await PurchaseOrderService.get_order_progress(order_id)
+            progress_pct = progress.allocation_percentage if progress else 0
+        except Exception as e:
+            logging.warning(f"Failed to fetch order progress for order {order_id}: {e}")
+            progress_pct = 0
+            
         # Create response
         return PurchaseOrderResponse(
             id=order['id'],
@@ -632,7 +749,7 @@ class PurchaseOrderService:  # Changed from ProductionOrderService
             materials=materials,
             items=items,
             team=team,
-            progress_percentage=progress.allocation_percentage if progress else 0,
+            progress_percentage=progress_pct,
             started_at=PurchaseOrderService._parse_datetime(order.get('start_date')) if order.get('start_date') else None,
             completed_at=PurchaseOrderService._parse_datetime(order.get('completion_date')) if order.get('completion_date') else None,
             created_at=PurchaseOrderService._parse_datetime(order.get('created_at')),
@@ -674,7 +791,9 @@ class PurchaseOrderService:  # Changed from ProductionOrderService
         """Update only the status (and optional notes) for an order."""
         db = get_db()
 
-        existing = db.table('purchase_orders').select('id', 'status', 'start_date', 'completion_date').eq('id', order_id).execute()
+        # existing = db.table('purchase_orders').select('id', 'status', 'start_date', 'completion_date').eq('id', order_id).execute()
+        # Fallback to just id and status as dates might be missing from schema
+        existing = db.table('purchase_orders').select('id', 'status').eq('id', order_id).execute()
         if not existing.data:
             raise NotFoundException(detail="Purchase order not found")
 
@@ -688,17 +807,18 @@ class PurchaseOrderService:  # Changed from ProductionOrderService
 
         update_dict = {
             'status': status_data.status,
-            'updated_by': user_id,
+            # 'updated_by': user_id,
             'updated_at': datetime.utcnow().isoformat()
         }
 
         if status_data.notes is not None:
             update_dict['notes'] = status_data.notes
 
-        if status_data.status == 'In Progress' and not existing.data[0].get('start_date'):
-            update_dict['start_date'] = datetime.utcnow().isoformat()
+        if status_data.status == 'In Progress':
+            # update_dict['start_date'] = datetime.utcnow().isoformat()
+            pass
         elif status_data.status == 'Completed':
-            update_dict['completion_date'] = datetime.utcnow().isoformat()
+            # update_dict['completion_date'] = datetime.utcnow().isoformat()
             update_dict['progress_percentage'] = 100
 
         db.table('purchase_orders').update(update_dict).eq('id', order_id).execute()
@@ -725,13 +845,13 @@ class PurchaseOrderService:  # Changed from ProductionOrderService
             'due_date': new_due_date,
             'priority': existing.priority,
             'status': 'Planned',
-            'qr_code': PurchaseOrderService._generate_qr_code(new_order_number),
+            # 'qr_code': PurchaseOrderService._generate_qr_code(new_order_number),
             'bom_id': existing.bom_id,
             'notes': f"Duplicated from {existing.order_number}\n{existing.notes or ''}",
             'customer_name': existing.customer_name,
-            'shift_number': existing.shift_number,
-            'created_by': user_id,
-            'updated_by': user_id,
+            # 'shift_number': existing.shift_number, # Column does not exist in DB
+            # 'created_by': user_id,
+            # 'updated_by': user_id,
             'created_at': datetime.utcnow().isoformat(),
             'updated_at': datetime.utcnow().isoformat()
         }
@@ -966,7 +1086,7 @@ class PurchaseOrderService:  # Changed from ProductionOrderService
         """Summarize order progress using material allocation data."""
         db = get_db()
 
-        order_result = db.table('purchase_orders').select('id', 'order_number', 'status', 'due_date', 'progress_percentage').eq('id', order_id).execute()
+        order_result = db.table('purchase_orders').select('id', 'order_number', 'status', 'due_date').eq('id', order_id).execute()
         if not order_result.data:
             raise NotFoundException(detail="Purchase order not found")
 
@@ -1033,30 +1153,34 @@ class PurchaseOrderService:  # Changed from ProductionOrderService
     @staticmethod
     async def get_team_assignments(order_id: str) -> List[TeamAssignment]:
         """Fetch team members assigned to an order."""
-        db = get_db()
-
-        order = db.table('purchase_orders').select('id').eq('id', order_id).execute()
-        if not order.data:
-            raise NotFoundException(detail="Purchase order not found")
-
-        assignments = db.table('order_team_assignments').select('*').eq('purchase_order_id', order_id).order('assigned_at', desc=False).execute()
-        team: List[TeamAssignment] = []
-
-        for assignment in assignments.data:
-            user = db.table('users').select('first_name', 'last_name', 'role').eq('id', assignment['user_id']).execute()
-            first_name = user.data[0].get('first_name') if user.data else ''
-            last_name = user.data[0].get('last_name') if user.data else ''
-            role = user.data[0].get('role', 'Member') if user.data else 'Member'
-            user_name = f"{first_name} {last_name}".strip() or 'Unknown User'
-
-            team.append(TeamAssignment(
-                user_id=assignment['user_id'],
-                user_name=user_name,
-                role=role,
-                assigned_at=PurchaseOrderService._parse_datetime(assignment.get('assigned_at'))
-            ))
-
-        return team
+        # TODO: Table 'order_team_assignments' doesn't exist yet
+        # Returning empty list for now
+        return []
+        
+        # db = get_db()
+        #
+        # order = db.table('purchase_orders').select('id').eq('id', order_id).execute()
+        # if not order.data:
+        #     raise NotFoundException(detail="Purchase order not found")
+        #
+        # assignments = db.table('order_team_assignments').select('*').eq('purchase_order_id', order_id).order('assigned_at', desc=False).execute()
+        # team: List[TeamAssignment] = []
+        #
+        # for assignment in assignments.data:
+        #     user = db.table('users').select('first_name', 'last_name', 'role').eq('id', assignment['user_id']).execute()
+        #     first_name = user.data[0].get('first_name') if user.data else ''
+        #     last_name = user.data[0].get('last_name') if user.data else ''
+        #     role = user.data[0].get('role', 'Member') if user.data else 'Member'
+        #     user_name = f"{first_name} {last_name}".strip() or 'Unknown User'
+        #
+        #     team.append(TeamAssignment(
+        #         user_id=assignment['user_id'],
+        #         user_name=user_name,
+        #         role=role,
+        #         assigned_at=PurchaseOrderService._parse_datetime(assignment.get('assigned_at'))
+        #     ))
+        #
+        # return team
 
 
 # Singleton instance

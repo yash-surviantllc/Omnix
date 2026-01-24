@@ -43,30 +43,16 @@ class WIPService:
             'product_id': product_id
         }
         
-        # Fix DB column mismatches
-        if 'target_qty' in insert_data:
-            insert_data['target_quantity'] = insert_data.pop('target_qty')
-            insert_data['quantity'] = insert_data['target_quantity']
-            
-        # Fix DB column mismatches
-        if 'target_qty' in insert_data:
-            insert_data['target_quantity'] = insert_data.pop('target_qty')
-            insert_data['quantity'] = insert_data['target_quantity']
-            
-        if 'purchase_order_id' in insert_data:
-            insert_data['production_order_id'] = insert_data['purchase_order_id']
-            
-        # Default shift (required constraint)
+        # Schema 006 Enforcement: Do NOT rename columns.
+        # target_qty is correct. purchase_order_id is correct.
+        
+        # Default shift (required constraint if not nullable, but checking duplicates)
         if 'shift' not in insert_data:
             insert_data['shift'] = 'Morning'
             
-        # Map priority Normal -> Medium, and normalize case
-        if 'priority' in insert_data:
-            p = insert_data['priority']
-            if p == 'Normal':
-                insert_data['priority'] = 'Medium'
-            elif p.upper() in ['LOW', 'MEDIUM', 'HIGH', 'URGENT']:
-                insert_data['priority'] = p.title()
+        # Ensure priority is Title Case if present
+        if 'priority' in insert_data and insert_data['priority']:
+             insert_data['priority'] = insert_data['priority'].title()
         
         result = db.table('work_orders').insert(insert_data).execute()
         
@@ -146,9 +132,73 @@ class WIPService:
             # Note: exact UUID search handled via purchase_order_id filter usually
             query = query.or_(f"work_order_number.ilike.%{search}%,operation.ilike.%{search}%")
         
-        result = query.order('created_at', desc=True).range(offset, offset + limit - 1).execute()
+        # Standard select (no join to avoid errors)
+        # query = query.select('*') # Removed to avoid duplicate select calls
+        pass
         
-        return [WorkingOrderListItem(**WIPService._map_db_row(wo)) for wo in result.data]
+        try:
+            result = query.order('created_at', desc=True).range(offset, offset + limit - 1).execute()
+        except Exception as e:
+            print(f"Error in list_working_orders query: {str(e)}")
+            raise e
+            
+        if not result.data:
+            return []
+            
+        work_orders = result.data
+        
+        # Batch Fetch Details
+        po_ids = list(set([wo['purchase_order_id'] for wo in work_orders if wo.get('purchase_order_id')]))
+        
+        po_map = {} # id -> {order_number, product_id}
+        product_ids = set()
+        
+        if po_ids:
+            try:
+                # Fetch POs
+                po_query = db.table('purchase_orders').select('id, order_number, product_id').in_('id', po_ids)
+                po_result = po_query.execute()
+                for po in po_result.data:
+                    po_map[po['id']] = po
+                    if po.get('product_id'):
+                        product_ids.add(po['product_id'])
+            except Exception as e:
+                print(f"Error batch fetching POs: {e}")
+                
+        # Also collect direct product_ids from work_orders if they exist
+        for wo in work_orders:
+            if wo.get('product_id'):
+                product_ids.add(wo['product_id'])
+                
+        product_map = {} # id -> {name, code}
+        if product_ids:
+            try:
+                prod_query = db.table('products').select('id, name, code').in_('id', list(product_ids))
+                prod_result = prod_query.execute()
+                for p in prod_result.data:
+                    product_map[p['id']] = p
+            except Exception as e:
+                 print(f"Error batch fetching products: {e}")
+        
+        # Stitch
+        items = []
+        for wo in work_orders:
+            base = WIPService._map_db_row(wo)
+            
+            # Resolve PO
+            po = po_map.get(wo.get('purchase_order_id')) or {}
+            base['purchase_order_number'] = po.get('order_number', 'Unknown')
+            
+            # Resolve Product (Prefer direct link, fallback to PO link)
+            p_id = wo.get('product_id') or po.get('product_id')
+            prod = product_map.get(p_id) or {}
+            
+            base['product_name'] = prod.get('name', 'Unknown')
+            base['product_code'] = prod.get('code', '')
+            
+            items.append(WorkingOrderListItem(**base))
+            
+        return items
     
     @staticmethod
     async def get_working_order_by_id(order_id: str) -> WorkingOrderResponse:
@@ -181,13 +231,8 @@ class WIPService:
         if not update_data:
             return await WIPService.get_working_order_by_id(order_id)
             
-        # Fix DB column mismatches
-        if 'target_qty' in update_data:
-            update_data['target_quantity'] = update_data.pop('target_qty')
-            
-        # Map purchase_order_id if present (though unlikely in update)
-        if 'purchase_order_id' in update_data:
-             update_data['production_order_id'] = update_data['purchase_order_id']
+        # Schema 006 Enforcement: Do NOT rename columns.
+        pass
         
         result = db.table('work_orders').update(update_data).eq('id', order_id).execute()
         
@@ -219,16 +264,8 @@ class WIPService:
     def _map_db_row(row: dict) -> dict:
         """Map database columns to schema fields"""
         if row:
-            if 'target_quantity' in row:
-                row['target_qty'] = row['target_quantity']
-            if 'completed_quantity' in row:
-                row['completed_qty'] = row['completed_quantity']
-            if 'rejected_quantity' in row:
-                row['rejected_qty'] = row['rejected_quantity']
-                
-            # If purchase_order_id missing/null, try production_order_id
-            if not row.get('purchase_order_id') and row.get('production_order_id'):
-                row['purchase_order_id'] = row['production_order_id']
+            # Legacy mapping removed. DB schema now matches Pydantic schema.
+            pass
         return row    
     # ============================================
     # WIP STAGE METRICS
@@ -251,7 +288,7 @@ class WIPService:
         
         # Find bottleneck (delayed stage with highest utilization)
         bottleneck_stage = None
-        delayed_stages = [s for s in stages if s.health_status == 'delayed']
+        delayed_stages = [s for s in stages if s.health_status == 'Delayed']
         if delayed_stages:
             bottleneck_stage = max(delayed_stages, key=lambda s: s.utilization_percentage).stage_name
         
@@ -278,11 +315,11 @@ class WIPService:
         """Get bottleneck alerts for delayed stages"""
         db = get_db()
         
-        result = db.table('wip_stage_metrics').select('*').in_('health_status', ['warning', 'delayed']).order('utilization_percentage', desc=True).execute()
+        result = db.table('wip_stage_metrics').select('*').in_('health_status', ['Warning', 'Delayed']).order('utilization_percentage', desc=True).execute()
         
         alerts = []
         for stage in result.data:
-            severity = 'critical' if stage['health_status'] == 'delayed' else 'warning'
+            severity = 'critical' if stage['health_status'] == 'Delayed' else 'warning'
             alerts.append(BottleneckAlert(
                 stage_name=stage['stage_name'],
                 utilization_percentage=stage['utilization_percentage'],
@@ -307,12 +344,12 @@ class WIPService:
         total_units = sum(s['units_count'] for s in stages)
         avg_cycle_time = Decimal(sum(s['avg_time_minutes'] for s in stages) / len(stages)) if stages else Decimal('0')
         
-        stages_healthy = len([s for s in stages if s['health_status'] == 'healthy'])
-        stages_warning = len([s for s in stages if s['health_status'] == 'warning'])
-        stages_delayed = len([s for s in stages if s['health_status'] == 'delayed'])
+        stages_healthy = len([s for s in stages if s['health_status'] == 'Healthy'])
+        stages_warning = len([s for s in stages if s['health_status'] == 'Warning'])
+        stages_delayed = len([s for s in stages if s['health_status'] == 'Delayed'])
         
         bottleneck_stage = None
-        delayed_stages = [s for s in stages if s['health_status'] == 'delayed']
+        delayed_stages = [s for s in stages if s['health_status'] == 'Delayed']
         if delayed_stages:
             bottleneck_stage = max(delayed_stages, key=lambda s: s['utilization_percentage'])['stage_name']
         

@@ -2,22 +2,23 @@
 
 A comprehensive Manufacturing Operations System designed to streamline production management, inventory tracking, and workflow optimization for manufacturing facilities.
 
-## 🚀 Features
+## Features
 
 ### Core Modules
 - **Dashboard** - Real-time overview of production metrics and KPIs
 - **Production Orders** - Create, track, and manage production orders
-- **WIP (Work in Progress) Board** - Visual Kanban-style tracking of production stages
+- **WIP (Work in Progress) Board** - Visual Kanban-style tracking of production stages with configurable workflows
 - **BOM (Bill of Materials) Planner** - Manage product components and material requirements
 - **Inventory Management** - Track raw materials, components, and finished goods
 - **Material Requests & Transfers** - Handle material requisitions and inter-department transfers
 - **Gate Entry** - Manage incoming and outgoing materials at facility gates
 - **QC (Quality Control)** - Quality inspection and approval workflows
 - **User Management** - Role-based access control and user profiles
+- **Settings** - Configurable system settings including WIP stages and workflows
 
 ### Technical Highlights
 - **Multi-language Support** - English, Hindi, Gujarati, Marathi, Punjabi, Tamil, Telugu, Kannada
-- **Real-time Updates** - Live production tracking and notifications
+- **Real-time Updates** - Live production tracking and notifications via WebSockets
 - **Modern UI/UX** - Built with React, TailwindCSS, and shadcn/ui components
 - **RESTful API** - FastAPI backend with comprehensive documentation
 - **Secure Authentication** - JWT-based authentication with refresh tokens
@@ -25,7 +26,7 @@ A comprehensive Manufacturing Operations System designed to streamline productio
 
 ---
 
-## 📋 Prerequisites
+## Prerequisites
 
 Before you begin, ensure you have the following installed:
 
@@ -43,7 +44,7 @@ Before you begin, ensure you have the following installed:
 
 ---
 
-## 🗄️ Database Setup (Supabase)
+## Database Setup (Supabase)
 
 ### Step 1: Create Supabase Project
 
@@ -58,7 +59,7 @@ Before you begin, ensure you have the following installed:
 
 ### Step 2: Get Your Credentials
 
-1. In your Supabase project, go to **Settings → API**
+1. In your Supabase project, go to **Settings > API**
 2. Copy the following values (you'll need them later):
    - **Project URL** (e.g., `https://xxxxxxxxxxxxx.supabase.co`)
    - **anon public** key (this is your `SUPABASE_KEY`)
@@ -75,33 +76,27 @@ You need to run all migration files in order to set up the database schema.
 **Execute migrations in this exact order:**
 
 ```
-001_inital_schema.sql          # Core tables (users, products, etc.)
-002_bom_schema.sql             # Bill of Materials tables
-002_password_reset_tokens.sql  # Password reset functionality
-003_inventory_schema.sql       # Inventory management tables
-004_production_orders.sql      # Production order tables
-005_wip_tracking.sql           # Work-in-progress tracking
-006_bom_enhancements.sql       # BOM improvements
-007_wip_alerts.sql             # Alert system for WIP
-008_inventory_items_enhanced.sql # Enhanced inventory features
-009_add_assigned_team.sql      # Team assignment fields
-010_add_archived_status.sql    # Archive functionality
-011_gate_entries.sql           # Gate entry management
+001_core_platform.sql              # Core tables (users, products, etc.)
+002_inventory_and_supply_chain.sql # Inventory, BOM, and Supply Chain tables
+003_orders_and_wip.sql             # Orders and WIP tracking tables
+004_monitoring_and_utilities.sql   # Monitoring, Alerts, and Utilities
+005_configurable_stages.sql        # Configurable WIP stages and workflows
+006_schema_fixes.sql               # Critical schema fixes and constraints
 ```
 
 **How to run each migration:**
-1. Open the migration file from `Backend/migrations/` folder
+1. Open the migration file from `Backend/migrations_consolidated/` folder
 2. Copy the entire SQL content
 3. Paste into Supabase SQL Editor
 4. Click **"Run"** or press `Ctrl+Enter`
 5. Verify success (should show "Success. No rows returned")
 6. Repeat for next migration file
 
-> ⚠️ **Important**: Run migrations in the exact order listed above to avoid dependency errors.
+> **Important**: Run migrations in the exact order listed above to avoid dependency errors.
 
 ---
 
-## 🔧 Backend Setup
+## Backend Setup
 
 ### Step 1: Clone Repository
 
@@ -211,7 +206,7 @@ The backend will be available at:
 
 ---
 
-## 🎨 Frontend Setup
+## Frontend Setup
 
 ### Step 1: Navigate to Frontend Directory
 
@@ -243,7 +238,7 @@ cp .env.example .env
 VITE_API_URL=http://localhost:8000/api/v1
 ```
 
-> 💡 If your backend runs on a different port, update the URL accordingly.
+> If your backend runs on a different port, update the URL accordingly.
 
 ### Step 4: Run Frontend Development Server
 
@@ -267,7 +262,7 @@ The frontend will be available at: **http://localhost:3000**
 
 ---
 
-## 📁 Project Structure
+## Project Structure
 
 ```
 Manufacturing_OS/
@@ -279,7 +274,7 @@ Manufacturing_OS/
 │   │   ├── core/                   # Core configurations
 │   │   ├── schemas/                # Pydantic models
 │   │   └── services/               # Business logic
-│   ├── migrations/                 # Database migrations
+│   ├── migrations_consolidated/    # Database migrations
 │   ├── tests/                      # Test files
 │   ├── requirements.txt            # Python dependencies
 │   └── .env.example               # Environment template
@@ -302,7 +297,7 @@ Manufacturing_OS/
 
 ---
 
-## 🛠️ Available Scripts
+## Available Scripts
 
 ### Backend
 ```bash
@@ -339,7 +334,7 @@ npm run build:analyze
 
 ---
 
-## 🔐 Default User Roles
+## Default User Roles
 
 The system supports the following roles:
 - **admin** - Full system access
@@ -349,7 +344,7 @@ The system supports the following roles:
 
 ---
 
-## 🌐 Multi-language Support
+## Multi-language Support
 
 The system supports 8 languages:
 - English (en)
@@ -365,7 +360,7 @@ Language can be changed from the user profile settings.
 
 ---
 
-## 🐛 Troubleshooting
+## Troubleshooting
 
 ### Backend Issues
 
@@ -409,7 +404,7 @@ npm run build
 
 ---
 
-## 📚 API Documentation
+## API Documentation
 
 Once the backend is running, visit:
 - **Swagger UI**: http://localhost:8000/docs
@@ -419,7 +414,7 @@ These provide interactive API documentation with the ability to test endpoints d
 
 ---
 
-## 🔌 WebSocket API
+## WebSocket API
 
 OMNIX supports real-time updates through WebSocket connections for live dashboard updates and notifications.
 
@@ -480,7 +475,7 @@ WebSocket connections include error handling for:
 
 ---
 
-## 🤝 Contributing
+## Contributing
 
 1. Fork the repository
 2. Create a feature branch (`git checkout -b feature/AmazingFeature`)
@@ -490,13 +485,13 @@ WebSocket connections include error handling for:
 
 ---
 
-## 📄 License
+## License
 
 This project is proprietary software. All rights reserved.
 
 ---
 
-## 📞 Support
+## Support
 
 For issues, questions, or contributions, please contact:
 - **Email**: support@surviant.com
@@ -504,7 +499,7 @@ For issues, questions, or contributions, please contact:
 
 ---
 
-## 🙏 Acknowledgments
+## Acknowledgments
 
 Built with:
 - [FastAPI](https://fastapi.tiangolo.com/) - Backend framework
@@ -516,4 +511,4 @@ Built with:
 
 ---
 
-**Made with ❤️ by Surviant LLC**
+**Made by Surviant LLC**

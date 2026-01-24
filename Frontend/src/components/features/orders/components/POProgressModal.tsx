@@ -258,16 +258,16 @@ export function POProgressModal({
     };
 
     const getStatusBadge = (status: string) => {
-        switch (status.toLowerCase()) {
-            case 'planned':
+        switch (status) {
+            case 'Planned':
                 return <Badge className="bg-blue-500">{status}</Badge>;
-            case 'in progress':
+            case 'In Progress':
                 return <Badge className="bg-emerald-500">{status}</Badge>;
-            case 'completed':
+            case 'Completed':
                 return <Badge className="bg-green-600">{status}</Badge>;
-            case 'on hold':
+            case 'On Hold':
                 return <Badge className="bg-yellow-500">{status}</Badge>;
-            case 'cancelled':
+            case 'Cancelled':
                 return <Badge className="bg-red-500">{status}</Badge>;
             default:
                 return <Badge>{status}</Badge>;

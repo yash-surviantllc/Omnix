@@ -64,100 +64,106 @@ export function OrderActionsDropdown({
           <MoreVertical className="h-4 w-4" />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-56 bg-white dark:bg-zinc-950 z-[9999] border border-zinc-200 dark:border-zinc-800 shadow-xl max-h-[300px] overflow-y-auto" collisionPadding={16}>
-        <DropdownMenuItem onClick={() => handleAction('view')} className="cursor-pointer hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors duration-200">
+      <DropdownMenuContent
+        align="end"
+        className="w-64 bg-white dark:bg-zinc-950 z-50 border border-zinc-200 dark:border-zinc-800 shadow-xl !max-h-[300px] !overflow-y-auto"
+        style={{ maxHeight: '300px', overflowY: 'auto' }}
+        collisionPadding={20}
+      >
+        <DropdownMenuItem onClick={() => handleAction('view')} className="!cursor-pointer hover:!bg-zinc-100 focus:!bg-zinc-100 data-[highlighted]:!bg-zinc-100 dark:hover:!bg-zinc-800 dark:focus:!bg-zinc-800 dark:data-[highlighted]:!bg-zinc-800 transition-colors duration-200 outline-none" style={{ cursor: 'pointer' }}>
           <Eye className="h-4 w-4 mr-2 text-zinc-500" />
           {t.viewDetails}
         </DropdownMenuItem>
 
-        <DropdownMenuItem onClick={() => handleAction('edit')} className="cursor-pointer hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors duration-200">
+        <DropdownMenuItem onClick={() => handleAction('edit')} className="!cursor-pointer hover:!bg-zinc-100 focus:!bg-zinc-100 data-[highlighted]:!bg-zinc-100 dark:hover:!bg-zinc-800 dark:focus:!bg-zinc-800 dark:data-[highlighted]:!bg-zinc-800 transition-colors duration-200 outline-none" style={{ cursor: 'pointer' }}>
           <Edit className="h-4 w-4 mr-2 text-zinc-500" />
           {t.editOrder}
         </DropdownMenuItem>
 
-        <DropdownMenuItem onClick={() => handleAction('duplicate')} className="cursor-pointer hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors duration-200">
+        <DropdownMenuItem onClick={() => handleAction('duplicate')} className="!cursor-pointer hover:!bg-zinc-100 focus:!bg-zinc-100 data-[highlighted]:!bg-zinc-100 dark:hover:!bg-zinc-800 dark:focus:!bg-zinc-800 dark:data-[highlighted]:!bg-zinc-800 transition-colors duration-200 outline-none" style={{ cursor: 'pointer' }}>
           <FileText className="h-4 w-4 mr-2 text-zinc-500" />
           {t.duplicateOrder}
         </DropdownMenuItem>
 
-        <DropdownMenuItem onClick={() => handleAction('print')} className="cursor-pointer hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors duration-200">
+        <DropdownMenuItem onClick={() => handleAction('print')} className="!cursor-pointer hover:!bg-zinc-100 focus:!bg-zinc-100 data-[highlighted]:!bg-zinc-100 dark:hover:!bg-zinc-800 dark:focus:!bg-zinc-800 dark:data-[highlighted]:!bg-zinc-800 transition-colors duration-200 outline-none" style={{ cursor: 'pointer' }}>
           <Printer className="h-4 w-4 mr-2 text-zinc-500" />
           {t.printOrder}
         </DropdownMenuItem>
 
         <DropdownMenuSeparator />
 
-        <DropdownMenuItem onClick={() => handleAction('trackProgress')}>
+        <DropdownMenuItem onClick={() => handleAction('trackProgress')} className="!cursor-pointer hover:!bg-zinc-100 focus:!bg-zinc-100 data-[highlighted]:!bg-zinc-100 dark:hover:!bg-zinc-800 dark:focus:!bg-zinc-800 dark:data-[highlighted]:!bg-zinc-800 outline-none" style={{ cursor: 'pointer' }}>
           <Clock className="h-4 w-4 mr-2 text-zinc-500" />
           {t.trackProgress}
         </DropdownMenuItem>
 
-        <DropdownMenuItem onClick={() => handleAction('productionPlan')}>
+        <DropdownMenuItem onClick={() => handleAction('productionPlan')} className="!cursor-pointer hover:!bg-zinc-100 focus:!bg-zinc-100 data-[highlighted]:!bg-zinc-100 dark:hover:!bg-zinc-800 dark:focus:!bg-zinc-800 dark:data-[highlighted]:!bg-zinc-800 outline-none" style={{ cursor: 'pointer' }}>
           <Clock className="h-4 w-4 mr-2 text-zinc-500" />
           {t.productionPlan}
         </DropdownMenuItem>
 
-        <DropdownMenuItem onClick={() => handleAction('assignTeam')}>
+        <DropdownMenuItem onClick={() => handleAction('assignTeam')} className="!cursor-pointer hover:!bg-zinc-100 focus:!bg-zinc-100 data-[highlighted]:!bg-zinc-100 dark:hover:!bg-zinc-800 dark:focus:!bg-zinc-800 dark:data-[highlighted]:!bg-zinc-800 outline-none" style={{ cursor: 'pointer' }}>
           <Users className="h-4 w-4 mr-2 text-zinc-500" />
           {t.assignTeam}
         </DropdownMenuItem>
 
         <DropdownMenuItem
           onClick={() => handleAction('createWorkingOrder')}
-          className="text-emerald-700 focus:text-emerald-800 focus:bg-emerald-50"
+          className="!cursor-pointer text-emerald-700 hover:!bg-emerald-50 focus:!bg-emerald-50 data-[highlighted]:!bg-emerald-50 focus:text-emerald-800 outline-none"
+          style={{ cursor: 'pointer' }}
         >
           <ClipboardList className="h-4 w-4 mr-2 text-emerald-600" />
           {t.createWorkingOrder}
         </DropdownMenuItem>
 
-        <DropdownMenuItem onClick={() => handleAction('addNotes')}>
+        <DropdownMenuItem onClick={() => handleAction('addNotes')} className="!cursor-pointer hover:!bg-zinc-100 focus:!bg-zinc-100 data-[highlighted]:!bg-zinc-100 dark:hover:!bg-zinc-800 dark:focus:!bg-zinc-800 dark:data-[highlighted]:!bg-zinc-800 outline-none" style={{ cursor: 'pointer' }}>
           <MessageSquare className="h-4 w-4 mr-2 text-zinc-500" />
           {t.addNotes}
         </DropdownMenuItem>
 
         <DropdownMenuSeparator />
 
-        <DropdownMenuItem onClick={() => handleAction('downloadBOM')}>
+        <DropdownMenuItem onClick={() => handleAction('downloadBOM')} className="!cursor-pointer hover:!bg-zinc-100 focus:!bg-zinc-100 data-[highlighted]:!bg-zinc-100 dark:hover:!bg-zinc-800 dark:focus:!bg-zinc-800 dark:data-[highlighted]:!bg-zinc-800 outline-none" style={{ cursor: 'pointer' }}>
           <FileText className="h-4 w-4 mr-2 text-zinc-500" />
           {t.downloadBOM}
         </DropdownMenuItem>
 
-        <DropdownMenuItem onClick={() => handleAction('exportExcel')}>
+        <DropdownMenuItem onClick={() => handleAction('exportExcel')} className="!cursor-pointer hover:!bg-zinc-100 focus:!bg-zinc-100 data-[highlighted]:!bg-zinc-100 dark:hover:!bg-zinc-800 dark:focus:!bg-zinc-800 dark:data-[highlighted]:!bg-zinc-800 outline-none" style={{ cursor: 'pointer' }}>
           <Package className="h-4 w-4 mr-2 text-zinc-500" />
           {t.exportExcel}
         </DropdownMenuItem>
 
-        <DropdownMenuItem onClick={() => handleAction('generateQR')}>
+        <DropdownMenuItem onClick={() => handleAction('generateQR')} className="!cursor-pointer hover:!bg-zinc-100 focus:!bg-zinc-100 data-[highlighted]:!bg-zinc-100 dark:hover:!bg-zinc-800 dark:focus:!bg-zinc-800 dark:data-[highlighted]:!bg-zinc-800 outline-none" style={{ cursor: 'pointer' }}>
           <QrCode className="h-4 w-4 mr-2 text-zinc-500" />
           {t.generateQR}
         </DropdownMenuItem>
 
-        <DropdownMenuItem onClick={() => handleAction('sendToProduction')}>
+        <DropdownMenuItem onClick={() => handleAction('sendToProduction')} className="!cursor-pointer hover:!bg-zinc-100 focus:!bg-zinc-100 data-[highlighted]:!bg-zinc-100 dark:hover:!bg-zinc-800 dark:focus:!bg-zinc-800 dark:data-[highlighted]:!bg-zinc-800 outline-none" style={{ cursor: 'pointer' }}>
           <Send className="h-4 w-4 mr-2 text-zinc-500" />
           {t.sendToProduction}
         </DropdownMenuItem>
 
-        <DropdownMenuItem onClick={() => handleAction('requestMaterials')}>
+        <DropdownMenuItem onClick={() => handleAction('requestMaterials')} className="!cursor-pointer hover:!bg-zinc-100 focus:!bg-zinc-100 data-[highlighted]:!bg-zinc-100 dark:hover:!bg-zinc-800 dark:focus:!bg-zinc-800 dark:data-[highlighted]:!bg-zinc-800 outline-none" style={{ cursor: 'pointer' }}>
           <Calendar className="h-4 w-4 mr-2 text-zinc-500" />
           {t.requestMaterials}
         </DropdownMenuItem>
 
-        <DropdownMenuItem onClick={() => handleAction('reschedule')}>
+        <DropdownMenuItem onClick={() => handleAction('reschedule')} className="!cursor-pointer hover:!bg-zinc-100 focus:!bg-zinc-100 data-[highlighted]:!bg-zinc-100 dark:hover:!bg-zinc-800 dark:focus:!bg-zinc-800 dark:data-[highlighted]:!bg-zinc-800 outline-none" style={{ cursor: 'pointer' }}>
           <Clock className="h-4 w-4 mr-2 text-zinc-500" />
           {t.reschedule}
         </DropdownMenuItem>
 
-        <DropdownMenuItem onClick={() => handleAction('share')}>
+        <DropdownMenuItem onClick={() => handleAction('share')} className="!cursor-pointer hover:!bg-zinc-100 focus:!bg-zinc-100 data-[highlighted]:!bg-zinc-100 dark:hover:!bg-zinc-800 dark:focus:!bg-zinc-800 dark:data-[highlighted]:!bg-zinc-800 outline-none" style={{ cursor: 'pointer' }}>
           <Share2 className="h-4 w-4 mr-2 text-zinc-500" />
           {t.shareOrder}
         </DropdownMenuItem>
 
-        <DropdownMenuItem onClick={() => handleAction('viewHistory')}>
+        <DropdownMenuItem onClick={() => handleAction('viewHistory')} className="!cursor-pointer hover:!bg-zinc-100 focus:!bg-zinc-100 data-[highlighted]:!bg-zinc-100 dark:hover:!bg-zinc-800 dark:focus:!bg-zinc-800 dark:data-[highlighted]:!bg-zinc-800 outline-none" style={{ cursor: 'pointer' }}>
           <BarChart3 className="h-4 w-4 mr-2 text-zinc-500" />
           {t.viewHistory}
         </DropdownMenuItem>
 
-        <DropdownMenuItem onClick={() => handleAction('archive')}>
+        <DropdownMenuItem onClick={() => handleAction('archive')} className="!cursor-pointer hover:!bg-zinc-100 focus:!bg-zinc-100 data-[highlighted]:!bg-zinc-100 dark:hover:!bg-zinc-800 dark:focus:!bg-zinc-800 dark:data-[highlighted]:!bg-zinc-800 outline-none" style={{ cursor: 'pointer' }}>
           <Archive className="h-4 w-4 mr-2 text-zinc-500" />
           {t.archiveOrder}
         </DropdownMenuItem>
@@ -166,7 +172,8 @@ export function OrderActionsDropdown({
 
         <DropdownMenuItem
           onClick={() => handleAction('priority')}
-          className="text-amber-600 focus:text-amber-700 focus:bg-amber-50"
+          className="!cursor-pointer text-amber-600 hover:!bg-amber-50 focus:!bg-amber-50 data-[highlighted]:!bg-amber-50 focus:text-amber-700 outline-none"
+          style={{ cursor: 'pointer' }}
         >
           <Star className="h-4 w-4 mr-2" />
           {t.markPriority}
@@ -174,7 +181,8 @@ export function OrderActionsDropdown({
 
         <DropdownMenuItem
           onClick={() => handleAction('cancel')}
-          className="text-orange-600 focus:text-orange-700 focus:bg-orange-50"
+          className="!cursor-pointer text-orange-600 hover:!bg-orange-50 focus:!bg-orange-50 data-[highlighted]:!bg-orange-50 focus:text-orange-700 outline-none"
+          style={{ cursor: 'pointer' }}
         >
           <XCircle className="h-4 w-4 mr-2" />
           {t.cancelOrder}
@@ -182,7 +190,8 @@ export function OrderActionsDropdown({
 
         <DropdownMenuItem
           onClick={() => handleAction('delete')}
-          className="text-red-600 focus:text-red-700 focus:bg-red-50"
+          className="!cursor-pointer text-red-600 hover:!bg-red-50 focus:!bg-red-50 data-[highlighted]:!bg-red-50 focus:text-red-700 outline-none"
+          style={{ cursor: 'pointer' }}
         >
           <Trash2 className="h-4 w-4 mr-2" />
           {t.deleteOrder}

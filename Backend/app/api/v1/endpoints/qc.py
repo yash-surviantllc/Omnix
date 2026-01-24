@@ -1,5 +1,6 @@
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 from app.schemas.qc import (
     QCInspectionCreate, QCInspectionResponse, QCStats
 )
@@ -7,6 +8,17 @@ from app.services.qc_service import QCService
 from app.api.deps import get_current_user
 
 router = APIRouter()
+
+class OrderLookupResponse(BaseModel):
+    order_type: str  # 'purchase_order' or 'work_order'
+    order_id: str
+    order_number: str
+    product_id: str
+    product_name: Optional[str] = None
+    product_code: Optional[str] = None
+    quantity: float
+    completed_qty: float = 0
+    status: str
 
 @router.post("/", response_model=QCInspectionResponse)
 async def create_inspection(
@@ -47,6 +59,22 @@ async def get_qc_stats(
     """
     try:
         return await QCService.get_stats()
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@router.get("/lookup/{order_number}", response_model=OrderLookupResponse)
+async def lookup_order(
+    order_number: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Lookup a Purchase Order or Working Order by number.
+    Returns order details for QC inspection.
+    """
+    try:
+        return await QCService.lookup_order(order_number)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 

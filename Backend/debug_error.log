@@ -1,0 +1,8 @@
+Error in create_working_order: {'message': 'new row for relation "work_orders" violates check constraint "work_orders_priority_check"', 'code': '23514', 'hint': None, 'details': 'Failing row contains (f1273138-c06e-408a-ac26-f77df075654d, WO-2026-0014, 4adfbc49-66b1-4398-a483-47a7e228bebb, fcbf813c-06d0-47d1-9e51-d35f5ff7dcd1, 5.000, 0.000, 0.000, pcs, Pending, Normal, Cutting, null, Pending Assignment, Pending Assignment, 2026-01-22 23:17:29.304483+00, null, null, null, Morning, WO Reproduction Note, 2026-01-22 17:47:28.531342+00, 2026-01-22 17:47:28.531342+00, 9976bce0-7162-4b49-9ae1-93e7e866d72f).'}
+Traceback (most recent call last):
+  File "C:\Work\Inventory Management\Omnix\Backend\app\services\wip_service.py", line 63, in create_working_order
+    if p.upper() in ['LOW', 'MEDIUM', 'HIGH', 'URGENT']:
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python312\Lib\site-packages\postgrest\_sync\request_builder.py", line 53, in execute
+    raise APIError(dict(json_obj))
+postgrest.exceptions.APIError: {'message': 'new row for relation "work_orders" violates check constraint "work_orders_priority_check"', 'code': '23514', 'hint': None, 'details': 'Failing row contains (f1273138-c06e-408a-ac26-f77df075654d, WO-2026-0014, 4adfbc49-66b1-4398-a483-47a7e228bebb, fcbf813c-06d0-47d1-9e51-d35f5ff7dcd1, 5.000, 0.000, 0.000, pcs, Pending, Normal, Cutting, null, Pending Assignment, Pending Assignment, 2026-01-22 23:17:29.304483+00, null, null, null, Morning, WO Reproduction Note, 2026-01-22 17:47:28.531342+00, 2026-01-22 17:47:28.531342+00, 9976bce0-7162-4b49-9ae1-93e7e866d72f).'}

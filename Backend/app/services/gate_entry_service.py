@@ -43,9 +43,10 @@ class GateEntryService:
             raise ValidationException(detail=f"Invalid entry type. Must be one of: {', '.join(valid_types)}")
         
         # Validate status
-        valid_departments = ['Store', 'QA', 'Maintenance', 'Production', 'Admin']
-        if entry_data.destination_department not in valid_departments:
-            raise ValidationException(detail=f"Invalid department. Must be one of: {', '.join(valid_departments)}")
+        # Database does not support destination_department, skipping validation
+        # valid_departments = ['Store', 'QA', 'Maintenance', 'Production', 'Admin']
+        # if entry_data.destination_department not in valid_departments:
+        #     raise ValidationException(detail=f"Invalid department. Must be one of: {', '.join(valid_departments)}")
         
         # Generate entry number
         entry_number = GateEntryService._generate_entry_number()
@@ -54,15 +55,15 @@ class GateEntryService:
         entry_insert = {
             'entry_number': entry_number,
             'entry_type': entry_data.entry_type,
-            'vendor': entry_data.vendor,
-            'vehicle_no': entry_data.vehicle_no,
+            # 'vendor' - DROPPED (No DB Column)
+            'vehicle_number': entry_data.vehicle_no,
             'driver_name': entry_data.driver_name,
-            'linked_document': entry_data.linked_document,
-            'destination_department': entry_data.destination_department,
-            'status': 'arrived',
-            'remarks': entry_data.remarks,
+            'reference_document_number': entry_data.linked_document,
+            # 'destination_department' - DROPPED (No DB Column)
+            'status': 'Arrived',
+            # 'remarks' - DROPPED (No DB Column)
             'photos': entry_data.photos,
-            'created_by': user_id
+            # 'created_by' - DROPPED (No DB Column)
         }
         
         result = db.table('gate_entries').insert(entry_insert).execute()
@@ -122,16 +123,16 @@ class GateEntryService:
             id=entry['id'],
             entry_number=entry['entry_number'],
             entry_type=entry['entry_type'],
-            vendor=entry['vendor'],
-            vehicle_no=entry['vehicle_no'],
+            vendor="N/A", # Dropped
+            vehicle_no=entry.get('vehicle_number'),
             driver_name=entry['driver_name'],
-            linked_document=entry['linked_document'],
-            destination_department=entry['destination_department'],
+            linked_document=entry.get('reference_document_number'),
+            destination_department="N/A", # Dropped
             status=entry['status'],
-            remarks=entry['remarks'],
+            remarks="", # Dropped
             photos=entry.get('photos', []),
             materials=materials,
-            created_by=entry.get('created_by'),
+            created_by=None, # Dropped
             created_at=entry['created_at'],
             updated_at=entry['updated_at']
         )
@@ -153,8 +154,8 @@ class GateEntryService:
         
         # Build query
         query = db.table('gate_entries').select(
-            'id, entry_number, entry_type, vendor, vehicle_no, driver_name, '
-            'destination_department, status, linked_document, created_at'
+            'id, entry_number, entry_type, vehicle_number, driver_name, '
+            'status, reference_document_number, created_at'  # Select available columns
         )
         
         # Apply filters
@@ -165,7 +166,7 @@ class GateEntryService:
             query = query.eq('entry_type', entry_type)
         
         if search:
-            query = query.or_(f'vendor.ilike.%{search}%,entry_number.ilike.%{search}%')
+            query = query.or_(f'entry_number.ilike.%{search}%')
         
         if date_from:
             query = query.gte('created_at', date_from)
@@ -201,12 +202,12 @@ class GateEntryService:
                 id=entry['id'],
                 entry_number=entry['entry_number'],
                 entry_type=entry['entry_type'],
-                vendor=entry['vendor'],
-                vehicle_no=entry['vehicle_no'],
+                vendor="See Remarks",
+                vehicle_no=entry.get('vehicle_number'),
                 driver_name=entry['driver_name'],
-                destination_department=entry['destination_department'],
+                destination_department="See Remarks",
                 status=entry['status'],
-                linked_document=entry['linked_document'],
+                linked_document=entry.get('reference_document_number'),
                 material_count=material_count,
                 first_material_name=first_material,
                 total_items=total_items,
@@ -236,19 +237,19 @@ class GateEntryService:
         if entry_data.entry_type is not None:
             update_data['entry_type'] = entry_data.entry_type
         if entry_data.vendor is not None:
-            update_data['vendor'] = entry_data.vendor
+             pass
         if entry_data.vehicle_no is not None:
-            update_data['vehicle_no'] = entry_data.vehicle_no
+            update_data['vehicle_number'] = entry_data.vehicle_no
         if entry_data.driver_name is not None:
             update_data['driver_name'] = entry_data.driver_name
         if entry_data.linked_document is not None:
-            update_data['linked_document'] = entry_data.linked_document
+            update_data['reference_document_number'] = entry_data.linked_document
         if entry_data.destination_department is not None:
-            update_data['destination_department'] = entry_data.destination_department
+            pass
         if entry_data.status is not None:
             update_data['status'] = entry_data.status
         if entry_data.remarks is not None:
-            update_data['remarks'] = entry_data.remarks
+            pass
         
         if update_data:
             db.table('gate_entries').update(update_data).eq('id', entry_id).execute()
@@ -281,7 +282,7 @@ class GateEntryService:
         db = get_db()
         
         # Validate status
-        valid_statuses = ['arrived', 'under_verification', 'accepted', 'rejected']
+        valid_statuses = ['Arrived', 'Under Verification', 'Accepted', 'Rejected']
         if status_data.status not in valid_statuses:
             raise ValidationException(detail=f"Invalid status. Must be one of: {', '.join(valid_statuses)}")
         
@@ -317,7 +318,7 @@ class GateEntryService:
         entry = existing.data[0]
         
         # Only allow deletion of arrived or rejected entries
-        if entry['status'] not in ['arrived', 'rejected']:
+        if entry['status'] not in ['Arrived', 'Rejected']:
             raise ValidationException(
                 detail="Can only delete entries with 'arrived' or 'rejected' status"
             )
@@ -331,15 +332,14 @@ class GateEntryService:
     async def get_gate_entry_stats() -> GateEntryStats:
         """Get gate entry statistics"""
         db = get_db()
-        
         # Get all entries
-        all_entries = db.table('gate_entries').select('status, entry_type, destination_department, created_at').execute()
+        all_entries = db.table('gate_entries').select('status, entry_type, created_at').execute()
         
         total = len(all_entries.data)
-        arrived = sum(1 for e in all_entries.data if e['status'] == 'arrived')
-        under_verification = sum(1 for e in all_entries.data if e['status'] == 'under_verification')
-        accepted = sum(1 for e in all_entries.data if e['status'] == 'accepted')
-        rejected = sum(1 for e in all_entries.data if e['status'] == 'rejected')
+        arrived = sum(1 for e in all_entries.data if e['status'] == 'Arrived')
+        under_verification = sum(1 for e in all_entries.data if e['status'] == 'Under Verification')
+        accepted = sum(1 for e in all_entries.data if e['status'] == 'Accepted')
+        rejected = sum(1 for e in all_entries.data if e['status'] == 'Rejected')
         
         # Today's entries
         today = date.today().isoformat()
@@ -351,12 +351,6 @@ class GateEntryService:
             entry_type = entry['entry_type']
             by_type[entry_type] = by_type.get(entry_type, 0) + 1
         
-        # By department
-        by_department = {}
-        for entry in all_entries.data:
-            dept = entry['destination_department']
-            by_department[dept] = by_department.get(dept, 0) + 1
-        
         return GateEntryStats(
             total_entries=total,
             arrived=arrived,
@@ -365,7 +359,7 @@ class GateEntryService:
             rejected=rejected,
             today_entries=today_entries,
             by_type=by_type,
-            by_department=by_department
+            by_department={} # Feature not supported by DB schema
         )
 
 

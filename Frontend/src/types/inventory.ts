@@ -10,7 +10,7 @@ export interface InventoryItem {
   unit: string;
   location: string;
   reorderLevel: number;
-  status: 'sufficient' | 'low' | 'critical';
+  status: 'Sufficient' | 'Low Stock' | 'Critical' | 'Out of Stock';
   unitCost: number;
 }
 
@@ -46,7 +46,7 @@ export interface InventoryDisplayItem {
   free: string;
   location: string;
   reorderLevel: string;
-  status: 'sufficient' | 'low' | 'critical';
+  status: 'Sufficient' | 'Low Stock' | 'Critical' | 'Out of Stock';
   unit: string;
   availableNum: number;
   freeNum: number;

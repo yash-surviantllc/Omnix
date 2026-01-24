@@ -85,6 +85,11 @@ class WorkingOrderListItem(BaseModel):
     created_at: datetime
     updated_at: datetime
     
+    # Enhanced fields for list view optimization
+    product_name: Optional[str] = None
+    product_code: Optional[str] = None
+    purchase_order_number: Optional[str] = None
+    
     class Config:
         from_attributes = True
 

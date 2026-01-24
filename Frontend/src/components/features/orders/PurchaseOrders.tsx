@@ -5,17 +5,18 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useState, useEffect, useRef } from 'react';
 import { OrderActionsDropdown } from './components/OrderActionsDropdown';
-import { purchaseOrdersApi, type PurchaseOrder } from '@/lib/api/production-orders';
+import { purchaseOrdersApi, type PurchaseOrder } from '@/lib/api/purchase-orders';
 import { productsApi } from '@/lib/api/bom';
-import { wipApi, type WorkingOrderCreate } from '@/lib/api/wip';
+import { wipApi } from '@/lib/api/wip';
 import { useAuthStore } from '@/stores/authStore';
 import { NewOrderModal } from './components/NewOrderModal';
 
 type PurchaseOrdersProps = {
   language: 'en' | 'hi' | 'kn' | 'ta' | 'te' | 'mr' | 'gu' | 'pa';
+  onNavigate?: (view: string) => void;
 };
 
-export function PurchaseOrders({ language }: PurchaseOrdersProps) {
+export function PurchaseOrders({ language, onNavigate }: PurchaseOrdersProps) {
   // Get auth status
   const { isAuthenticated } = useAuthStore();
 
@@ -59,23 +60,7 @@ export function PurchaseOrders({ language }: PurchaseOrdersProps) {
   const [noteText, setNoteText] = useState('');
   const [selectedTeam, setSelectedTeam] = useState('');
   const [newDueDate, setNewDueDate] = useState('');
-  const [showNewOrderModal, setShowNewOrderModal] = useState(false); /* Working Order State */
-  const [showCreateWorkingOrderModal, setShowCreateWorkingOrderModal] = useState(false);
-  const [workingOrderData, setWorkingOrderData] = useState<{
-    operation: string;
-    workstation?: string;
-    assignedTeam?: string;
-    targetQty: string;
-    scheduledStart?: string;
-    scheduledEnd?: string;
-    priority: string;
-    notes: string;
-  }>({
-    operation: '',
-    targetQty: '',
-    priority: 'Medium',
-    notes: ''
-  });
+  const [showNewOrderModal, setShowNewOrderModal] = useState(false);
   const [editOrderData, setEditOrderData] = useState({
     quantity: '',
     due_date: '',
@@ -87,8 +72,8 @@ export function PurchaseOrders({ language }: PurchaseOrdersProps) {
     dueDate: '',
     priority: 'MEDIUM',
     notes: '',
-    startTime: '',
-    endTime: ''
+    startDate: '',
+    endDate: ''
   });
   const [associatedWorkOrders, setAssociatedWorkOrders] = useState<any[]>([]);
 
@@ -233,14 +218,14 @@ export function PurchaseOrders({ language }: PurchaseOrdersProps) {
     kn: {
       title: 'उत्पादन आदेश',
       search: 'ऑर्डर ಖೋಜಿಸಿ...',
-      filter: 'फ़िल्टर',
+      filter: 'ಫಿಲ್ಟರ್',
       newOrder: 'ಹೊಸ ಆದೇಶ',
       order: 'ಆದೇಶ',
-      product: 'उत्पाद',
+      product: 'ಉತ್ಪಾದ',
       quantity: 'ಪ್ರಮಾಣ',
-      stage: 'ಸ್ಟೇಜ',
+      stage: 'ಸ್ಟೇಜ್',
       status: 'ಸ್ಥಿತಿ',
-      dueDate: 'ನಿಯತ ತಾರೀಖ',
+      dueDate: 'ನಿಯತ ತಾರೀಖು',
       actions: 'ಕ್ರಿಯೆಗಳು',
       orderPriority: 'ಆದ್ಯತೆ',
       normal: 'Normal',
@@ -250,21 +235,21 @@ export function PurchaseOrders({ language }: PurchaseOrdersProps) {
       viewDetails: 'ವಿವರಗಳನ್ನು ನೋಡಿ',
       editOrder: 'ಆದೇಶವನ್ನು ಸಂಪಾದಿಸಿ',
       duplicateOrder: 'ಆದೇಶವನ್ನು ನಕಲಿಸಿ',
-      printOrder: 'ಆದೇಶ ಮುದ್ರಿಸಿ',
-      trackProgress: 'ಪ್ರಗತಿಯನ್ನು ಟ್ರ್ಯಾಕ್ ಮಾಡಿ',
-      productionPlan: 'ಉತ್ಪಾದನಾ ಯೋಜನೆ',
-      assignTeam: 'ತಂಡವನ್ನು ನೇಮಿಸಿ',
-      addNotes: 'ಟಿಪ್ಪಣಿಗಳನ್ನು ಸೇರಿಸಿ',
+      printOrder: 'Print Order',
+      trackProgress: 'Track Progress',
+      productionPlan: 'Production Plan',
+      assignTeam: 'Assign Team',
+      addNotes: 'Add Notes',
       downloadBOM: 'BOM ಡೌನ್‌ಲೋಡ್ ಮಾಡಿ',
-      exportExcel: 'ಎಕ್ಸೆಲ್‌ಗೆ ರಫ್ತು ಮಾಡಿ',
+      exportExcel: 'Export Excel',
       generateQR: 'QR ಕೋಡ್ ರಚಿಸಿ',
-      sendToProduction: 'ಉತ್ಪಾದನೆಗೆ ಕಳುಹಿಸಿ',
-      requestMaterials: 'ಸಾಮಗ್ರಿಗಳನ್ನು ಕೇಳಿ',
-      reschedule: 'ಪುನರ್ವೇಷ್ಟಿತ ವೇಳಾಪಟ್ಟಿ',
-      shareOrder: 'ಆದೇಶವನ್ನು ಹಂಚಿಕೊಳ್ಳಿ',
-      viewHistory: 'ಇತಿಹಾಸವನ್ನು ನೋಡಿ',
-      archiveOrder: 'ಆದೇಶವನ್ನು ಸಂಗ್ರಹಿಸಿ',
-      markPriority: 'ಆದ್ಯತೆ ಎಂದು ಗುರುತಿಸಿ',
+      sendToProduction: 'Send to Production',
+      requestMaterials: 'Request Materials',
+      reschedule: 'Reschedule',
+      shareOrder: 'Share Order',
+      viewHistory: 'View History',
+      archiveOrder: 'Archive Order',
+      markPriority: 'ಪ್ರಾಧಾನ್ಯತಗಾ ಗುರುತಿಸಿ',
       cancelOrder: 'ಆದೇಶವನ್ನು ರದ್ದುಗೊಳಿಸಿ',
       deleteOrder: 'ಆದೇಶವನ್ನು ಅಳಿಸಿ',
       createWorkingOrder: 'ವರ್ಕಿಂಗ್ ಆರ್ಡರ್ ರಚಿಸಿ',
@@ -739,17 +724,21 @@ export function PurchaseOrders({ language }: PurchaseOrdersProps) {
     }
 
     if (action === 'createWorkingOrder') {
-      setWorkingOrderData({
-        operation: '',
-        workstation: '',
-        assignedTeam: '',
-        targetQty: order?.quantity?.toString() || '',
-        scheduledStart: '',
-        scheduledEnd: '',
-        priority: 'Medium',
-        notes: ''
-      });
-      setShowCreateWorkingOrderModal(true);
+      // Navigate to Working Order screen - the standard form for creating working orders
+      if (onNavigate) {
+        // Store the selected PO ID in sessionStorage for the Working Order screen to pick up
+        if (order) {
+          sessionStorage.setItem('createWorkingOrderForPO', JSON.stringify({
+            id: order.id,
+            order_number: order.order_number,
+            product_name: order.product_name,
+            quantity: order.quantity,
+            unit: order.unit
+          }));
+        }
+        onNavigate('working-order');
+      }
+      return;
     } else {
       setActiveModal(action);
     }
@@ -770,8 +759,8 @@ export function PurchaseOrders({ language }: PurchaseOrdersProps) {
       dueDate: '',
       priority: 'MEDIUM',
       notes: '',
-      startTime: '',
-      endTime: ''
+      startDate: '',
+      endDate: ''
     });
   };
 
@@ -788,12 +777,15 @@ export function PurchaseOrders({ language }: PurchaseOrdersProps) {
       setIsLoading(true);
       const itemsToCreate = newOrderData.items
         .filter((item: any) => item.product && item.quantity)
-        .map((item: any) => ({
-          product_id: item.product,
-          quantity: parseFloat(item.quantity),
-          unit: 'pcs', // Default unit
-          notes: item.notes || undefined
-        }));
+        .map((item: any) => {
+          const product = products.find(p => p.id === item.product);
+          return {
+            product_id: item.product,
+            quantity: parseFloat(item.quantity),
+            unit: product?.unit || 'pcs',
+            notes: item.notes || undefined
+          };
+        });
 
       if (itemsToCreate.length === 0) {
         alert(language === 'en' ? '⚠️ Please add at least one product with quantity' : '⚠️ कृपया कम से कम एक उत्पाद मात्रा के साथ जोड़ें');
@@ -803,10 +795,10 @@ export function PurchaseOrders({ language }: PurchaseOrdersProps) {
 
       await purchaseOrdersApi.createMultiSkuOrder({
         due_date: newOrderData.dueDate,
-        priority: newOrderData.priority,
+        priority: newOrderData.priority.toUpperCase(),
         notes: newOrderData.notes || undefined,
-        start_time: newOrderData.startTime ? newOrderData.startTime : undefined,
-        end_time: newOrderData.endTime ? newOrderData.endTime : undefined,
+        start_date: newOrderData.startDate ? newOrderData.startDate : undefined,
+        end_date: newOrderData.endDate ? newOrderData.endDate : undefined,
         items: itemsToCreate
       });
 
@@ -1940,202 +1932,6 @@ export function PurchaseOrders({ language }: PurchaseOrdersProps) {
           translations={t}
           onProductCreated={fetchProducts}
         />
-      )}
-
-      {/* Create Working Order Modal */}
-      {showCreateWorkingOrderModal && selectedOrder && (
-        <>
-          <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-lg shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
-              {/* Modal Header */}
-              <div className="bg-emerald-600 text-white p-4 flex items-center justify-between rounded-t-lg">
-                <h2 className="text-xl font-semibold">
-                  {language === 'en' ? 'Create New Work Order' : 'नया वर्किंग ऑर्डर बनाएं'}
-                </h2>
-                <button
-                  onClick={() => setShowCreateWorkingOrderModal(false)}
-                  className="text-white hover:bg-emerald-700 p-1 rounded-full text-xl"
-                >
-                  <XCircle className="w-6 h-6" />
-                </button>
-              </div>
-
-              <Card className="p-6 border-0 shadow-none">
-                <div className="space-y-4">
-                  {/* Purchase Order Read-only */}
-                  <div>
-                    <label className="block text-sm font-medium mb-1">
-                      {language === 'en' ? 'Purchase Order' : 'खरीद आदेश'} <span className="text-red-500">*</span>
-                    </label>
-                    <div className="p-2 border border-zinc-200 bg-zinc-50 rounded-md text-zinc-700">
-                      {selectedOrder.order_number}
-                    </div>
-                  </div>
-
-                  {/* Operation */}
-                  <div>
-                    <label className="block text-sm font-medium mb-1">
-                      {language === 'en' ? 'Operation' : 'ऑपरेशन'} <span className="text-red-500">*</span>
-                    </label>
-                    <select
-                      value={workingOrderData.operation}
-                      onChange={(e) => setWorkingOrderData(prev => ({ ...prev, operation: e.target.value }))}
-                      className="w-full p-2 border border-zinc-300 rounded-md"
-                    >
-                      <option value="">{language === 'en' ? 'Select Operation...' : 'ऑपरेशन चुनें...'}</option>
-                      <option value="Cutting">Cutting</option>
-                      <option value="Sewing">Sewing</option>
-                      <option value="Finishing">Finishing</option>
-                      <option value="Packing">Packing</option>
-                    </select>
-                  </div>
-
-                  {/* Product/SKU Selection from PO Items */}
-                  <div>
-                    <label className="block text-sm font-medium mb-1">
-                      {language === 'en' ? 'Product / SKU' : 'उत्पाद / SKU'} <span className="text-red-500">*</span>
-                    </label>
-                    <select
-                      className="w-full p-2 border border-zinc-300 rounded-md"
-                      onChange={() => {
-                        // logic to handle product selection if needed
-                      }}
-                    >
-                      <option value="">{language === 'en' ? 'Select from PO items...' : 'PO आइटम से चुनें...'}</option>
-                      {/* Assuming selectedOrder has items populated. If not, we need to fetch details.
-                          For now, we rely on the fact that 'view' modal fetches details or we use what's available.
-                          However, the prompt asks to fetch SKUs.
-                          If selectedOrder doesn't have items, we might need to fetch them.
-                          Let's assume selectedOrder here is the full object or we fetch simple list.
-                      */}
-                      {(selectedOrder as any).items?.map((item: any, idx: number) => (
-                        <option key={idx} value={item.product_code}>
-                          {item.product_code} - {item.product_name}
-                        </option>
-                      ))}
-                      {/* Fallback for legacy orders without items array */}
-                      {!(selectedOrder as any).items && (
-                        <option value={selectedOrder.product_code}>
-                          {selectedOrder.product_code} - {selectedOrder.product_name}
-                        </option>
-                      )}
-                    </select>
-                  </div>
-
-                  {/* Quantity */}
-                  <div className="flex gap-2">
-                    <div className="flex-1">
-                      <label className="block text-sm font-medium mb-1">
-                        {language === 'en' ? 'Quantity' : 'मात्रा'} <span className="text-red-500">*</span>
-                      </label>
-                      <Input
-                        type="number"
-                        value={workingOrderData.targetQty}
-                        onChange={(e) => setWorkingOrderData(prev => ({ ...prev, targetQty: e.target.value }))}
-                        placeholder={language === 'en' ? 'Enter quantity' : 'मात्रा दर्ज करें'}
-                      />
-                    </div>
-                    <div className="w-24">
-                      <label className="block text-sm font-medium mb-1">
-                        {language === 'en' ? 'Unit' : 'यूनिट'}
-                      </label>
-                      <select className="w-full p-2 border border-zinc-300 rounded-md bg-zinc-50" disabled>
-                        <option>{selectedOrder.unit || 'pcs'}</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  {/* Priority */}
-                  <div>
-                    <label className="block text-sm font-medium mb-1">
-                      {language === 'en' ? 'Priority' : 'प्राथमिकता'}
-                    </label>
-                    <select
-                      value={workingOrderData.priority}
-                      onChange={(e) => setWorkingOrderData(prev => ({ ...prev, priority: e.target.value }))}
-                      className="w-full p-2 border border-zinc-300 rounded-md"
-                    >
-                      <option value="MEDIUM">{language === 'en' ? 'Medium' : 'सामान्य'}</option>
-                      <option value="LOW">{language === 'en' ? 'Low' : 'कम'}</option>
-                      <option value="HIGH">{language === 'en' ? 'High' : 'उच्च'}</option>
-                      <option value="URGENT">{language === 'en' ? 'Urgent' : 'तत्काल'}</option>
-                    </select>
-                  </div>
-
-                  {/* Notes */}
-                  <div>
-                    <label className="block text-sm font-medium mb-1">
-                      {language === 'en' ? 'Notes' : 'नोट्स'}
-                    </label>
-                    <textarea
-                      value={workingOrderData.notes}
-                      onChange={(e) => setWorkingOrderData(prev => ({ ...prev, notes: e.target.value }))}
-                      placeholder={language === 'en' ? 'Add any special instructions...' : 'विशेष निर्देश जोड़ें...'}
-                      className="w-full p-2 border border-zinc-300 rounded-md resize-none h-20"
-                    />
-                  </div>
-                </div>
-
-                {/* Action Buttons */}
-                <div className="flex gap-3 pt-4">
-                  <Button
-                    onClick={() => setShowCreateWorkingOrderModal(false)}
-                    variant="outline"
-                    className="flex-1"
-                  >
-                    {language === 'en' ? 'Cancel' : 'रद्द करें'}
-                  </Button>
-                  <Button
-                    onClick={async () => {
-                      if (!workingOrderData.operation) {
-                        alert(language === 'en'
-                          ? '⚠️ Please select an operation'
-                          : '⚠️ कृपया एक ऑपरेशन चुनें');
-                        return;
-                      }
-
-                      try {
-                        // Prepare working order data for API
-                        const workingOrderPayload: WorkingOrderCreate = {
-                          purchase_order_id: selectedOrder.id,
-                          operation: workingOrderData.operation,
-                          // Default values for removed fields
-                          workstation_name: 'Pending Assignment',
-                          assigned_team: 'Pending Assignment',
-                          target_qty: parseFloat(workingOrderData.targetQty) || selectedOrder.quantity,
-                          unit: selectedOrder.unit || 'pcs',
-                          priority: workingOrderData.priority as 'Low' | 'Normal' | 'High' | 'Urgent',
-                          notes: workingOrderData.notes || undefined
-                        };
-
-                        // Call backend API to create working order
-                        const createdWorkOrder = await wipApi.createWorkingOrder(workingOrderPayload);
-
-                        alert(`✅ ${language === 'en' ? 'Working Order Created Successfully!' : 'वर्किंग ऑर्डर सफलतापूर्वक बनाया गया!'}\n\n${language === 'en' ? 'Working Order Number' : 'वर्किंग ऑर्डर नंबर'}: ${createdWorkOrder.work_order_number}\n${language === 'en' ? 'Purchase Order' : 'खरीद आदेश'}: ${selectedOrder.order_number}`);
-
-                        setShowCreateWorkingOrderModal(false);
-                        setSelectedOrder(null);
-                        setWorkingOrderData({
-                          operation: '',
-                          targetQty: '',
-                          priority: 'Medium',
-                          notes: ''
-                        });
-                      } catch (error: any) {
-                        alert(`❌ ${language === 'en' ? 'Failed to create working order' : 'वर्किंग ऑर्डर बनाने में विफल'}\n\n${error?.message || error?.detail || 'Unknown error'}`);
-                        console.error('Error creating working order:', error);
-                      }
-                    }}
-                    className="flex-1 bg-emerald-600"
-                  >
-                    <Plus className="h-4 w-4 mr-2" />
-                    {language === 'en' ? 'Create Working Order' : 'वर्किंग ऑर्डर बनाएं'}
-                  </Button>
-                </div>
-              </Card>
-            </div>
-          </div>
-        </>
       )}
     </div>
   );

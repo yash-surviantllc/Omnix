@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { UserProfile } from '@/components/features';
 import { useAppStore } from '@/stores/appStore';
@@ -145,8 +146,10 @@ const translations = {
 };
 
 export function Sidebar({ language, user, onLogout, setCurrentView }: SidebarProps) {
-  const { showLanguageMenu, setShowLanguageMenu, setLanguage } = useAppStore();
-  const t = translations[language];
+  const { setLanguage, currentView } = useAppStore();
+  const [showLanguageMenu, setShowLanguageMenu] = useState(false);
+
+  const t = translations[language] || translations.en;
 
   const handleLanguageChange = (lang: Language) => {
     setLanguage(lang);
@@ -167,37 +170,37 @@ export function Sidebar({ language, user, onLogout, setCurrentView }: SidebarPro
         </div>
       </div>
       <nav className="flex-1 space-y-1 px-3 py-4 overflow-y-auto">
-        <NavButton active={useAppStore.getState().currentView === 'dashboard'} onClick={() => setCurrentView('dashboard')}>
+        <NavButton active={currentView === 'dashboard'} onClick={() => setCurrentView('dashboard')}>
           {t.dashboard}
         </NavButton>
-        <NavButton active={useAppStore.getState().currentView === 'bom'} onClick={() => setCurrentView('bom')}>
+        <NavButton active={currentView === 'bom'} onClick={() => setCurrentView('bom')}>
           {t.bom}
         </NavButton>
-        <NavButton active={useAppStore.getState().currentView === 'orders'} onClick={() => setCurrentView('orders')}>
+        <NavButton active={currentView === 'orders'} onClick={() => setCurrentView('orders')}>
           {t.orders}
         </NavButton>
-        <NavButton active={useAppStore.getState().currentView === 'working-order'} onClick={() => setCurrentView('working-order')}>
+        <NavButton active={currentView === 'working-order'} onClick={() => setCurrentView('working-order')}>
           {t['working-order']}
         </NavButton>
-        <NavButton active={useAppStore.getState().currentView === 'wip'} onClick={() => setCurrentView('wip')}>
+        <NavButton active={currentView === 'wip'} onClick={() => setCurrentView('wip')}>
           {t.wip}
         </NavButton>
-        <NavButton active={useAppStore.getState().currentView === 'transfer'} onClick={() => setCurrentView('transfer')}>
+        <NavButton active={currentView === 'transfer'} onClick={() => setCurrentView('transfer')}>
           {t.transfer}
         </NavButton>
-        <NavButton active={useAppStore.getState().currentView === 'material-request'} onClick={() => setCurrentView('material-request')}>
+        <NavButton active={currentView === 'material-request'} onClick={() => setCurrentView('material-request')}>
           {t['material-request']}
         </NavButton>
-        <NavButton active={useAppStore.getState().currentView === 'qc'} onClick={() => setCurrentView('qc')}>
+        <NavButton active={currentView === 'qc'} onClick={() => setCurrentView('qc')}>
           {t.qc}
         </NavButton>
-        <NavButton active={useAppStore.getState().currentView === 'inventory'} onClick={() => setCurrentView('inventory')}>
+        <NavButton active={currentView === 'inventory'} onClick={() => setCurrentView('inventory')}>
           {t.inventory}
         </NavButton>
-        <NavButton active={useAppStore.getState().currentView === 'gate-entry'} onClick={() => setCurrentView('gate-entry')}>
+        <NavButton active={currentView === 'gate-entry'} onClick={() => setCurrentView('gate-entry')}>
           {t['gate-entry']}
         </NavButton>
-        <NavButton active={useAppStore.getState().currentView === 'gate-exit'} onClick={() => setCurrentView('gate-exit')}>
+        <NavButton active={currentView === 'gate-exit'} onClick={() => setCurrentView('gate-exit')}>
           {t['gate-exit']}
         </NavButton>
       </nav>

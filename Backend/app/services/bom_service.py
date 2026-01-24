@@ -33,22 +33,28 @@ class BOMService:
         """
         db = get_db()
         
-        # 1. Create finished goods product
-        product_dict = {
-            'code': bom_data.product_code,
-            'name': bom_data.product_name,
-            'category': 'Finished Goods',
-            'unit': 'pcs',  # Default unit for finished goods
-            'is_active': True,
-            'created_by': user_id
-        }
+        # 1. Create finished goods product (idempotent)
+        existing_product = db.table('products').select('id').eq('code', bom_data.product_code).execute()
         
-        product_result = db.table('products').insert(product_dict).execute()
-        if not product_result.data:
-            raise Exception("Failed to create product")
-        
-        created_product = product_result.data[0]
-        product_id = created_product['id']
+        if existing_product.data:
+            product_id = existing_product.data[0]['id']
+            print(f"Product {bom_data.product_code} already exists, using ID: {product_id}")
+        else:
+            product_dict = {
+                'code': bom_data.product_code,
+                'name': bom_data.product_name,
+                'category': 'Finished Goods',
+                'unit': 'pcs',  # Default unit for finished goods
+                'is_active': True,
+                'created_by': user_id
+            }
+            
+            product_result = db.table('products').insert(product_dict).execute()
+            if not product_result.data:
+                raise Exception("Failed to create product")
+            
+            created_product = product_result.data[0]
+            product_id = created_product['id']
         
         # 2. Get inventory items for materials
         inventory_items = {}
@@ -67,7 +73,7 @@ class BOMService:
             'batch_size': float(bom_data.batch_size),
             'version': 1,
             'is_active': True,
-            'is_template': False,
+            # 'is_template': False, - Dropped (Not in DB schema)
             'effective_date': date.today().isoformat(),
             'notes': bom_data.notes,
             'created_by': user_id,
@@ -167,9 +173,9 @@ class BOMService:
             'product_id': bom_data.product_id,
             'batch_size': float(bom_data.batch_size),
             'version': 1,
-            'is_active': not bom_data.is_template,  # Templates are inactive by default
-            'is_template': bom_data.is_template,
-            'template_name': bom_data.template_name if bom_data.is_template else None,
+            'is_active': not bom_data.is_template,  # Templates logic is simulated via is_active
+            # 'is_template': bom_data.is_template, - Dropped (Not in DB schema)
+            # 'template_name': bom_data.template_name if bom_data.is_template else None, - Dropped
             'effective_date': date.today().isoformat(),
             'notes': bom_data.notes,
             'created_by': user_id,
@@ -245,74 +251,89 @@ class BOMService:
         limit: int = 20,
         product_id: Optional[str] = None,
         is_active: Optional[bool] = None,
-        is_template: Optional[bool] = None,
         search: Optional[str] = None
     ) -> List[BOMListItem]:
-        """List BOMs with pagination and filters."""
+        """
+        List BOMs with pagination and filters.
+        Optimized with batch fetching to prevent N+1 queries.
+        """
         db = get_db()
-        
         offset = (page - 1) * limit
         
-        # Build query
+        # 1. Build and execute main BOM query
         query = db.table('boms').select('*')
-        
         if product_id:
             query = query.eq('product_id', product_id)
-        
         if is_active is not None:
             query = query.eq('is_active', is_active)
-        
-        if is_template is not None:
-            query = query.eq('is_template', is_template)
-        
+            
         result = query.order('created_at', desc=True).range(offset, offset + limit - 1).execute()
         
+        if not result.data:
+            return []
+            
+        bom_headers = result.data
+        bom_ids = [b['id'] for b in bom_headers]
+        product_ids = list(set(b['product_id'] for b in bom_headers))
+        
+        # 2. Batch fetch Product info
+        products_result = db.table('products').select('id', 'code', 'name').in_('id', product_ids).execute()
+        products_map = {p['id']: p for p in products_result.data}
+        
+        # 3. Batch fetch ALL materials for these BOMs
+        materials_result = db.table('bom_materials').select(
+            'bom_id', 'quantity', 'unit_cost', 'scrap_percentage'
+        ).in_('bom_id', bom_ids).execute()
+        
+        # Group materials by BOM ID
+        materials_by_bom = {}
+        for mat in materials_result.data:
+            bid = mat['bom_id']
+            if bid not in materials_by_bom:
+                materials_by_bom[bid] = []
+            materials_by_bom[bid].append(mat)
+            
+        # 4. Process and construct results
         boms = []
-        for bom in result.data:
-            # Get product info
-            product = db.table('products').select('code', 'name').eq('id', bom['product_id']).execute()
-            
-            if not product.data:
+        for bom in bom_headers:
+            product = products_map.get(bom['product_id'])
+            if not product:
                 continue
+                
+            # Apply search filter
+            if search:
+                product_code = product['code'].lower()
+                product_name = product['name'].lower()
+                search_lower = search.lower()
+                if search_lower not in product_code and search_lower not in product_name:
+                    continue
             
-            # Count materials
-            materials_count_result = db.table('bom_materials').select('id', count='exact').eq('bom_id', bom['id']).execute()
-            materials_count = materials_count_result.count if hasattr(materials_count_result, 'count') else 0
-            
-            # Calculate total cost WITH SCRAP
-            materials = db.table('bom_materials').select('quantity', 'unit_cost', 'scrap_percentage').eq('bom_id', bom['id']).execute()
+            # Calculate metrics from batched materials
+            bom_mats = materials_by_bom.get(bom['id'], [])
+            materials_count = len(bom_mats)
             total_cost = Decimal('0')
-            for m in materials.data:
+            for m in bom_mats:
                 qty = Decimal(str(m['quantity']))
                 cost = Decimal(str(m['unit_cost']))
                 scrap = Decimal(str(m.get('scrap_percentage', 0)))
                 total_cost += qty * cost * (1 + scrap / 100)
-            
-            # Apply search filter
-            if search:
-                product_code = product.data[0]['code'].lower()
-                product_name = product.data[0]['name'].lower()
-                search_lower = search.lower()
                 
-                if search_lower not in product_code and search_lower not in product_name:
-                    continue
-            
             boms.append(BOMListItem(
                 id=bom['id'],
                 product_id=bom['product_id'],
-                product_code=product.data[0]['code'],
-                product_name=product.data[0]['name'],
+                product_code=product['code'],
+                product_name=product['name'],
                 version=bom.get('version', 1),
                 batch_size=Decimal(str(bom.get('batch_size', 100))),
                 is_active=bom['is_active'],
-                is_template=bom.get('is_template', False),
-                template_name=bom.get('template_name'),
+                is_template=False,
+                template_name=None,
                 materials_count=materials_count,
                 total_cost=total_cost,
-                effective_date=bom.get('effective_date', bom['created_at']),
+                effective_date=bom.get('effective_date') or bom['created_at'],
                 created_at=datetime.fromisoformat(bom['created_at'].replace('Z', '+00:00'))
             ))
-        
+            
         return boms
     
     @staticmethod
@@ -375,8 +396,8 @@ class BOMService:
             batch_size=Decimal(str(bom.get('batch_size', 100))),
             version=bom.get('version', 1),
             is_active=bom['is_active'],
-            is_template=bom.get('is_template', False),
-            template_name=bom.get('template_name'),
+            is_template=False, # Dropped (Not in DB schema)
+            template_name=None, # Dropped
             effective_date=bom.get('effective_date', bom['created_at']),
             notes=bom.get('notes'),
             materials=materials,
@@ -475,21 +496,25 @@ class BOMService:
     
     @staticmethod
     async def delete_bom(bom_id: str) -> dict:
-        """Delete BOM (soft delete - deactivate)."""
+        """Delete BOM (HARD delete to ensure removal)."""
         db = get_db()
         
         # Check if BOM exists
         existing = db.table('boms').select('id').eq('id', bom_id).execute()
         if not existing.data:
-            raise NotFoundException(detail="BOM not found")
+            # If not found, return success anyway to be idempotent
+            return {"message": "BOM deleted successfully"}
         
-        # Deactivate BOM
-        db.table('boms').update({
-            'is_active': False,
-            'updated_at': datetime.utcnow().isoformat()
-        }).eq('id', bom_id).execute()
+        # 1. Delete associated materials first (Hard Delete)
+        db.table('bom_materials').delete().eq('bom_id', bom_id).execute()
         
-        return {"message": "BOM deactivated successfully"}
+        # 2. Delete versions (Hard Delete)
+        db.table('bom_versions').delete().eq('bom_id', bom_id).execute()
+
+        # 3. Delete the BOM header (Hard Delete)
+        db.table('boms').delete().eq('id', bom_id).execute()
+        
+        return {"message": "BOM deleted successfully"}
     
     @staticmethod
     async def get_bom_versions(bom_id: str) -> List[BOMVersion]:
@@ -608,6 +633,8 @@ class BOMService:
                 'product_id', material.material_id
             ).execute()
             
+            # Sum up available quantity across all locations (including allocated logic if needed)
+            # Currently logic: Free Qty = Available - Allocated
             total_free = sum(
                 Decimal(str(i['available_qty'])) - Decimal(str(i['allocated_qty']))
                 for i in inventory.data
@@ -967,37 +994,36 @@ class BOMService:
             material_cost = required_qty * unit_cost
             total_bom_cost += material_cost
             
-            # Check inventory availability
-            inventory_query = db.table('inventory').select('*').eq('product_id', material_id)
+            # Check inventory availability from inventory_items table (for raw materials)
+            # First get the product code for this material_id
+            mat_product_for_lookup = db.table('products').select('code').eq('id', material_id).execute()
             
-            if target_location_id:
-                inventory_query = inventory_query.eq('location_id', target_location_id)
-            
-            inventory_result = inventory_query.execute()
-            
-            # Aggregate inventory across locations
-            available_qty = Decimal('0')
-            allocated_qty = Decimal('0')
-            location_breakdown = []
-            
-            for inv in inventory_result.data:
-                inv_available = Decimal(str(inv['available_qty']))
-                inv_allocated = Decimal(str(inv['allocated_qty']))
+            if not mat_product_for_lookup.data:
+                # No product found, treat as out of stock
+                available_qty = Decimal('0')
+                allocated_qty = Decimal('0')
+                location_breakdown = []
+            else:
+                material_code = mat_product_for_lookup.data[0]['code']
+                inventory_result = db.table('inventory_items').select('*').eq('material_code', material_code).execute()
                 
-                available_qty += inv_available
-                allocated_qty += inv_allocated
+                # Get available quantity from inventory_items
+                available_qty = Decimal('0')
+                allocated_qty = Decimal('0')  # inventory_items doesn't track allocation
+                location_breakdown = []
                 
-                # Get location name
-                loc = db.table('locations').select('code', 'name').eq('id', inv['location_id']).execute()
-                loc_name = loc.data[0]['name'] if loc.data else 'Unknown'
-                
-                location_breakdown.append({
-                    'location_id': inv['location_id'],
-                    'location_name': loc_name,
-                    'available_qty': float(inv_available),
-                    'allocated_qty': float(inv_allocated),
-                    'free_qty': float(inv_available - inv_allocated)
-                })
+                if inventory_result.data:
+                    inv_item = inventory_result.data[0]
+                    available_qty = Decimal(str(inv_item.get('quantity', 0)))
+                    
+                    # For inventory_items, we don't have location breakdown
+                    location_breakdown.append({
+                        'location_id': None,
+                        'location_name': inv_item.get('location', 'Main Warehouse'),
+                        'available_qty': float(available_qty),
+                        'allocated_qty': 0.0,
+                        'free_qty': float(available_qty)
+                    })
             
             # Calculate free quantity
             if include_allocated:

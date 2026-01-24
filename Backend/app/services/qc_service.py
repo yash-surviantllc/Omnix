@@ -201,3 +201,96 @@ class QCService:
             pending_rework=pending_rework or 0,
             pass_rate=95.5 # Placeholder until we have math logic
         )
+
+    @staticmethod
+    async def lookup_order(order_number: str) -> Dict[str, Any]:
+        """
+        Lookup a Purchase Order or Working Order by number.
+        Returns order details for QC inspection.
+        """
+        db = get_db()
+        
+        # First try to find as Working Order (WO-YYYY-XXXX format)
+        if order_number.upper().startswith('WO-'):
+            wo_result = db.table('work_orders').select('*').eq('work_order_number', order_number.upper()).execute()
+            if wo_result.data:
+                wo = wo_result.data[0]
+                # Get product info
+                product = db.table('products').select('name, code').eq('id', wo['product_id']).execute()
+                product_name = product.data[0]['name'] if product.data else None
+                product_code = product.data[0]['code'] if product.data else None
+                
+                return {
+                    'order_type': 'work_order',
+                    'order_id': wo['id'],
+                    'order_number': wo['work_order_number'],
+                    'product_id': wo['product_id'],
+                    'product_name': product_name,
+                    'product_code': product_code,
+                    'quantity': float(wo.get('target_qty', 0)),
+                    'completed_qty': float(wo.get('completed_qty', 0)),
+                    'status': wo['status']
+                }
+        
+        # Try to find as Purchase Order (PO-YYYY-XXXX format)
+        if order_number.upper().startswith('PO-'):
+            po_result = db.table('purchase_orders').select('*').eq('order_number', order_number.upper()).execute()
+            if po_result.data:
+                po = po_result.data[0]
+                # Get product info
+                product = db.table('products').select('name, code').eq('id', po['product_id']).execute()
+                product_name = product.data[0]['name'] if product.data else None
+                product_code = product.data[0]['code'] if product.data else None
+                
+                return {
+                    'order_type': 'purchase_order',
+                    'order_id': po['id'],
+                    'order_number': po['order_number'],
+                    'product_id': po['product_id'],
+                    'product_name': product_name,
+                    'product_code': product_code,
+                    'quantity': float(po.get('quantity', 0)),
+                    'completed_qty': float(po.get('completed_qty', 0)),
+                    'status': po['status']
+                }
+        
+        # If no prefix, try both
+        wo_result = db.table('work_orders').select('*').ilike('work_order_number', f'%{order_number}%').execute()
+        if wo_result.data:
+            wo = wo_result.data[0]
+            product = db.table('products').select('name, code').eq('id', wo['product_id']).execute()
+            product_name = product.data[0]['name'] if product.data else None
+            product_code = product.data[0]['code'] if product.data else None
+            
+            return {
+                'order_type': 'work_order',
+                'order_id': wo['id'],
+                'order_number': wo['work_order_number'],
+                'product_id': wo['product_id'],
+                'product_name': product_name,
+                'product_code': product_code,
+                'quantity': float(wo.get('target_qty', 0)),
+                'completed_qty': float(wo.get('completed_qty', 0)),
+                'status': wo['status']
+            }
+        
+        po_result = db.table('purchase_orders').select('*').ilike('order_number', f'%{order_number}%').execute()
+        if po_result.data:
+            po = po_result.data[0]
+            product = db.table('products').select('name, code').eq('id', po['product_id']).execute()
+            product_name = product.data[0]['name'] if product.data else None
+            product_code = product.data[0]['code'] if product.data else None
+            
+            return {
+                'order_type': 'purchase_order',
+                'order_id': po['id'],
+                'order_number': po['order_number'],
+                'product_id': po['product_id'],
+                'product_name': product_name,
+                'product_code': product_code,
+                'quantity': float(po.get('quantity', 0)),
+                'completed_qty': float(po.get('completed_qty', 0)),
+                'status': po['status']
+            }
+        
+        raise ValueError(f"Order '{order_number}' not found")

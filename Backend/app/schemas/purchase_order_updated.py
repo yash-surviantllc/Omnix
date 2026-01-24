@@ -55,6 +55,7 @@ class OrderMaterialResponse(OrderMaterialBase):
     issued_qty: Decimal
     total_cost: Decimal
     status: str  # Pending, Allocated, Issued, Completed
+    availability_status: str # Available, Shortage, Partial
     created_at: datetime
     updated_at: datetime
     
@@ -72,6 +73,8 @@ class PurchaseOrderBase(BaseModel):  # Changed from ProductionOrderBase
     shift_number: Optional[str] = None
     start_time: Optional[datetime] = None
     end_time: Optional[datetime] = None
+    # start_date: Optional[datetime] = None - Dropped (Not in DB schema)
+    # end_date: Optional[datetime] = None - Dropped
 
 
 class PurchaseOrderCreate(PurchaseOrderBase):  # Changed from ProductionOrderCreate
@@ -82,9 +85,9 @@ class PurchaseOrderCreate(PurchaseOrderBase):  # Changed from ProductionOrderCre
 class PurchaseOrderMultiSKUCreate(BaseModel):  # Changed from ProductionOrderMultiSKUCreate
     """Create purchase order with multiple SKUs"""
     customer_name: Optional[str] = None
+    shift_number: Optional[str] = None
     due_date: date = Field(..., description="Target completion date")
     priority: str = Field(default="Medium", description="Low, Medium, High, Urgent")
-    shift_number: Optional[str] = None
     notes: Optional[str] = None
     start_time: Optional[datetime] = None
     end_time: Optional[datetime] = None
@@ -136,7 +139,7 @@ class PurchaseOrderUpdate(BaseModel):  # Changed from ProductionOrderUpdate
     notes: Optional[str] = None
     customer_name: Optional[str] = None
     assigned_team: Optional[str] = None
-    shift_number: Optional[str] = None
+    assigned_team: Optional[str] = None
     production_stage: Optional[str] = None
 
 
@@ -148,16 +151,16 @@ class PurchaseOrderResponse(PurchaseOrderBase):  # Changed from ProductionOrderR
     product_name: Optional[str] = None
     unit: str
     status: str
-    qr_code: Optional[str] = None
+    status: str
     materials: List[OrderMaterialResponse] = []
     items: List[POItemResponse] = []
     total_material_cost: Optional[Decimal] = None
-    started_at: Optional[datetime] = None
-    completed_at: Optional[datetime] = None
+    # started_at: Optional[datetime] = None - Dropped (Not in DB schema)
+    # completed_at: Optional[datetime] = None - Dropped
     created_at: datetime
     updated_at: datetime
     created_by: Optional[str] = None
-    updated_by: Optional[str] = None
+    created_by: Optional[str] = None
     
     class Config:
         from_attributes = True
@@ -179,7 +182,7 @@ class PurchaseOrderListItem(BaseModel):  # Changed from ProductionOrderListItem
     days_until_due: int
     is_overdue: bool
     items: List[POItemResponse] = []
-    progress_percentage: Optional[float] = None
+    items: List[POItemResponse] = []
     created_at: datetime
     
     class Config:

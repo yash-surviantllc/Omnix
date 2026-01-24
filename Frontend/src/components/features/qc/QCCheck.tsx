@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
-import { CheckCircle, XCircle, AlertCircle, RefreshCw } from 'lucide-react';
+import { RefreshCw, Search } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { qcApi, QCInspection, CreateQCInspectionPayload, QCDefect } from '@/lib/api/qc';
+import { Badge } from '@/components/ui/badge';
+import { qcApi, QCInspection, CreateQCInspectionPayload, QCDefect, OrderLookupResponse } from '@/lib/api/qc';
 import { productsApi, Product } from '@/lib/api/bom';
 
 type QCCheckProps = {
@@ -19,11 +20,46 @@ export function QCCheck({ language }: QCCheckProps) {
   const [notes, setNotes] = useState('');
   const [products, setProducts] = useState<Product[]>([]);
 
+  // Separate quantity fields for Pass, Rework, Scrap
+  const [passQty, setPassQty] = useState('');
+  const [reworkQty, setReworkQty] = useState('');
+  const [scrapQty, setScrapQty] = useState('');
+
+  // Order lookup state
+  const [orderLookup, setOrderLookup] = useState<OrderLookupResponse | null>(null);
+  const [isLookingUp, setIsLookingUp] = useState(false);
+
   const [inspections, setInspections] = useState<QCInspection[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const wsRef = useRef<WebSocket | null>(null);
+
+  // Lookup order when order number changes
+  const handleOrderLookup = async () => {
+    if (!orderNumber.trim()) {
+      setOrderLookup(null);
+      return;
+    }
+    
+    setIsLookingUp(true);
+    try {
+      const result = await qcApi.lookupOrder(orderNumber.trim());
+      setOrderLookup(result);
+      // Auto-fill product and quantity
+      if (result.product_id) {
+        setSelectedProduct(result.product_id);
+      }
+      if (result.quantity) {
+        setQuantity(result.quantity.toString());
+      }
+    } catch (err: any) {
+      console.error('Order lookup failed:', err);
+      setOrderLookup(null);
+    } finally {
+      setIsLookingUp(false);
+    }
+  };
 
   const translations = {
     en: {
@@ -218,11 +254,27 @@ export function QCCheck({ language }: QCCheckProps) {
         <div className="space-y-4">
           <div>
             <label className="block mb-2 text-sm text-zinc-600">{t.orderNumber}</label>
-            <Input
-              placeholder="PO-XXX"
-              value={orderNumber}
-              onChange={(e) => setOrderNumber(e.target.value)}
-            />
+            <div className="flex gap-2">
+              <Input
+                placeholder="PO-XXX or WO-YYYY-XXXX"
+                value={orderNumber}
+                onChange={(e) => setOrderNumber(e.target.value)}
+                onKeyPress={(e) => e.key === 'Enter' && handleOrderLookup()}
+              />
+              <Button 
+                type="button"
+                variant="outline"
+                onClick={handleOrderLookup}
+                disabled={isLookingUp || !orderNumber.trim()}
+              >
+                <Search className="h-4 w-4" />
+              </Button>
+            </div>
+            {orderLookup && (
+              <Badge className="mt-2" variant="outline">
+                {orderLookup.order_type === 'work_order' ? 'WO' : 'PO'}: {orderLookup.order_number} - {orderLookup.product_name}
+              </Badge>
+            )}
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -243,78 +295,97 @@ export function QCCheck({ language }: QCCheckProps) {
               <label className="block mb-2 text-sm text-zinc-600">{t.quantity}</label>
               <Input
                 type="number"
-                placeholder="0"
+                placeholder="Total Qty"
                 value={quantity}
-                onChange={(e) => setQuantity(e.target.value)}
+                onChange={(e) => {
+                   const val = e.target.value;
+                   setQuantity(val);
+                   // Auto-fill pass qty if others are empty
+                   if (!reworkQty && !scrapQty) {
+                     setPassQty(val);
+                   }
+                }}
               />
             </div>
           </div>
 
-          <div>
-            <label className="block mb-3 text-sm text-zinc-600">{t.inspectionResult}</label>
-            <div className="grid grid-cols-3 gap-3">
-              <button
-                onClick={() => setSelectedResult('pass')}
-                className={`p-4 rounded-lg border-2 transition-all ${selectedResult === 'pass'
-                  ? 'border-emerald-500 bg-emerald-50'
-                  : 'border-zinc-200 hover:border-zinc-300'
-                  }`}
-              >
-                <CheckCircle
-                  className={`h-8 w-8 mx-auto mb-2 ${selectedResult === 'pass' ? 'text-emerald-600' : 'text-zinc-400'
-                    }`}
-                />
-                <div className="text-center">{t.pass}</div>
-              </button>
-              <button
-                onClick={() => setSelectedResult('rework')}
-                className={`p-4 rounded-lg border-2 transition-all ${selectedResult === 'rework'
-                  ? 'border-yellow-500 bg-yellow-50'
-                  : 'border-zinc-200 hover:border-zinc-300'
-                  }`}
-              >
-                <AlertCircle
-                  className={`h-8 w-8 mx-auto mb-2 ${selectedResult === 'rework' ? 'text-yellow-600' : 'text-zinc-400'
-                    }`}
-                />
-                <div className="text-center">{t.rework}</div>
-              </button>
-              <button
-                onClick={() => setSelectedResult('scrap')}
-                className={`p-4 rounded-lg border-2 transition-all ${selectedResult === 'scrap'
-                  ? 'border-red-500 bg-red-50'
-                  : 'border-zinc-200 hover:border-zinc-300'
-                  }`}
-              >
-                <XCircle
-                  className={`h-8 w-8 mx-auto mb-2 ${selectedResult === 'scrap' ? 'text-red-600' : 'text-zinc-400'
-                    }`}
-                />
-                <div className="text-center">{t.scrap}</div>
-              </button>
-            </div>
+          <div className="grid grid-cols-3 gap-4">
+             <div>
+               <label className="block mb-2 text-sm text-emerald-700 font-medium">{t.pass}</label>
+               <Input 
+                 type="number" 
+                 value={passQty} 
+                 onChange={(e) => setPassQty(e.target.value)}
+                 className="border-emerald-200 bg-emerald-50 focus-visible:ring-emerald-500"
+               />
+             </div>
+             <div>
+               <label className="block mb-2 text-sm text-yellow-700 font-medium">{t.rework}</label>
+               <Input 
+                 type="number" 
+                 value={reworkQty} 
+                 onChange={(e) => setReworkQty(e.target.value)}
+                 className="border-yellow-200 bg-yellow-50 focus-visible:ring-yellow-500"
+               />
+             </div>
+             <div>
+               <label className="block mb-2 text-sm text-red-700 font-medium">{t.scrap}</label>
+               <Input 
+                 type="number" 
+                 value={scrapQty} 
+                 onChange={(e) => setScrapQty(e.target.value)}
+                 className="border-red-200 bg-red-50 focus-visible:ring-red-500"
+               />
+             </div>
           </div>
 
-          {(selectedResult === 'rework' || selectedResult === 'scrap') && (
+          {(Number(reworkQty) > 0 || Number(scrapQty) > 0) && (
             <div>
               <label className="block mb-3 text-sm text-zinc-600">
-                {selectedResult === 'rework' ? t.reasonsForRework : t.reasonsForScrap}
+                {t.selectReason}
               </label>
               <div className="flex flex-wrap gap-2">
-                {(selectedResult === 'rework' ? reworkReasons : scrapReasons).map((reason) => (
-                  <button
-                    key={reason}
-                    onClick={() => toggleReason(reason)}
-                    className={`px-4 py-2 rounded-lg border transition-colors ${selectedReasons.includes(reason)
-                      ? selectedResult === 'rework'
-                        ? 'bg-yellow-500 text-white border-yellow-600'
-                        : 'bg-red-500 text-white border-red-600'
-                      : 'bg-white border-zinc-200 hover:border-zinc-300'
-                      }`}
-                  >
-                    {reason}
-                  </button>
-                ))}
+                {/* Show Rework Reasons if Rework > 0 */}
+                {Number(reworkQty) > 0 && (
+                   <div className="w-full mb-2">
+                     <span className="text-xs font-bold text-yellow-600 uppercase mb-1 block">{t.reasonsForRework}</span>
+                     <div className="flex flex-wrap gap-2">
+                       {reworkReasons.map((reason) => (
+                         <button
+                           key={reason}
+                           onClick={() => toggleReason(reason)}
+                           className={`px-3 py-1.5 text-sm rounded-md border transition-colors ${selectedReasons.includes(reason)
+                             ? 'bg-yellow-100 text-yellow-800 border-yellow-300'
+                             : 'bg-white border-zinc-200 hover:border-zinc-300'
+                             }`}
+                         >
+                           {reason}
+                         </button>
+                       ))}
+                     </div>
+                   </div>
+                )}
+                
+                {/* Show Scrap Reasons if Scrap > 0 */}
+                {Number(scrapQty) > 0 && (
+                   <div className="w-full">
+                     <span className="text-xs font-bold text-red-600 uppercase mb-1 block">{t.reasonsForScrap}</span>
+                     <div className="flex flex-wrap gap-2">
+                       {scrapReasons.map((reason) => (
+                         <button
+                           key={reason}
+                           onClick={() => toggleReason(reason)}
+                           className={`px-3 py-1.5 text-sm rounded-md border transition-colors ${selectedReasons.includes(reason)
+                             ? 'bg-red-100 text-red-800 border-red-300'
+                             : 'bg-white border-zinc-200 hover:border-zinc-300'
+                             }`}
+                         >
+                           {reason}
+                         </button>
+                       ))}
+                     </div>
+                   </div>
+                )}
               </div>
             </div>
           )}

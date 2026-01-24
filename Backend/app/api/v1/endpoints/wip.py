@@ -39,6 +39,7 @@ async def list_working_orders(
     status: Optional[str] = None,
     operation: Optional[str] = None,
     purchase_order_id: Optional[str] = None,
+    search: Optional[str] = None,
     current_user: UserResponse = Depends(get_current_user)
 ):
     """
@@ -47,8 +48,9 @@ async def list_working_orders(
     - **status**: Pending/In Progress/Completed/On Hold/Cancelled
     - **operation**: Filter by operation (Cutting, Sewing, etc.)
     - **purchase_order_id**: Filter by purchase order
+    - **search**: Search by work order number or operation
     """
-    return await wip_service.list_working_orders(page, limit, status, operation, purchase_order_id)
+    return await wip_service.list_working_orders(page, limit, status, operation, purchase_order_id, search)
 
 
 @router.get("/working-orders/{order_id}", response_model=WorkingOrderResponse)

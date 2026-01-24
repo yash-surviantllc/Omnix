@@ -27,7 +27,7 @@ type GateExitRecord = {
   }[];
   linkedDocument: string;
   customer: string;
-  status: 'ready' | 'verified' | 'dispatched' | 'in_transit';
+  status: 'Ready' | 'Verified' | 'Dispatched' | 'In Transit';
   timestamp: string;
   remarks: string;
 };
@@ -40,7 +40,7 @@ export function GateExit({ language }: GateExitProps) {
   const [exitData, setExitData] = useState<Partial<GateExitRecord>>({
     exitType: 'dispatch',
     materials: [{ materialCode: '', materialName: '', qty: 0, uom: 'pcs' }],
-    status: 'ready'
+    status: 'Ready'
   });
 
   // Exit history - now comes from backend API
@@ -108,7 +108,7 @@ export function GateExit({ language }: GateExitProps) {
       setExitData({
         exitType: 'dispatch',
         materials: [{ materialCode: '', materialName: '', qty: 0, uom: 'pcs' }],
-        status: 'ready'
+        status: 'Ready'
       });
       fetchExits();
       fetchStats();
@@ -549,11 +549,11 @@ export function GateExit({ language }: GateExitProps) {
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'dispatched':
+      case 'Dispatched':
         return 'bg-green-100 text-green-800 border-green-300';
-      case 'verified':
+      case 'Verified':
         return 'bg-blue-100 text-blue-800 border-blue-300';
-      case 'in_transit':
+      case 'In Transit':
         return 'bg-yellow-100 text-yellow-800 border-yellow-300';
       default:
         return 'bg-zinc-100 text-zinc-800 border-zinc-300';
@@ -984,7 +984,7 @@ export function GateExit({ language }: GateExitProps) {
                   setExitData({
                     exitType: 'dispatch',
                     materials: [{ materialCode: '', materialName: '', qty: 0, uom: 'pcs' }],
-                    status: 'ready'
+                    status: 'Ready'
                   });
                 }}
                 variant="outline"

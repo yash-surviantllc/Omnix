@@ -1,18 +1,17 @@
-import { Search, Filter, Plus, Play, Pause, CheckCircle2, Clock, AlertCircle, Calendar, Package, XCircle, ChevronDown, ChevronUp } from 'lucide-react';
+import { Search, Plus, Play, Pause, CheckCircle2, Clock, Calendar, Package, XCircle, ChevronDown, ChevronUp } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { wipApi, type WorkingOrderCreate } from '@/lib/api/wip';
-import { purchaseOrdersApi, type PurchaseOrder } from '@/lib/api/production-orders';
+import { purchaseOrdersApi, type PurchaseOrder } from '@/lib/api/purchase-orders';
 import { bomApi } from '@/lib/api/bom';
+import { stagesApi, type Stage, type ProductStageDetail } from '@/lib/api/stages';
 
 type WorkingOrderProps = {
   language: 'en' | 'hi' | 'kn' | 'ta' | 'te' | 'mr' | 'gu' | 'pa';
 };
-
-// Standard operations that should appear in every work order
 
 interface WorkOrderOperation {
   name: string;
@@ -23,15 +22,6 @@ interface WorkOrderOperation {
   workstation: string;
   targetUnits: number;
 }
-
-const STANDARD_OPERATIONS = [
-  'Cutting',
-  'Sewing',
-  'Assembly',
-  'Quality Check',
-  'Packing',
-  'Finishing'
-];
 
 interface WorkOrder {
   id: string;
@@ -56,8 +46,6 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
   const [poFilter, setPoFilter] = useState<string>('all');
   const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [orderNotes, setOrderNotes] = useState<Record<string, string>>({}); // State for order notes
 
   // Expanded state for collapsible cards - tracks which work orders are expanded
   const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set());
@@ -101,6 +89,14 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
   const [poItems, setPoItems] = useState<any[]>([]); // To store items of selected PO
   const [isCreating, setIsCreating] = useState(false);
 
+  // Dynamic Stages State
+  const [availableStages, setAvailableStages] = useState<Stage[]>([]);
+  const [productStages, setProductStages] = useState<ProductStageDetail[]>([]);
+  const [loadingStages, setLoadingStages] = useState(false);
+
+  // Track previous stages to detect changes
+  const previousStagesRef = useRef<Stage[]>([]);
+
   // Toggle expanded state for a work order
   const toggleExpanded = (orderId: string) => {
     setExpandedOrders(prev => {
@@ -112,6 +108,35 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
       }
       return newSet;
     });
+  };
+
+  // Helper to fetch PO items
+  const fetchPOItems = async (poId: string) => {
+    if (!poId) {
+      setPoItems([]);
+      return;
+    }
+    try {
+      const poDetails = await purchaseOrdersApi.getOrder(poId);
+      // Handle both Multi-SKU (items) and Single-SKU (main product)
+      if (poDetails.items && Array.isArray(poDetails.items) && poDetails.items.length > 0) {
+        setPoItems(poDetails.items);
+      } else if (poDetails.product_id) {
+        // Fallback for single-SKU orders
+        setPoItems([{
+          product_id: poDetails.product_id,
+          product_code: poDetails.product_code || 'SKU',
+          product_name: poDetails.product_name,
+          quantity: poDetails.quantity,
+          unit: poDetails.unit
+        }]);
+      } else {
+        setPoItems([]);
+      }
+    } catch (err) {
+      console.error("Failed to fetch PO items", err);
+      setPoItems([]);
+    }
   };
 
   // Fetch BOM when Product or Qty changes
@@ -136,10 +161,10 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
         // Map to local state
         const reqs: BOMRequirement[] = materials.map((m) => ({
           material_name: m.material_name,
-          quantity_per_unit: m.quantity_per_unit,
-          required_quantity: m.required_qty,
+          quantity_per_unit: Number(m.quantity_per_unit) || 0,
+          required_quantity: Number(m.required_qty) || 0,
           unit: m.unit,
-          available_stock: m.available_qty,
+          available_stock: Number(m.available_qty) || 0,
           status: m.shortage_status === 'Sufficient' ? 'Sufficient' : 'Low Stock'
         }));
 
@@ -157,25 +182,18 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
   }, [newWorkOrderData.product_id, newWorkOrderData.target_qty]);
 
   // Fetch work orders from backend API
-  const fetchWorkOrders = async () => {
-    setLoading(true);
-    setError(null);
+  const fetchWorkOrders = useCallback(async (silent: boolean = false) => {
+    if (!silent) setLoading(true);
     try {
       // Fetch working orders directly without complex transformation
       const workingOrdersData = await wipApi.listWorkingOrders({ limit: 100 });
-      const purchaseOrdersData = await purchaseOrdersApi.listOrders({ limit: 100 });
+      // Optimized: No longer need to fetch all Purchase Orders separately
 
-      // Create a simple mapping for purchase orders
-      const poMap = new Map<string, any>();
-      purchaseOrdersData.forEach(po => {
-        if (po && po.id) {
-          poMap.set(po.id, {
-            productName: po.product_name || 'Unknown Product',
-            quantity: po.quantity || 0,
-            orderNumber: po.order_number || 'PO-????'
-          });
-        }
-      });
+      // Safety check: Ensure responses are arrays
+      if (!Array.isArray(workingOrdersData)) {
+        console.error('Invalid working orders response format:', workingOrdersData);
+        throw new Error('Received invalid data for working orders');
+      }
 
       // Group working orders by work_order_number
       const groupedOrders = new Map<string, typeof workingOrdersData>();
@@ -191,7 +209,10 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
       // Transform grouped orders
       const transformedOrders: WorkOrder[] = Array.from(groupedOrders.values()).map((group) => {
         const firstOp = group[0]; // Use first operation for common details
-        const poInfo = poMap.get(firstOp.purchase_order_id);
+
+        // Use enhanced fields directly from ID
+        const poOrderNumber = firstOp.purchase_order_number || 'Unknown PO';
+        const productName = firstOp.product_name || 'Unknown Product';
 
         // Create map of existing operations
         const existingOpsMap = new Map();
@@ -199,17 +220,32 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
           if (wo.operation) existingOpsMap.set(wo.operation, wo);
         });
 
-        // Merge with standard operations to ensure all stages are visible
-        const operations: WorkOrderOperation[] = STANDARD_OPERATIONS.map(opName => {
+        // Get stage names from available stages (fallback to empty if not loaded yet)
+        const stageNames = availableStages.length > 0
+          ? availableStages.map(s => s.name)
+          : [];
+
+        // Merge with configured stages to ensure all stages are visible
+        const operations: WorkOrderOperation[] = stageNames.map((opName: string) => {
           const wo = existingOpsMap.get(opName);
 
           if (wo) {
             // Existing operation
             const rawStatus = wo.status || 'pending';
-            const normalizedStatus = rawStatus.toLowerCase().replace(' ', '-');
-            const validStatus = (['pending', 'in-progress', 'completed', 'on-hold'].includes(normalizedStatus)
-              ? normalizedStatus
-              : 'pending') as 'pending' | 'in-progress' | 'completed' | 'on-hold';
+            // Map database status to frontend status
+            const statusMap: Record<string, 'pending' | 'in-progress' | 'completed' | 'on-hold'> = {
+              'planned': 'pending',
+              'released': 'pending',
+              'pending': 'pending',
+              'in progress': 'in-progress',
+              'in-progress': 'in-progress',
+              'completed': 'completed',
+              'on hold': 'on-hold',
+              'on-hold': 'on-hold',
+              'cancelled': 'on-hold'
+            };
+            const normalizedStatus = rawStatus.toLowerCase();
+            const validStatus = statusMap[normalizedStatus] || 'pending';
 
             return {
               name: wo.operation,
@@ -236,12 +272,22 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
 
         // Add any non-standard operations that might exist (custom operations)
         group.forEach(wo => {
-          if (wo.operation && !STANDARD_OPERATIONS.includes(wo.operation)) {
+          if (wo.operation && !stageNames.includes(wo.operation)) {
             const rawStatus = wo.status || 'pending';
-            const normalizedStatus = rawStatus.toLowerCase().replace(' ', '-');
-            const validStatus = (['pending', 'in-progress', 'completed', 'on-hold'].includes(normalizedStatus)
-              ? normalizedStatus
-              : 'pending') as 'pending' | 'in-progress' | 'completed' | 'on-hold';
+            // Map database status to frontend status
+            const statusMap: Record<string, 'pending' | 'in-progress' | 'completed' | 'on-hold'> = {
+              'planned': 'pending',
+              'released': 'pending',
+              'pending': 'pending',
+              'in progress': 'in-progress',
+              'in-progress': 'in-progress',
+              'completed': 'completed',
+              'on hold': 'on-hold',
+              'on-hold': 'on-hold',
+              'cancelled': 'on-hold'
+            };
+            const normalizedStatus = rawStatus.toLowerCase();
+            const validStatus = statusMap[normalizedStatus] || 'pending';
 
             operations.push({
               name: wo.operation,
@@ -264,21 +310,15 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
         else if (statuses.some(s => s === 'on-hold')) aggregateStatus = 'on-hold';
 
         // Calculate total stats
-        // Assuming quantity is the target quantity of the specific order (usually same across operations or defined by PO)
-        // For progress bar: Sum of all completed / Sum of all targets? 
-        // Or if it is sequential, target is just ONE target amount?
-        // Reference screenshot: "340 of 500 units". 500 seems to be the total target of the order.
-        // If we sum targets of 5 ops (each 100), we get 500. So we sum them.
-
         const totalTarget = operations.reduce((sum, op) => sum + op.targetUnits, 0);
         const totalCompleted = operations.reduce((sum, op) => sum + op.completedUnits, 0);
 
         return {
-          id: firstOp.id, // Use ID of first op as key?? Ideally we need a unique WO ID.
+          id: firstOp.id,
           workOrderNumber: firstOp.work_order_number || `WO-${firstOp.id}`,
           purchaseOrderId: firstOp.purchase_order_id || '',
-          purchaseOrderNumber: poInfo?.orderNumber || 'Unknown PO',
-          product: poInfo?.productName || 'Unknown Product',
+          purchaseOrderNumber: poOrderNumber,
+          product: productName,
           operations: operations,
           assignedTo: firstOp.assigned_team || 'Unassigned',
           quantity: totalTarget,
@@ -294,11 +334,10 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
       setWorkOrders(transformedOrders);
     } catch (err: any) {
       console.error('Error fetching work orders:', err);
-      setError(err?.detail || err?.message || 'Failed to load work orders');
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
-  };
+  }, [availableStages, wipApi]);
 
   // Fetch purchase orders for the dropdown
   const fetchProductionOrders = async () => {
@@ -310,9 +349,126 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
     }
   };
 
+  // Fetch available stages
+  const fetchAvailableStages = async (silent: boolean = false) => {
+    if (!silent) setLoadingStages(true);
+    try {
+      const stages = await stagesApi.listStages(true); // Get only active stages
+      if (Array.isArray(stages)) {
+        setAvailableStages(stages);
+      } else {
+        console.warn('Invalid stages data received:', stages);
+        // Don't clear stages on invalid data if we already have them
+        if (availableStages.length === 0) {
+          setAvailableStages([]);
+        }
+      }
+    } catch (err: any) {
+      console.error('Failed to load stages:', err);
+      // Don't clear stages on error, keep stale data
+    } finally {
+      if (!silent) setLoadingStages(false);
+    }
+  };
+
+  // Initial data fetch
   useEffect(() => {
-    fetchWorkOrders();
     fetchProductionOrders();
+    fetchAvailableStages();
+    fetchWorkOrders(); // Fetch work orders on initial load
+  }, []);
+
+  // Periodic refresh of stages to catch configuration changes (every 30 seconds)
+  // Use silent refresh to avoid loading glitch
+  useEffect(() => {
+    const intervalId = setInterval(() => {
+      fetchAvailableStages(true); // Silent refresh
+    }, 30000); // 30 seconds
+
+    return () => clearInterval(intervalId);
+  }, []);
+
+  // Refresh stages when page becomes visible (user switches back to tab)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        fetchAvailableStages(true); // Silent refresh
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, []);
+
+  // Detect stage changes and refetch work orders when stages actually change
+  useEffect(() => {
+    // Skip on initial render (when previousStagesRef is empty)
+    if (previousStagesRef.current.length === 0 && availableStages.length > 0) {
+      previousStagesRef.current = availableStages;
+      return;
+    }
+
+    // Check if stages have actually changed
+    // Use ID-based comparison instead of index-based to handle resequencing
+    const prevStageIds = new Set(previousStagesRef.current.map(s => s.id));
+    const currentStageIds = new Set(availableStages.map(s => s.id));
+
+    // Check for added or removed stages
+    const stageCountChanged = previousStagesRef.current.length !== availableStages.length;
+    const stagesAddedOrRemoved =
+      previousStagesRef.current.some(s => !currentStageIds.has(s.id)) ||
+      availableStages.some(s => !prevStageIds.has(s.id));
+
+    // Check for sequence or name changes (create maps by ID for comparison)
+    const prevStageMap = new Map(previousStagesRef.current.map(s => [s.id, s]));
+    const sequenceOrNameChanged = availableStages.some(currentStage => {
+      const prevStage = prevStageMap.get(currentStage.id);
+      return prevStage && (
+        prevStage.sequence_number !== currentStage.sequence_number ||
+        prevStage.name !== currentStage.name
+      );
+    });
+
+    const stagesChanged = stageCountChanged || stagesAddedOrRemoved || sequenceOrNameChanged;
+
+    if (stagesChanged && availableStages.length > 0) {
+      console.log('Stages changed, refetching work orders silently...', {
+        stageCountChanged,
+        stagesAddedOrRemoved,
+        sequenceOrNameChanged,
+        previousCount: previousStagesRef.current.length,
+        currentCount: availableStages.length
+      });
+      fetchWorkOrders(true); // Silent refetch to avoid loading glitch
+      previousStagesRef.current = availableStages;
+    }
+  }, [availableStages]);
+
+  // Check for pre-selected PO from Purchase Orders screen (via sessionStorage)
+  useEffect(() => {
+    const storedPO = sessionStorage.getItem('createWorkingOrderForPO');
+    if (storedPO) {
+      try {
+        const poData = JSON.parse(storedPO);
+        // Pre-fill the form and open the modal
+        setNewWorkOrderData(prev => ({
+          ...prev,
+          purchase_order_id: poData.id,
+          target_qty: poData.quantity?.toString() || '',
+          unit: poData.unit || 'pcs'
+        }));
+
+        // Fetch items for this PO so the second dropdown works
+        fetchPOItems(poData.id);
+
+        setShowNewWorkOrderModal(true);
+        // Clear the sessionStorage after using it
+        sessionStorage.removeItem('createWorkingOrderForPO');
+      } catch (err) {
+        console.error('Failed to parse stored PO data:', err);
+        sessionStorage.removeItem('createWorkingOrderForPO');
+      }
+    }
   }, []);
 
   // Get unique purchase order IDs for filter dropdown
@@ -647,8 +803,11 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
 
       // Identify target operation based on action and current state
       if (action === 'start') {
-        // Find first pending or on-hold operation
-        const op = order.operations.find(op => op.status === 'pending' || op.status === 'on-hold');
+        // Find first Planned, Released, or On Hold operation
+        const op = order.operations.find(op => {
+          const statusLower = op.status?.toLowerCase();
+          return statusLower === 'planned' || statusLower === 'released' || statusLower === 'on hold' || statusLower === 'pending';
+        });
         if (op) {
           targetOpId = op.id;
           status = 'In Progress';
@@ -656,15 +815,15 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
         }
       } else if (action === 'pause') {
         // Find first in-progress operation
-        const op = order.operations.find(op => op.status === 'in-progress');
+        const op = order.operations.find(op => op.status?.toLowerCase() === 'in progress');
         if (op) {
           targetOpId = op.id;
           status = 'On Hold';
-          updateData = { status, notes: orderNotes[order.id] };
+          updateData = { status };
         }
       } else if (action === 'complete') {
         // Find first in-progress operation
-        const op = order.operations.find(op => op.status === 'in-progress');
+        const op = order.operations.find(op => op.status?.toLowerCase() === 'in progress');
         if (op) {
           targetOpId = op.id;
           status = 'Completed';
@@ -729,9 +888,9 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
         const reqs: BOMRequirement[] = safeMaterials.map(m => ({
           material_name: m.material_name,
           quantity_per_unit: m.quantity_per_unit,
-          required_quantity: m.required_qty,
+          required_quantity: Number(m.required_qty) || 0, // Cast to number, default to 0
           unit: m.unit,
-          available_stock: m.available_qty,
+          available_stock: Number(m.available_qty) || 0, // Cast to number, default to 0
           status: m.shortage_status === 'Sufficient' ? 'Sufficient' : 'Low Stock'
         }));
 
@@ -798,158 +957,179 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
   };
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <h1 className="text-2xl font-semibold">{t.title}</h1>
-        <Button
-          className="bg-emerald-600 hover:bg-emerald-700"
-          onClick={() => setShowNewWorkOrderModal(true)}
-        >
-          <Plus className="h-4 w-4 mr-2" />
-          {t.newWorkOrder}
-        </Button>
-      </div>
-
-      {/* Search and Filter */}
-      <div className="flex flex-col sm:flex-row gap-4">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400" />
-          <Input
-            placeholder={t.search}
-            className="pl-10"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-          />
+    <div className="space-y-6 p-4 md:p-6 bg-zinc-50 min-h-screen">
+      {/* Header Section */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-zinc-900">{t.title}</h1>
+          <p className="text-sm text-zinc-500 mt-1">Manage production workflow and track progress</p>
         </div>
         <div className="flex gap-2">
-          <select
-            className="px-4 py-2 border border-zinc-200 rounded-lg bg-white text-sm"
-            value={poFilter}
-            onChange={(e) => setPoFilter(e.target.value)}
-          >
-            <option value="all">{t.productionOrder}: {t.all}</option>
-            {uniquePOs.map(po => (
-              <option key={po} value={po}>{po}</option>
-            ))}
-          </select>
-          <select
-            className="px-4 py-2 border border-zinc-200 rounded-lg bg-white text-sm"
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-          >
-            <option value="all">{t.status}: {t.all}</option>
-            <option value="pending">{t.pending}</option>
-            <option value="in-progress">{t.inProgress}</option>
-            <option value="completed">{t.completed}</option>
-            <option value="on-hold">{t.onHold}</option>
-          </select>
-          <Button variant="outline">
-            <Filter className="h-4 w-4 mr-2" />
-            {t.filter}
+          <Button onClick={() => setShowNewWorkOrderModal(true)} className="bg-emerald-600 hover:bg-emerald-700 shadow-sm">
+            <Plus className="w-4 h-4 mr-2" />
+            {t.newWorkOrder}
           </Button>
         </div>
       </div>
 
-      {/* Work Orders Grid - Collapsible Cards */}
-      <div className="grid gap-4">
-        {filteredOrders.map((order) => {
-          const isExpanded = expandedOrders.has(order.id);
+      {/* Filters Section */}
+      <Card className="p-4 border-zinc-200 shadow-sm">
+        <div className="flex flex-col md:flex-row gap-4">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400" />
+            <Input
+              placeholder={t.search}
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-9 border-zinc-200 focus:border-emerald-500 focus:ring-emerald-500"
+            />
+          </div>
+          <div className="flex gap-2 w-full md:w-auto overflow-x-auto pb-2 md:pb-0">
+            <select
+              className="h-10 px-3 rounded-md border border-zinc-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+            >
+              <option value="all">All Statuses</option>
+              {['Pending', 'In-Progress', 'Completed', 'On-Hold'].map(s => (
+                <option key={s} value={s.toLowerCase()}>{s}</option>
+              ))}
+            </select>
 
-          // Calculate overall progress for single operation
-          const totalCompletedUnits = order.operations.reduce((sum, op) => sum + op.completedUnits, 0);
-          const overallProgressPercent = order.quantity > 0
-            ? Math.round((totalCompletedUnits / order.quantity) * 100)
-            : 0;
+            <select
+              className="h-10 px-3 rounded-md border border-zinc-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 max-w-[200px]"
+              value={poFilter}
+              onChange={(e) => setPoFilter(e.target.value)}
+            >
+              <option value="all">All POs</option>
+              {uniquePOs.filter(Boolean).map(poId => {
+                const poNumber = workOrders.find(w => w.purchaseOrderId === poId)?.purchaseOrderNumber || 'Unknown PO';
+                return <option key={poId} value={poId}>{poNumber}</option>;
+              })}
+            </select>
+          </div>
+        </div>
+      </Card>
 
-          return (
-            <Card key={order.id} className="overflow-hidden bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 shadow-sm">
-              {/* Collapsed Header - Always Visible */}
-              <div
-                className="p-6 cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors"
-                onClick={() => toggleExpanded(order.id)}
-              >
-                <div className="flex flex-col gap-6">
-
-                  {/* Top Row: WO Number, Status, PO Number */}
-                  <div className="flex items-start justify-between">
-                    <div className="flex flex-col gap-1">
-                      <div className="flex items-center gap-3">
-                        <span className="font-bold text-xl text-zinc-900 dark:text-zinc-100">
-                          {order.workOrderNumber}
-                        </span>
+      {/* Work Orders List */}
+      <div className="space-y-4">
+        {loading ? (
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {[1, 2, 3].map(i => (
+              <Card key={i} className="h-48 animate-pulse bg-zinc-100 border-zinc-200" />
+            ))}
+          </div>
+        ) : filteredOrders.length === 0 ? (
+          <div className="text-center py-12 bg-white rounded-lg border border-dashed border-zinc-300">
+            <Package className="h-12 w-12 text-zinc-300 mx-auto mb-3" />
+            <p className="text-zinc-500 font-medium">No work orders found matching your filters</p>
+            <Button variant="link" onClick={() => { setSearchQuery(''); setStatusFilter('all'); setPoFilter('all'); }} className="text-emerald-600">
+              Clear all filters
+            </Button>
+          </div>
+        ) : (
+          <div className="grid gap-4 md:grid-cols-1 lg:grid-cols-1">
+            {filteredOrders.map((order) => (
+              <Card key={order.id} className="overflow-hidden border-zinc-200 shadow-sm hover:shadow-md transition-shadow duration-200">
+                <div className="p-4 md:p-6">
+                  {/* Card Header: Main Info */}
+                  <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
+                    <div>
+                      <div className="flex items-center gap-3 mb-1">
+                        <h3 className="text-lg font-bold text-zinc-900">{order.product}</h3>
                         {getStatusBadge(order.status)}
+                        <Badge variant="outline" className={`
+                          ${order.priority === 'high' ? 'text-orange-600 border-orange-200 bg-orange-50' :
+                            order.priority === 'urgent' ? 'text-red-600 border-red-200 bg-red-50' :
+                              'text-zinc-500 border-zinc-200 bg-zinc-50'}
+                        `}>
+                          {order.priority.charAt(0).toUpperCase() + order.priority.slice(1)} Priority
+                        </Badge>
                       </div>
-                      <div className="text-sm text-zinc-500">
-                        {t.productionOrder}: {order.purchaseOrderNumber}
+                      <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-zinc-500">
+                        <span className="flex items-center gap-1.5">
+                          <Package className="h-4 w-4 text-zinc-400" />
+                          WO: <span className="font-medium text-zinc-700">{order.workOrderNumber}</span>
+                        </span>
+                        <span className="flex items-center gap-1.5">
+                          <Package className="h-4 w-4 text-zinc-400" />
+                          PO: <span className="font-medium text-zinc-700">{order.purchaseOrderNumber}</span>
+                        </span>
+                        {order.assignedTo !== 'Unassigned' && (
+                          <span className="flex items-center gap-1.5">
+                            <span className="h-4 w-4 rounded-full bg-zinc-200 flex items-center justify-center text-[10px] font-bold text-zinc-600">
+                              {order.assignedTo.charAt(0)}
+                            </span>
+                            Team: <span className="font-medium text-zinc-700">{order.assignedTo}</span>
+                          </span>
+                        )}
                       </div>
                     </div>
 
-                    {/* Expand/Collapse Button */}
-                    <button className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-full transition-colors">
-                      {isExpanded ? (
-                        <ChevronUp className="h-5 w-5 text-zinc-500" />
-                      ) : (
-                        <ChevronDown className="h-5 w-5 text-zinc-500" />
-                      )}
-                    </button>
-                  </div>
-
-                  {/* Product Info Row */}
-                  <div className="flex items-center gap-2.5 text-[15px] font-medium text-zinc-700 dark:text-zinc-300">
-                    <div className="p-1.5 bg-zinc-100 dark:bg-zinc-800 rounded-md text-zinc-500">
-                      <Package className="h-4 w-4" />
+                    {/* Quick Stats / Actions */}
+                    <div className="flex items-center gap-4 w-full md:w-auto">
+                      <div className="flex flex-col items-end min-w-[100px]">
+                        <div className="text-2xl font-bold text-zinc-900">
+                          {Math.round((order.completedQty / order.quantity) * 100)}%
+                        </div>
+                        <div className="text-xs text-zinc-500">
+                          {order.completedQty} / {order.quantity} {t.units}
+                        </div>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => toggleExpanded(order.id)}
+                        className="ml-auto md:ml-0"
+                      >
+                        {expandedOrders.has(order.id) ? (
+                          <ChevronUp className="h-5 w-5 text-zinc-500" />
+                        ) : (
+                          <ChevronDown className="h-5 w-5 text-zinc-500" />
+                        )}
+                      </Button>
                     </div>
-                    {order.product}
                   </div>
 
-                  {/* Expanded Content or Mini Progress */}
-                  {isExpanded ? (
-                    <div className="mt-4 space-y-6 animate-in slide-in-from-top-2 duration-200">
+                  {/* Progress Bar */}
+                  <div className="w-full bg-zinc-100 rounded-full h-2 mb-6 overflow-hidden">
+                    <div
+                      className="bg-emerald-500 h-2 rounded-full transition-all duration-500"
+                      style={{ width: `${Math.min((order.completedQty / order.quantity) * 100, 100)}%` }}
+                    />
+                  </div>
 
-                      {/* Operation Progress Cards */}
+                  {/* Expanded Content: Operations */}
+                  {expandedOrders.has(order.id) && (
+                    <div className="mt-6 space-y-6 border-t border-zinc-100 pt-6 animate-in fade-in slide-in-from-top-2 duration-200">
+                      {/* Production Order Info */}
+                      <div className="text-sm text-zinc-600">
+                        Production Order: <span className="font-medium text-zinc-900">{order.purchaseOrderNumber}</span>
+                      </div>
+
+                      {/* Operation Progress - Horizontal Cards */}
                       <div>
-                        <h4 className="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-3">
-                          {language === 'en' ? 'Operation Progress' : 'ऑपरेशन प्रगति'}
-                        </h4>
-                        <div className="flex gap-4 overflow-x-auto pb-2 scrollbar-thin scrollbar-thumb-zinc-200 dark:scrollbar-thumb-zinc-700">
-                          {order.operations.map((op, idx) => {
-                            const opPercent = op.targetUnits > 0 ? Math.round((op.completedUnits / op.targetUnits) * 100) : 0;
+                        <h4 className="text-sm font-semibold text-zinc-700 mb-3">Operation Progress</h4>
+                        <div className="flex gap-3">
+                          {order.operations.map((op) => {
+                            const opProgress = op.targetUnits > 0 ? Math.round((op.completedUnits / op.targetUnits) * 100) : 0;
+
                             return (
                               <div
-                                key={idx}
+                                key={op.id}
                                 className={`
-                                    relative p-3 rounded-xl border transition-all shadow-sm min-w-[240px] flex-1
-                                    ${op.status === 'completed' ? 'bg-emerald-50/50 border-emerald-200 dark:bg-emerald-900/10 dark:border-emerald-800' :
-                                    op.status === 'in-progress' ? 'bg-blue-50/50 border-blue-200 dark:bg-blue-900/10 dark:border-blue-800' :
-                                      'bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800'}
-                                  `}
+                                  flex-1 p-3 rounded-lg border text-center space-y-1.5 transition-all
+                                  ${op.status === 'completed' ? 'bg-emerald-50 border-emerald-200' :
+                                    op.status === 'in-progress' ? 'bg-blue-50 border-blue-200' :
+                                      'bg-zinc-50 border-zinc-200'}
+                                `}
                               >
-                                <div className="flex flex-col items-center text-center gap-2">
-                                  <span className="font-semibold text-xs text-zinc-900 line-clamp-1">{op.name}</span>
-
-                                  <div className="flex items-baseline gap-1">
-                                    <span className="text-xl font-bold tracking-tight">{op.completedUnits}</span>
-                                    <span className="text-[10px] text-zinc-500 font-medium">{t.units}</span>
-                                  </div>
-
-                                  <div className="w-full bg-zinc-100 h-1.5 rounded-full overflow-hidden mt-1">
-                                    <div
-                                      className={`h-full rounded-full transition-all duration-500 ${op.status === 'completed' ? 'bg-emerald-500' :
-                                        op.status === 'in-progress' ? 'bg-blue-500' : 'bg-zinc-300'
-                                        }`}
-                                      style={{ width: `${opPercent}%` }}
-                                    />
-                                  </div>
-
-                                  <div className="text-[10px] text-zinc-500 mt-0.5">
-                                    {opPercent}% {t.of} {op.targetUnits}
-                                  </div>
-
-                                  <div className="flex flex-col gap-0.5 text-[10px] text-zinc-500 mt-1.5 w-full text-left bg-white/50 dark:bg-black/20 p-1.5 rounded-md">
-                                    <span className="flex justify-between"><span>{t.workstation}:</span> <strong className="text-zinc-700 dark:text-zinc-300 truncate ml-1">{op.workstation}</strong></span>
-                                    <span className="flex justify-between"><span>{t.assignedTo}:</span> <strong className="text-zinc-700 dark:text-zinc-300 truncate ml-1">{op.assignedTo}</strong></span>
-                                  </div>
+                                <div className="font-semibold text-sm text-zinc-900">{op.name}</div>
+                                <div className="text-xl font-bold text-zinc-900">{op.completedUnits} units</div>
+                                <div className="text-xs text-zinc-500">{opProgress}% of {op.targetUnits}</div>
+                                <div className="text-xs text-zinc-600 space-y-0.5 mt-1">
+                                  <div>Workstation: {op.workstation}</div>
+                                  <div>Assigned to: {op.assignedTo}</div>
                                 </div>
                               </div>
                             );
@@ -957,127 +1137,72 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
                         </div>
                       </div>
 
-                      {/* Overall Progress & Timeline */}
-                      <div className="space-y-6 pt-6 border-t border-zinc-100 dark:border-zinc-800">
-                        <div className="space-y-2">
-                          <div className="flex items-center justify-between text-sm">
-                            <span className="text-zinc-500 font-medium">{t.overallProgress}</span>
-                            <span className="font-semibold text-zinc-900 dark:text-zinc-100">
-                              {totalCompletedUnits.toFixed(1)} {t.of} {order.quantity.toFixed(1)} {t.units} ({overallProgressPercent}%)
-                            </span>
-                          </div>
-                          <div className="h-3 bg-zinc-100 dark:bg-zinc-800 rounded-full overflow-hidden">
-                            <div
-                              className="h-full bg-blue-600 rounded-full transition-all duration-500"
-                              style={{ width: `${overallProgressPercent}%` }}
-                            />
-                          </div>
+                      {/* Overall Progress */}
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="font-medium text-zinc-700">Overall Progress:</span>
+                          <span className="font-bold text-zinc-900">{order.completedQty} of {order.quantity} units ({Math.round((order.completedQty / order.quantity) * 100)}%)</span>
                         </div>
-
-                        <div className="flex items-center gap-6 text-sm text-zinc-500 pb-2">
-                          <div className="flex items-center gap-1.5">
-                            <Clock className="h-4 w-4 text-zinc-400" />
-                            <span>{t.startTime}: <span className="text-zinc-700 dark:text-zinc-300 font-medium">{order.startTime ? new Date(order.startTime).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' }) : 'Not set'}</span></span>
-                          </div>
-                          <div className="flex items-center gap-1.5">
-                            <Calendar className="h-4 w-4 text-zinc-400" />
-                            <span>{t.estimatedEnd}: <span className="text-zinc-700 dark:text-zinc-300 font-medium">{order.estimatedEnd ? new Date(order.estimatedEnd).toLocaleDateString() : 'Not set'}</span></span>
-                          </div>
-                        </div>
-
-                        {/* Action Buttons - Bottom Layout */}
-                        <div className="flex flex-col gap-3 pt-2">
-                          <Input
-                            placeholder={language === 'en' ? 'Add notes or pause reason...' : 'नोट्स या विराम का कारण जोड़ें...'}
-                            value={orderNotes[order.id] || ''}
-                            onChange={(e) => setOrderNotes(prev => ({ ...prev, [order.id]: e.target.value }))}
-                            className="bg-white"
+                        <div className="w-full bg-zinc-200 rounded-full h-2 overflow-hidden">
+                          <div
+                            className="bg-blue-600 h-full rounded-full transition-all duration-500"
+                            style={{ width: `${Math.min((order.completedQty / order.quantity) * 100, 100)}%` }}
                           />
-
-                          {order.status === 'pending' && (
-                            <Button
-                              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm h-12 text-base font-medium rounded-xl"
-                              onClick={(e) => { e.stopPropagation(); handleAction('start', order.id); }}
-                            >
-                              <Play className="h-5 w-5 mr-2" />
-                              {t.start}
-                            </Button>
-                          )}
-
-                          {order.status === 'in-progress' && (
-                            <div className="flex gap-3">
-                              <Button
-                                variant="outline"
-                                className="flex-1 text-zinc-600 border-zinc-200 hover:bg-zinc-50 h-12 text-base font-medium rounded-xl"
-                                onClick={(e) => { e.stopPropagation(); handleAction('pause', order.id); }}
-                              >
-                                <Pause className="h-5 w-5 mr-2" />
-                                {t.pause}
-                              </Button>
-                              <Button
-                                className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm h-12 text-base font-medium rounded-xl"
-                                onClick={(e) => { e.stopPropagation(); handleAction('complete', order.id); }}
-                              >
-                                <CheckCircle2 className="h-5 w-5 mr-2" />
-                                {t.complete}
-                              </Button>
-                            </div>
-                          )}
-
-                          {order.status === 'on-hold' && (
-                            <Button
-                              className="w-full bg-blue-600 hover:bg-blue-700 text-white shadow-sm h-12 text-base font-medium rounded-xl"
-                              onClick={(e) => { e.stopPropagation(); handleAction('start', order.id); }}
-                            >
-                              <Play className="h-5 w-5 mr-2" />
-                              {t.start}
-                            </Button>
-                          )}
                         </div>
                       </div>
-                    </div>
-                  ) : (
-                    // Collapsed View - Progress Summary
-                    <div className="mt-4">
-                      {/* Collapsed view progress hidden as requested */}
+
+                      {/* Timeline */}
+                      <div className="flex items-center gap-6 text-sm text-zinc-600">
+                        <div className="flex items-center gap-2">
+                          <Clock className="h-4 w-4" />
+                          <span>Start: {order.startTime ? new Date(order.startTime).toLocaleString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : 'Not set'}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Calendar className="h-4 w-4" />
+                          <span>Est. End: {order.estimatedEnd ? new Date(order.estimatedEnd).toLocaleString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : 'Not set'}</span>
+                        </div>
+                      </div>
+
+                      {/* Action Buttons */}
+                      <div className="flex gap-3 pt-2">
+                        {order.operations.some(op => op.status === 'in-progress') && (
+                          <>
+                            <Button
+                              variant="outline"
+                              className="flex-1 border-zinc-300 hover:bg-zinc-50"
+                              onClick={(e) => { e.stopPropagation(); handleAction('pause', order.id); }}
+                            >
+                              <Pause className="h-4 w-4 mr-2" />
+                              {t.pause}
+                            </Button>
+                            <Button
+                              className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white"
+                              onClick={(e) => { e.stopPropagation(); handleAction('complete', order.id); }}
+                            >
+                              <CheckCircle2 className="h-4 w-4 mr-2" />
+                              {t.complete}
+                            </Button>
+                          </>
+                        )}
+                        {order.operations.some(op => op.status === 'pending' || op.status === 'on-hold') &&
+                          !order.operations.some(op => op.status === 'in-progress') && (
+                            <Button
+                              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
+                              onClick={(e) => { e.stopPropagation(); handleAction('start', order.id); }}
+                            >
+                              <Play className="h-4 w-4 mr-2" />
+                              {t.start}
+                            </Button>
+                          )}
+                      </div>
                     </div>
                   )}
                 </div>
-              </div>
-            </Card>
-          );
-        })}
+              </Card>
+            ))}
+          </div>
+        )}
       </div>
-
-      {filteredOrders.length === 0 && (
-        <Card className="p-8 text-center">
-          <AlertCircle className="h-12 w-12 text-zinc-400 mx-auto mb-4" />
-          <p className="text-zinc-500">
-            {language === 'en' ? 'No work orders found' : 'कोई कार्य आदेश नहीं मिला'}
-          </p>
-        </Card>
-      )}
-
-      {/* Loading State */}
-      {loading && (
-        <Card className="p-8 text-center">
-          <div className="animate-spin h-8 w-8 border-4 border-emerald-500 border-t-transparent rounded-full mx-auto mb-4" />
-          <p className="text-zinc-500">
-            {language === 'en' ? 'Loading work orders...' : 'कार्य आदेश लोड हो रहे हैं...'}
-          </p>
-        </Card>
-      )}
-
-      {/* Error State */}
-      {error && (
-        <Card className="p-8 text-center border-red-200 bg-red-50">
-          <AlertCircle className="h-12 w-12 text-red-400 mx-auto mb-4" />
-          <p className="text-red-600">{error}</p>
-          <Button onClick={fetchWorkOrders} className="mt-4" variant="outline">
-            {language === 'en' ? 'Retry' : 'पुनः प्रयास करें'}
-          </Button>
-        </Card>
-      )}
 
       {/* New Work Order Modal */}
       {showNewWorkOrderModal && (
@@ -1104,36 +1229,12 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
                   onChange={async (e) => {
                     const poId = e.target.value;
                     setNewWorkOrderData(prev => ({ ...prev, purchase_order_id: poId }));
-                    if (poId) {
-                      try {
-                        const poDetails = await purchaseOrdersApi.getOrder(poId);
-                        // Handle both Multi-SKU (items) and Single-SKU (main product)
-                        if (poDetails.items && Array.isArray(poDetails.items) && poDetails.items.length > 0) {
-                          setPoItems(poDetails.items);
-                        } else if (poDetails.product_id) {
-                          // Fallback for single-SKU orders
-                          setPoItems([{
-                            product_id: poDetails.product_id,
-                            product_code: poDetails.product_code || 'SKU',
-                            product_name: poDetails.product_name,
-                            quantity: poDetails.quantity,
-                            unit: poDetails.unit
-                          }]);
-                        } else {
-                          setPoItems([]);
-                        }
-                      } catch (err) {
-                        console.error("Failed to fetch PO items", err);
-                        setPoItems([]);
-                      }
-                    } else {
-                      setPoItems([]);
-                    }
+                    await fetchPOItems(poId);
                   }}
                   className="w-full p-2 border border-zinc-300 rounded-md"
                 >
                   <option value="">{language === 'en' ? 'Select Purchase Order...' : 'खरीद आदेश चुनें...'}</option>
-                  {productionOrders.map((po) => (
+                  {Array.isArray(productionOrders) && productionOrders.map((po: PurchaseOrder) => (
                     <option key={po.id} value={po.id}>
                       {po.order_number} - {po.product_name}
                     </option>
@@ -1149,7 +1250,7 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
                   </label>
                   <select
                     className="w-full p-2 border border-zinc-300 rounded-md"
-                    onChange={(e) => {
+                    onChange={async (e) => {
                       const selectedCode = e.target.value;
                       // Safe check for poItems
                       if (!Array.isArray(poItems)) return;
@@ -1163,10 +1264,34 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
                           product_id: selectedItem.product_id, // Ensure this exists on item
                           unit: selectedItem.unit || 'pcs',
                           target_qty: selectedItem.quantity ? String(selectedItem.quantity) : prev.target_qty,
-                          notes: prev.notes // Keep notes logic as backup/visual
+                          notes: (prev.notes || '') // Safer access
                             ? `${prev.notes}\nSelected SKU: ${selectedCode} - ${selectedItem.product_name || ''}`
                             : `Selected SKU: ${selectedCode} - ${selectedItem.product_name || ''}`
                         }));
+
+                        // Load stages for this product
+                        if (selectedItem.product_id) {
+                          setLoadingStages(true);
+                          try {
+                            const productStagesResponse = await stagesApi.getProductStages(selectedItem.product_id);
+                            if (productStagesResponse && Array.isArray(productStagesResponse.stages)) {
+                              setProductStages(productStagesResponse.stages);
+                            } else {
+                              // Fallback if stages are missing/invalid in response
+                              setProductStages([]);
+                            }
+                          } catch (err) {
+                            console.error('Failed to load product stages:', err);
+                            // Fallback to default available stages (cast to ProductStageDetail format)
+                            setProductStages(availableStages.map(s => ({
+                              ...s,
+                              is_required: true,
+                              is_active: s.is_active
+                            })));
+                          } finally {
+                            setLoadingStages(false);
+                          }
+                        }
                       } else {
                         console.warn("Item not found in poItems for code:", selectedCode);
                       }
@@ -1191,15 +1316,20 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
                   value={newWorkOrderData.operation}
                   onChange={(e) => setNewWorkOrderData(prev => ({ ...prev, operation: e.target.value }))}
                   className="w-full p-2 border border-zinc-300 rounded-md"
+                  disabled={loadingStages}
                 >
                   <option value="">{language === 'en' ? 'Select Operation...' : 'ऑपरेशन चुनें...'}</option>
-                  <option value="Cutting">{language === 'en' ? 'Cutting' : 'कटाई'}</option>
-                  <option value="Sewing">{language === 'en' ? 'Sewing' : 'सिलाई'}</option>
-                  <option value="Assembly">{language === 'en' ? 'Assembly' : 'असेंबली'}</option>
-                  <option value="Quality Check">{language === 'en' ? 'Quality Check' : 'गुणवत्ता जांच'}</option>
-                  <option value="Packaging">{language === 'en' ? 'Packaging' : 'पैकेजिंग'}</option>
-                  <option value="Finishing">{language === 'en' ? 'Finishing' : 'फिनिशिंग'}</option>
+                  {(productStages.length > 0 ? productStages : availableStages).map((stage) => (
+                    <option key={stage.id} value={stage.name}>
+                      {stage.name}
+                    </option>
+                  ))}
                 </select>
+                {loadingStages && (
+                  <p className="text-xs text-zinc-500 mt-1">
+                    {language === 'en' ? 'Loading stages...' : 'स्टेज लोड हो रहे हैं...'}
+                  </p>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-4">

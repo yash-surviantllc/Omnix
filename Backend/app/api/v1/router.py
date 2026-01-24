@@ -16,7 +16,8 @@ from app.api.v1.endpoints import (
     gate_entries,
     gate_exits,
     websockets,
-    qc
+    qc,
+    stages
 )
 
 api_router = APIRouter()
@@ -137,4 +138,11 @@ api_router.include_router(
     qc.router,
     prefix="/qc",
     tags=["Quality Control"]
+)
+
+# Stage Management routes
+api_router.include_router(
+    stages.router,
+    prefix="/stages",
+    tags=["Stage Management"]
 )

@@ -11,25 +11,39 @@ export interface PurchaseOrder {
   unit: string;
   due_date: string;
   priority: string;
-  shift_number?: string;
+  start_date?: string;
+  end_date?: string;
   status: string;
   notes?: string;
-  qr_code?: string;
   materials_status?: string;
   days_until_due?: number;
   is_overdue?: boolean;
-  progress_percentage?: number;
   materials?: OrderMaterial[];
+  items?: POItemResponse[];
   total_material_cost?: number;
   started_at?: string;
   completed_at?: string;
   created_at: string;
   updated_at: string;
   created_by?: string;
-  updated_by?: string;
+  progress_percentage?: number;
   sku_progress?: SkuProgressSummary[];
   stage_progress?: StageProgress[];
   pending_shortages?: SkuShortageSummary[];
+  qr_code?: string;
+}
+
+export interface POItemResponse {
+  id: string;
+  purchase_order_id: string;
+  product_id: string;
+  product_code?: string;
+  product_name?: string;
+  quantity: number;
+  unit: string;
+  notes?: string;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface OrderMaterial {
@@ -57,10 +71,9 @@ export interface CreatePurchaseOrderData {
   notes?: string;
   customer_name?: string;
   assigned_team?: string;
-  shift_number?: string;
   production_stage?: string;
-  start_time?: string;
-  end_time?: string;
+  start_date?: string; // Renamed from start_time
+  end_date?: string;   // Renamed from end_time
 }
 
 export interface UpdatePurchaseOrderData {
@@ -71,7 +84,6 @@ export interface UpdatePurchaseOrderData {
   notes?: string;
   customer_name?: string;
   assigned_team?: string;
-  shift_number?: string;
   production_stage?: string;
 }
 
@@ -91,10 +103,9 @@ export interface CreateMultiSkuOrderData {
   customer_name?: string;
   due_date: string;
   priority?: string;
-  shift_number?: string;
   notes?: string;
-  start_time?: string;
-  end_time?: string;
+  start_date?: string; // Renamed from start_time
+  end_date?: string;   // Renamed from end_time
   items: MultiSkuOrderItem[];
 }
 
@@ -183,7 +194,7 @@ export const purchaseOrdersApi = {
   // List purchase orders
   async listOrders(params?: ListOrdersParams): Promise<PurchaseOrder[]> {
     const queryParams = new URLSearchParams();
-    
+
     if (params?.page) queryParams.append('page', params.page.toString());
     if (params?.limit) queryParams.append('limit', params.limit.toString());
     if (params?.status) queryParams.append('status', params.status);
@@ -203,7 +214,7 @@ export const purchaseOrdersApi = {
 
   // Create purchase order
   async createOrder(data: CreatePurchaseOrderData): Promise<PurchaseOrder> {
-    return await apiClient.post<PurchaseOrder>(PURCHASE_ORDER_BASE, data);
+    return await apiClient.post<PurchaseOrder>(`${PURCHASE_ORDER_BASE}`, data);
   },
 
   // Duplicate purchase order
@@ -231,8 +242,13 @@ export const purchaseOrdersApi = {
     return await apiClient.post<PurchaseOrder>(`${PURCHASE_ORDER_BASE}/${orderId}/archive`);
   },
 
-  // Cancel/Delete order
-  async cancelOrder(orderId: string): Promise<{ message: string }> {
+  // Cancel order (POST backend)
+  async cancelOrder(orderId: string): Promise<PurchaseOrder> {
+    return await apiClient.post<PurchaseOrder>(`${PURCHASE_ORDER_BASE}/${orderId}/cancel`);
+  },
+
+  // Delete order (DELETE backend)
+  async deleteOrder(orderId: string): Promise<{ message: string }> {
     return await apiClient.delete<{ message: string }>(`${PURCHASE_ORDER_BASE}/${orderId}`);
   },
 
@@ -262,7 +278,7 @@ export const purchaseOrdersApi = {
       product_id: productId,
       quantity: quantity.toString(),
     });
-    
+
     if (locationId) {
       queryParams.append('target_location_id', locationId);
     }

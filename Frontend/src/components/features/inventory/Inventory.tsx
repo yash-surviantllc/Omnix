@@ -325,7 +325,7 @@ export function Inventory({ language }: InventoryProps) {
       free: `${free} ${item.unit}`,
       location: item.location || 'N/A',
       reorderLevel: `${reorderLevel} ${item.unit}`,
-      status: item.status as 'sufficient' | 'low' | 'critical',
+      status: item.status as 'Sufficient' | 'Low Stock' | 'Critical' | 'Out of Stock',
       unit: item.unit,
       // Numeric values for calculations
       availableNum: available,
@@ -335,12 +335,14 @@ export function Inventory({ language }: InventoryProps) {
 
   const getStatusBadge = (status: string) => {
     switch (status) {
-      case 'sufficient':
+      case 'Sufficient':
         return <Badge className="bg-emerald-500">{t.sufficient}</Badge>;
-      case 'low':
+      case 'Low Stock':
         return <Badge className="bg-yellow-500">{t.lowStock}</Badge>;
-      case 'critical':
+      case 'Critical':
         return <Badge className="bg-red-500">{t.critical}</Badge>;
+      case 'Out of Stock':
+        return <Badge className="bg-zinc-500">Out of Stock</Badge>;
       default:
         return <Badge>{status}</Badge>;
     }
@@ -376,8 +378,8 @@ export function Inventory({ language }: InventoryProps) {
     return matchesSearch && matchesFilter;
   });
 
-  const criticalCount = allInventoryItems.filter((item) => item.status === 'critical').length;
-  const lowStockCount = allInventoryItems.filter((item) => item.status === 'low').length;
+  const criticalCount = allInventoryItems.filter((item) => item.status === 'Critical').length;
+  const lowStockCount = allInventoryItems.filter((item) => item.status === 'Low Stock').length;
 
 
   return (
@@ -455,9 +457,10 @@ export function Inventory({ language }: InventoryProps) {
             className="px-4 py-2 border border-zinc-200 rounded-md text-sm hover:bg-zinc-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             <option value="all">{language === 'en' ? 'All Status' : 'सभी स्थिति'}</option>
-            <option value="sufficient">{t.sufficient}</option>
-            <option value="low">{t.lowStock}</option>
-            <option value="critical">{t.critical}</option>
+            <option value="Sufficient">{t.sufficient}</option>
+            <option value="Low Stock">{t.lowStock}</option>
+            <option value="Critical">{t.critical}</option>
+            <option value="Out of Stock">Out of Stock</option>
           </select>
         </div>
         {(searchQuery || filterStatus !== 'all') && (
@@ -540,11 +543,13 @@ export function Inventory({ language }: InventoryProps) {
               </div>
               <div className="h-2 bg-zinc-200 rounded-full overflow-hidden">
                 <div
-                  className={`h-full transition-all ${item.status === 'critical'
+                  className={`h-full transition-all ${item.status === 'Critical'
                     ? 'bg-red-500'
-                    : item.status === 'low'
+                    : item.status === 'Low Stock'
                       ? 'bg-yellow-500'
-                      : 'bg-emerald-500'
+                      : item.status === 'Out of Stock'
+                        ? 'bg-zinc-500'
+                        : 'bg-emerald-500'
                     }`}
                   style={{ width: `${(item.freeNum / item.availableNum) * 100}%` }}
                 />

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -15,7 +15,7 @@ export function MaterialRequest({ language }: MaterialRequestProps) {
   const [result, setResult] = useState<MaterialRequest | null>(null);
   const [showHistory, setShowHistory] = useState(false);
   const [showFormModal, setShowFormModal] = useState(false);
-  
+
   // Form data state
   const [formData, setFormData] = useState({
     formNumber: '',
@@ -29,7 +29,7 @@ export function MaterialRequest({ language }: MaterialRequestProps) {
     endTime: '',
     deliveryInstructions: ''
   });
-  
+
   // Material items state
   const [materialItems, setMaterialItems] = useState([
     {
@@ -43,11 +43,10 @@ export function MaterialRequest({ language }: MaterialRequestProps) {
     }
   ]);
 
-  // WebSocket refs and states
-  const wsRef = useRef<WebSocket | null>(null);
+  // WebSocket refs and states (unused)
 
   // Request history - now comes from backend API
-  const [requestHistory] = useState<Array<{id: string; department: string; material: string; quantity: string; status: string; date: string}>>([]);
+  const [requestHistory] = useState<Array<{ id: string; department: string; material: string; quantity: string; status: string; date: string }>>([]);
 
   const translations = {
     en: {
@@ -173,7 +172,7 @@ export function MaterialRequest({ language }: MaterialRequestProps) {
     { text: 'Maintenance को urgent oil चाहिए', lang: 'hi' }
   ];
 
-  const quickActions: Array<{dept: string; material: string; qty: string}> = [];
+  const quickActions: Array<{ dept: string; material: string; qty: string }> = [];
 
   const handleQuickAction = (dept: string, material: string, qty: string) => {
     const text = `Request ${qty} ${material} for ${dept}`;
@@ -191,16 +190,16 @@ export function MaterialRequest({ language }: MaterialRequestProps) {
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'validated':
-      case 'completed':
+      case 'Validated':
+      case 'Completed':
         return 'bg-green-100 text-green-800 border-green-300';
-      case 'partial_stock':
-      case 'approved':
+      case 'Partial Stock':
+      case 'Approved':
         return 'bg-yellow-100 text-yellow-800 border-yellow-300';
-      case 'insufficient_stock':
-      case 'pending':
+      case 'Insufficient Stock':
+      case 'Pending':
         return 'bg-red-100 text-red-800 border-red-300';
-      case 'pending_clarification':
+      case 'Pending Clarification':
         return 'bg-blue-100 text-blue-800 border-blue-300';
       default:
         return 'bg-gray-100 text-gray-800 border-gray-300';
@@ -209,14 +208,14 @@ export function MaterialRequest({ language }: MaterialRequestProps) {
 
   const getStatusIcon = (status: string) => {
     switch (status) {
-      case 'validated':
-      case 'completed':
+      case 'Validated':
+      case 'Completed':
         return <CheckCircle className="w-4 h-4" />;
-      case 'partial_stock':
-      case 'approved':
+      case 'Partial Stock':
+      case 'Approved':
         return <AlertTriangle className="w-4 h-4" />;
-      case 'insufficient_stock':
-      case 'pending':
+      case 'Insufficient Stock':
+      case 'Pending':
         return <XCircle className="w-4 h-4" />;
       default:
         return <Package className="w-4 h-4" />;
@@ -235,21 +234,19 @@ export function MaterialRequest({ language }: MaterialRequestProps) {
       <div className="flex gap-2 border-b border-zinc-200">
         <button
           onClick={() => setShowHistory(false)}
-          className={`px-4 py-2 border-b-2 transition-colors ${
-            !showHistory
-              ? 'border-emerald-600 text-emerald-900'
-              : 'border-transparent text-zinc-600 hover:text-zinc-900'
-          }`}
+          className={`px-4 py-2 border-b-2 transition-colors ${!showHistory
+            ? 'border-emerald-600 text-emerald-900'
+            : 'border-transparent text-zinc-600 hover:text-zinc-900'
+            }`}
         >
           {t.newRequest}
         </button>
         <button
           onClick={() => setShowHistory(true)}
-          className={`px-4 py-2 border-b-2 transition-colors ${
-            showHistory
-              ? 'border-emerald-600 text-emerald-900'
-              : 'border-transparent text-zinc-600 hover:text-zinc-900'
-          }`}
+          className={`px-4 py-2 border-b-2 transition-colors ${showHistory
+            ? 'border-emerald-600 text-emerald-900'
+            : 'border-transparent text-zinc-600 hover:text-zinc-900'
+            }`}
         >
           <div className="flex items-center gap-2">
             <History className="w-4 h-4" />
@@ -344,23 +341,22 @@ export function MaterialRequest({ language }: MaterialRequestProps) {
 
           {/* Result */}
           {result && (
-            <Card className={`p-6 border-2 ${
-              result.status === 'validated' ? 'bg-green-50 border-green-300' :
-              result.status === 'partial_stock' ? 'bg-yellow-50 border-yellow-300' :
-              result.status === 'insufficient_stock' ? 'bg-red-50 border-red-300' :
-              'bg-blue-50 border-blue-300'
-            }`}>
+            <Card className={`p-6 border-2 ${result.status === 'Validated' ? 'bg-green-50 border-green-300' :
+              result.status === 'Partial Stock' ? 'bg-yellow-50 border-yellow-300' :
+                result.status === 'Insufficient Stock' ? 'bg-red-50 border-red-300' :
+                  'bg-blue-50 border-blue-300'
+              }`}>
               <div className="flex items-start gap-3 mb-4">
                 {getStatusIcon(result.status)}
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-2">
                     <h3 className="text-zinc-900">
-                      {result.status === 'validated' ? '✅ Material Request Created' :
-                       result.status === 'partial_stock' ? '⚠️ Partial Stock Available' :
-                       result.status === 'insufficient_stock' ? '❌ Insufficient Stock' :
-                       '❓ Need More Information'}
+                      {result.status === 'Validated' ? '✅ Material Request Created' :
+                        result.status === 'Partial Stock' ? '⚠️ Partial Stock Available' :
+                          result.status === 'Insufficient Stock' ? '❌ Insufficient Stock' :
+                            '❓ Need More Information'}
                     </h3>
-                    {result.urgency === 'urgent' && (
+                    {result.urgency === 'Urgent' && (
                       <Badge className="bg-red-100 text-red-800 border-red-300">
                         🔴 URGENT
                       </Badge>
@@ -395,7 +391,7 @@ export function MaterialRequest({ language }: MaterialRequestProps) {
                     </div>
 
                     {/* Stock Status */}
-                    {result.materials[0] && result.status !== 'pending_clarification' && (
+                    {result.materials[0] && result.status !== 'Pending Clarification' && (
                       <div className="p-4 bg-white/50 rounded-lg">
                         <div className="text-sm text-zinc-600 mb-2">Stock Status</div>
                         <div className="flex items-center gap-4">
@@ -454,7 +450,7 @@ export function MaterialRequest({ language }: MaterialRequestProps) {
                     )}
 
                     {/* Action Buttons */}
-                    {result.status === 'partial_stock' && (
+                    {result.status === 'Partial Stock' && (
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                         <Button className="bg-emerald-600 hover:bg-emerald-700">
                           Issue Available Stock
@@ -468,13 +464,13 @@ export function MaterialRequest({ language }: MaterialRequestProps) {
                       </div>
                     )}
 
-                    {result.status === 'insufficient_stock' && (
+                    {result.status === 'Insufficient Stock' && (
                       <Button className="w-full bg-red-600 hover:bg-red-700">
                         Create Purchase Requisition
                       </Button>
                     )}
 
-                    {result.status === 'validated' && (
+                    {result.status === 'Validated' && (
                       <Button className="w-full bg-emerald-600 hover:bg-emerald-700">
                         Confirm & Issue Materials
                       </Button>
@@ -535,7 +531,7 @@ export function MaterialRequest({ language }: MaterialRequestProps) {
           )}
         </div>
       )}
-      
+
       {/* Material Requisition Form Modal */}
       {showFormModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overflow-y-auto">

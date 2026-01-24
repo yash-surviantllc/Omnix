@@ -1,19 +1,20 @@
 import { useState } from 'react';
-import { 
-  Settings as SettingsIcon, 
-  User, 
-  Bell, 
-  Globe, 
-  Moon, 
-  Sun, 
-  MapPin, 
+import {
+  Settings as SettingsIcon,
+  User,
+  Bell,
+  Globe,
+  Moon,
+  Sun,
+  MapPin,
   Calendar,
   Save,
   X
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
+
+import { WIPSettings } from './WIPSettings';
 
 type Language = 'en' | 'hi' | 'kn' | 'ta' | 'te' | 'mr' | 'gu' | 'pa';
 
@@ -322,11 +323,10 @@ export function Settings({ language, onLanguageChange, onClose }: SettingsProps)
                 <button
                   key={lang.code}
                   onClick={() => setSelectedLanguage(lang.code)}
-                  className={`p-3 rounded-lg border-2 transition-all ${
-                    selectedLanguage === lang.code
-                      ? 'border-emerald-500 bg-emerald-50'
-                      : 'border-zinc-200 hover:border-zinc-300'
-                  }`}
+                  className={`p-3 rounded-lg border-2 transition-all ${selectedLanguage === lang.code
+                    ? 'border-emerald-500 bg-emerald-50'
+                    : 'border-zinc-200 hover:border-zinc-300'
+                    }`}
                 >
                   <div className="text-sm font-medium text-zinc-900">{lang.nativeName}</div>
                   <div className="text-xs text-zinc-500">{lang.name}</div>
@@ -344,22 +344,20 @@ export function Settings({ language, onLanguageChange, onClose }: SettingsProps)
             <div className="grid grid-cols-2 gap-3">
               <button
                 onClick={() => setTheme('light')}
-                className={`p-4 rounded-lg border-2 transition-all flex items-center gap-3 ${
-                  theme === 'light'
-                    ? 'border-emerald-500 bg-emerald-50'
-                    : 'border-zinc-200 hover:border-zinc-300'
-                }`}
+                className={`p-4 rounded-lg border-2 transition-all flex items-center gap-3 ${theme === 'light'
+                  ? 'border-emerald-500 bg-emerald-50'
+                  : 'border-zinc-200 hover:border-zinc-300'
+                  }`}
               >
                 <Sun className="h-5 w-5 text-yellow-500" />
                 <span className="text-sm font-medium text-zinc-900">{t.light}</span>
               </button>
               <button
                 onClick={() => setTheme('dark')}
-                className={`p-4 rounded-lg border-2 transition-all flex items-center gap-3 ${
-                  theme === 'dark'
-                    ? 'border-emerald-500 bg-emerald-50'
-                    : 'border-zinc-200 hover:border-zinc-300'
-                }`}
+                className={`p-4 rounded-lg border-2 transition-all flex items-center gap-3 ${theme === 'dark'
+                  ? 'border-emerald-500 bg-emerald-50'
+                  : 'border-zinc-200 hover:border-zinc-300'
+                  }`}
               >
                 <Moon className="h-5 w-5 text-indigo-500" />
                 <span className="text-sm font-medium text-zinc-900">{t.dark}</span>
@@ -394,18 +392,16 @@ export function Settings({ language, onLanguageChange, onClose }: SettingsProps)
                     [item.key]: !prev[item.key as keyof typeof notifications],
                   }))
                 }
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                  notifications[item.key as keyof typeof notifications]
-                    ? 'bg-emerald-500'
-                    : 'bg-zinc-300'
-                }`}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${notifications[item.key as keyof typeof notifications]
+                  ? 'bg-emerald-500'
+                  : 'bg-zinc-300'
+                  }`}
               >
                 <span
-                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                    notifications[item.key as keyof typeof notifications]
-                      ? 'translate-x-6'
-                      : 'translate-x-1'
-                  }`}
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${notifications[item.key as keyof typeof notifications]
+                    ? 'translate-x-6'
+                    : 'translate-x-1'
+                    }`}
                 />
               </button>
             </div>
@@ -477,6 +473,9 @@ export function Settings({ language, onLanguageChange, onClose }: SettingsProps)
           </div>
         </div>
       </Card>
+
+      {/* WIP Settings */}
+      <WIPSettings language={language} />
 
       {/* Save Button */}
       <div className="flex justify-end gap-3">

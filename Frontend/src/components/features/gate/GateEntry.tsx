@@ -28,7 +28,7 @@ type GateEntryRecord = {
   }[];
   linkedDocument: string;
   destinationDepartment: string;
-  status: 'arrived' | 'under_verification' | 'accepted' | 'rejected';
+  status: 'Arrived' | 'Under Verification' | 'Accepted' | 'Rejected';
   timestamp: string;
   remarks: string;
   photos: string[];
@@ -47,7 +47,7 @@ export function GateEntry({ language }: GateEntryProps) {
   const [entryData, setEntryData] = useState<Partial<GateEntryRecord>>({
     entryType: 'material',
     materials: [{ materialCode: '', materialName: '', qty: 0, uom: 'kg' }],
-    status: 'arrived',
+    status: 'Arrived',
     photos: []
   });
 
@@ -157,7 +157,7 @@ export function GateEntry({ language }: GateEntryProps) {
       setEntryData({
         entryType: 'material',
         materials: [{ materialCode: '', materialName: '', qty: 0, uom: 'kg' }],
-        status: 'arrived',
+        status: 'Arrived',
         photos: []
       });
 
@@ -677,11 +677,11 @@ export function GateEntry({ language }: GateEntryProps) {
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'accepted':
+      case 'Accepted':
         return 'bg-green-100 text-green-800 border-green-300';
-      case 'under_verification':
+      case 'Under Verification':
         return 'bg-yellow-100 text-yellow-800 border-yellow-300';
-      case 'rejected':
+      case 'Rejected':
         return 'bg-red-100 text-red-800 border-red-300';
       default:
         return 'bg-blue-100 text-blue-800 border-blue-300';
@@ -1196,7 +1196,7 @@ export function GateEntry({ language }: GateEntryProps) {
                   setEntryData({
                     entryType: 'material',
                     materials: [{ materialCode: '', materialName: '', qty: 0, uom: 'kg' }],
-                    status: 'arrived',
+                    status: 'Arrived',
                     photos: []
                   });
                 }}

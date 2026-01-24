@@ -108,7 +108,7 @@ class AuthService:
         # Store refresh token
         db.table('refresh_tokens').insert({
             'user_id': user['id'],
-            'token': refresh_token,
+            'token_hash': refresh_token,
             'expires_at': (datetime.utcnow() + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)).isoformat()
         }).execute()
         
@@ -132,7 +132,7 @@ class AuthService:
         
         # Check if token exists and not revoked
         token_record = db.table('refresh_tokens').select('*').eq(
-            'token', refresh_token
+            'token_hash', refresh_token
         ).eq('revoked', False).execute()
         
         if not token_record.data:
@@ -160,12 +160,12 @@ class AuthService:
         db.table('refresh_tokens').update({
             'revoked': True,
             'revoked_at': datetime.utcnow().isoformat()
-        }).eq('token', refresh_token).execute()
+        }).eq('token_hash', refresh_token).execute()
         
         # Store new refresh token
         db.table('refresh_tokens').insert({
             'user_id': user_data['id'],
-            'token': new_refresh_token,
+            'token_hash': new_refresh_token,
             'expires_at': (datetime.utcnow() + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)).isoformat()
         }).execute()
         
@@ -186,7 +186,7 @@ class AuthService:
         result = db.table('refresh_tokens').update({
             'revoked': True,
             'revoked_at': datetime.utcnow().isoformat()
-        }).eq('token', refresh_token).execute()
+        }).eq('token_hash', refresh_token).execute()
         
         return {"message": "Successfully logged out"}
     
@@ -241,7 +241,7 @@ class AuthService:
         
         db.table('password_reset_tokens').insert({
             'user_id': user['id'],
-            'token': reset_token,
+            'token_hash': reset_token,
             'expires_at': expires_at.isoformat(),
             'used': False
         }).execute()
@@ -268,7 +268,7 @@ class AuthService:
         # Find valid token
         token_result = db.table('password_reset_tokens').select(
             'id, user_id, expires_at, used'
-        ).eq('token', token).execute()
+        ).eq('token_hash', token).execute()
         
         if not token_result.data:
             raise AuthenticationException(detail="Invalid or expired reset token")
