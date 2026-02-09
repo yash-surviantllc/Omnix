@@ -36,6 +36,19 @@ class InventoryItemsService:
         
         result = query.order('created_at', desc=True).range(offset, offset + limit - 1).execute()
         
+        # Enhanced Logic: Fetch Real-time Allocation and Transit Data
+        # 1. Collect codes
+        codes = [i['material_code'] for i in result.data]
+        product_map = {} # code -> product_id
+        
+        if codes:
+            try:
+                prod_res = db.table('products').select('id, code').in_('code', codes).execute()
+                for p in prod_res.data:
+                    product_map[p['code']] = p['id']
+            except Exception:
+                pass
+                
         items = []
         for item in result.data:
             # Apply search filter
@@ -45,17 +58,37 @@ class InventoryItemsService:
                     search_lower not in item['material_name'].lower()):
                     continue
             
-            # inventory_items table doesn't have allocated_quantity or free_quantity
-            # It only has quantity field
             quantity = Decimal(str(item['quantity']))
+            allocated = Decimal('0')
+            transit = Decimal('0')
             
+            # 2. Fetch Real Metrics if linked to Product
+            p_id = product_map.get(item['material_code'])
+            if p_id:
+                try:
+                    # Allocated from Inventory Table
+                    inv_res = db.table('inventory').select('allocated_qty').eq('product_id', p_id).execute()
+                    if inv_res.data:
+                        allocated = sum(Decimal(str(r['allocated_qty'])) for r in inv_res.data)
+                        print(f"✅ {item['material_code']}: Found allocated_qty = {allocated}")
+                        
+                    # Transit from PO Items (Pending or In Progress)
+                    po_res = db.table('purchase_order_items').select('quantity, completed_quantity').eq('product_id', p_id).in_('status', ['Pending', 'In Progress']).execute()
+                    if po_res.data:
+                         transit = sum(Decimal(str(r['quantity'])) - Decimal(str(r.get('completed_quantity', 0) or 0)) for r in po_res.data)
+                except Exception as e:
+                    print(f"❌ Error fetching metrics for {item['material_code']}: {e}")
+            else:
+                print(f"⚠️  {item['material_code']}: NOT FOUND in products table - allocated_qty will be 0")
+
+
             items.append(InventoryItemListResponse(
                 id=item['id'],
                 material_code=item['material_code'],
                 material_name=item['material_name'],
                 quantity=quantity,
-                allocated_quantity=Decimal('0'),  # Not tracked in inventory_items
-                free_quantity=quantity,  # All quantity is free in inventory_items
+                allocated_quantity=allocated,
+                free_quantity=quantity - allocated,  # FIXED: Actual free stock
                 unit=item['unit'],
                 location=item.get('location'),
                 reorder_level=Decimal(str(item.get('reorder_level', 0))),
@@ -78,10 +111,30 @@ class InventoryItemsService:
         
         item = result.data[0]
         
-        # Calculate virtual fields
-        item['free_quantity'] = Decimal(str(item['quantity']))
-        item['allocated_quantity'] = Decimal('0')
-        item['total_value'] = Decimal(str(item['quantity'])) * Decimal(str(item['unit_cost']))
+        # Calculate virtual fields with Real Data
+        quantity = Decimal(str(item['quantity']))
+        allocated = Decimal('0')
+        transit = Decimal('0')
+        
+        # Try to find linked product
+        try:
+            prod_res = db.table('products').select('id').eq('code', item['material_code']).single().execute()
+            if prod_res.data:
+                p_id = prod_res.data['id']
+                # Allocated
+                inv_res = db.table('inventory').select('allocated_qty').eq('product_id', p_id).execute()
+                if inv_res.data:
+                    allocated = sum(Decimal(str(r['allocated_qty'])) for r in inv_res.data)
+                # Transit from PO Items (Pending or In Progress)
+                po_res = db.table('purchase_order_items').select('quantity, completed_quantity').eq('product_id', p_id).in_('status', ['Pending', 'In Progress']).execute()
+                if po_res.data:
+                    transit = sum(Decimal(str(r['quantity'])) - Decimal(str(r.get('completed_quantity', 0) or 0)) for r in po_res.data)
+        except Exception:
+            pass
+
+        item['free_quantity'] = quantity - allocated  # FIXED: Actual free stock
+        item['allocated_quantity'] = allocated
+        item['total_value'] = quantity * Decimal(str(item['unit_cost']))
         
         return InventoryItemResponse(**item)
     

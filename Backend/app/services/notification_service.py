@@ -5,6 +5,7 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 import os
+from app.schemas.material_requisition import MaterialRequisitionResponse
 
 
 class NotificationService:
@@ -243,6 +244,220 @@ class NotificationService:
                     recipients,
                     'email'  # Can be made configurable
                 )
+    
+    # =============================================
+    # MATERIAL REQUEST NOTIFICATIONS
+    # =============================================
+    
+    @staticmethod
+    async def get_material_request_notifications(
+        is_read: Optional[bool] = None,
+        limit: int = 50
+    ) -> List[Dict]:
+        """
+        Get material request notifications with full requisition details
+        
+        Args:
+            is_read: Filter by read status
+            limit: Maximum number of notifications
+            
+        Returns:
+            List of enriched notifications with requisition and item details
+        """
+        db = get_db()
+        
+        # Get notifications
+        query = (
+            db.table('notifications')
+            .select('*')
+            .eq('notification_type', 'material_request')
+            .eq('target_role', 'inventory')
+        )
+        
+        if is_read is not None:
+            query = query.eq('is_read', is_read)
+        
+        query = query.order('created_at', desc=True).limit(limit)
+        notifications = query.execute().data or []
+        
+        # Enrich with requisition details
+        enriched = []
+        for notif in notifications:
+            if notif.get('reference_id'):
+                try:
+                    # Get requisition
+                    req_result = (
+                        db.table('material_requisitions')
+                        .select('*')
+                        .eq('id', notif['reference_id'])
+                        .single()
+                        .execute()
+                    )
+                    
+                    if req_result.data:
+                        # Get items
+                        items_result = (
+                            db.table('material_requisition_items')
+                            .select('*')
+                            .eq('requisition_id', notif['reference_id'])
+                            .order('created_at')
+                            .execute()
+                        )
+                        
+                        enriched_data = {
+                            'notification_id': notif['id'],
+                            'is_read': notif['is_read'],
+                            'created_at': notif['created_at'],
+                            'requisition_number': req_result.data['requisition_number'],
+                            'work_order_number': req_result.data.get('work_order_number'),
+                            'department': req_result.data['department'],
+                            'requesting_stage': req_result.data.get('requesting_stage'),
+                            'requested_by': req_result.data['requested_by'],
+                            'shift': req_result.data.get('shift'),
+                            'status': req_result.data['status'],
+                            'items': items_result.data or [],
+                            'reference_id': notif['reference_id']  # Add reference_id for Approve API
+                        }
+
+                        # Enrich with Work Order Product Details (SKU & Name)
+                        if enriched_data['work_order_number']:
+                            try:
+                                wo_res = (
+                                    db.table('work_orders')
+                                    .select('product_id')
+                                    .eq('work_order_number', enriched_data['work_order_number'])
+                                    .single()
+                                    .execute()
+                                )
+                                if wo_res.data and wo_res.data.get('product_id'):
+                                    prod_res = (
+                                        db.table('products')
+                                        .select('code, name')
+                                        .eq('id', wo_res.data['product_id'])
+                                        .single()
+                                        .execute()
+                                    )
+                                    if prod_res.data:
+                                        enriched_data['sku_id'] = prod_res.data.get('code')
+                                        enriched_data['product_name'] = prod_res.data.get('name')
+                            except Exception as e:
+                                print(f"Error fetching WO details for notification: {e}")
+                        
+                        enriched.append(enriched_data)
+                except Exception as e:
+                    print(f"Error enriching notification {notif['id']}: {e}")
+                    continue
+        
+        return enriched
+    
+    @staticmethod
+    async def mark_notifications_as_read(notification_ids: List[str]) -> Dict:
+        """
+        Mark notifications as read
+        
+        Args:
+            notification_ids: List of notification IDs to mark as read
+            
+        Returns:
+            Success message with count
+        """
+        db = get_db()
+        
+        result = (
+            db.table('notifications')
+            .update({
+                'is_read': True,
+                'read_at': datetime.utcnow().isoformat()
+            })
+            .in_('id', notification_ids)
+            .execute()
+        )
+        
+        return {
+            "message": f"Marked {len(notification_ids)} notifications as read",
+            "updated_count": len(result.data) if result.data else 0
+        }
+    
+    @staticmethod
+    async def get_unread_count_for_role(role: str) -> Dict:
+        """
+        Get count of unread notifications for a role
+        
+        Args:
+            role: Target role
+            
+        Returns:
+            Unread count and latest unread timestamp
+        """
+        db = get_db()
+        
+        # Get unread notifications
+        result = (
+            db.table('notifications')
+            .select('id, created_at')
+            .eq('target_role', role)
+            .eq('is_read', False)
+            .order('created_at', desc=True)
+            .execute()
+        )
+        
+        unread_count = len(result.data) if result.data else 0
+        latest_unread_at = result.data[0]['created_at'] if result.data else None
+        
+        return {
+            "unread_count": unread_count,
+            "latest_unread_at": latest_unread_at
+        }
+
+
+    @staticmethod
+    async def create_material_request_notification(requisition: MaterialRequisitionResponse) -> Dict:
+        """
+        Create a notification for a new material requisition.
+        """
+        db = get_db()
+        
+        try:
+            # Calculate item summary
+            items_summary = ", ".join([
+                f"{item.rm_code}: {item.quantity_requested} {item.unit_of_measure}"
+                for item in requisition.items[:3]
+            ])
+            if len(requisition.items) > 3:
+                items_summary += "..."
+            
+            # Create notification
+            notification_data = {
+                'notification_type': 'material_request',
+                'title': 'New Material Request',
+                'message': f"Material request {requisition.requisition_number} from {requisition.department}" + 
+                           (f" ({requisition.requesting_stage})" if requisition.requesting_stage else ""),
+                'reference_id': requisition.id,
+                'reference_type': 'material_requisition',
+                'reference_number': requisition.requisition_number,
+                'target_role': 'inventory',
+                'metadata': {
+                    'requisition_number': requisition.requisition_number,
+                    'work_order_number': requisition.work_order_number,
+                    'department': requisition.department,
+                    'requesting_stage': requisition.requesting_stage,
+                    'requested_by': requisition.requested_by,
+                    'shift': requisition.shift,
+                    'item_count': len(requisition.items),
+                    'items_summary': items_summary,
+                    'status': requisition.status
+                },
+                'created_at': datetime.utcnow().isoformat(),
+                'is_read': False
+            }
+            
+            result = db.table('notifications').insert(notification_data).execute()
+            
+            return {'status': 'created', 'id': result.data[0]['id'] if result.data else None}
+            
+        except Exception as e:
+            print(f"Failed to create notification: {e}")
+            return {'status': 'failed', 'error': str(e)}
 
 
 notification_service = NotificationService()

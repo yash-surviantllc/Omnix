@@ -57,7 +57,7 @@ export interface WorkingOrder {
   rejected_qty: number;
   unit: string;
   status: 'Pending' | 'In Progress' | 'Completed' | 'On Hold' | 'Cancelled';
-  priority: 'Low' | 'Normal' | 'High' | 'Urgent';
+  priority: 'Low' | 'Normal' | 'Medium' | 'High' | 'Urgent';
   scheduled_start: string | null;
   scheduled_end: string | null;
   actual_start: string | null;
@@ -69,6 +69,7 @@ export interface WorkingOrder {
   product_name?: string;
   product_code?: string;
   purchase_order_number?: string;
+  config_id?: string;
 }
 
 export type WIPHealthStatus = 'Healthy' | 'Warning' | 'Delayed';
@@ -222,17 +223,18 @@ export interface WIPAlertResponse {
 export interface WorkingOrderCreate {
   purchase_order_id: string;
   product_id?: string; // Added product_id linkage
-  operation: string;
+  operation?: string; // Optional - auto-assigned based on config_id if not provided
   shift?: string; // Added shift field
   workstation_id?: string;
   workstation_name?: string;
   assigned_team?: string;
   target_qty: number;
   unit: string;
-  priority?: 'Low' | 'Normal' | 'High' | 'Urgent';
+  priority?: 'Low' | 'Normal' | 'Medium' | 'High' | 'Urgent';
   scheduled_start?: string;
   scheduled_end?: string;
   notes?: string;
+  config_id?: string;
 }
 
 export interface WorkingOrderUpdate {
@@ -244,7 +246,7 @@ export interface WorkingOrderUpdate {
   completed_qty?: number;
   rejected_qty?: number;
   status?: 'Pending' | 'In Progress' | 'Completed' | 'On Hold' | 'Cancelled';
-  priority?: 'Low' | 'Normal' | 'High' | 'Urgent';
+  priority?: 'Low' | 'Normal' | 'Medium' | 'High' | 'Urgent';
   scheduled_start?: string;
   scheduled_end?: string;
   actual_start?: string;
@@ -327,6 +329,10 @@ export const wipApi = {
     return apiClient.put<WorkingOrder>(`/wip/working-orders/${orderId}`, orderData);
   },
 
+  startOperation: async (workOrderNumber: string, operationName: string): Promise<WorkingOrder> => {
+    return apiClient.post<WorkingOrder>(`/wip/working-orders/${workOrderNumber}/start?operation=${encodeURIComponent(operationName)}`, {});
+  },
+
   cancelWorkingOrder: async (orderId: string): Promise<{ message: string }> => {
     return apiClient.delete<{ message: string }>(`/wip/working-orders/${orderId}`);
   },
@@ -393,5 +399,17 @@ export const wipApi = {
 
   listWIPAlerts: async (): Promise<WIPAlertResponse[]> => {
     return apiClient.get<WIPAlertResponse[]>('/wip-board/alerts/');
+  },
+
+  getWorkOrderStages: async (workOrderNumber: string): Promise<any[]> => {
+    return apiClient.get<any[]>(`/wip/working-orders/${workOrderNumber}/stages`);
+  },
+
+  /**
+   * Get transferred quantities per stage for a work order
+   * Returns a map of stage_id -> total_transferred_quantity
+   */
+  getTransferredQuantities: async (workOrderId: string): Promise<Record<string, number>> => {
+    return apiClient.get<Record<string, number>>(`/wip/working-orders/${workOrderId}/transferred-quantities`);
   },
 };

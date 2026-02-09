@@ -162,7 +162,7 @@ export function Inventory({ language }: InventoryProps) {
       material: 'Material',
       available: 'Available',
       allocated: 'Allocated',
-      free: 'Free Stock',
+      free: 'Transit Stock',
       location: 'Location',
       status: 'Status',
       reorderLevel: 'Reorder Level',
@@ -181,7 +181,7 @@ export function Inventory({ language }: InventoryProps) {
       material: 'सामग्री',
       available: 'उपलब्ध',
       allocated: 'आवंटित',
-      free: 'मुक्त स्टॉक',
+      free: 'ट्रांजिट स्टॉक',
       location: 'स्थान',
       status: 'स्थिति',
       reorderLevel: 'पुन: ऑर्डर स्तर',
@@ -200,7 +200,7 @@ export function Inventory({ language }: InventoryProps) {
       material: 'ಸಾಮಾನ',
       available: 'उपलब्ध',
       allocated: 'ವಿಭಾಜಿತ',
-      free: 'ಸ್ವತಂತ್ರ ಸ್ಟಾಕ್',
+      free: 'ಟ್ರಾನ್ಸಿಟ್ ಸ್ಟಾಕ್',
       location: 'ಸ್ಥಾನ',
       status: 'ಸ್ಥಿತಿ',
       reorderLevel: 'ಪುನರಾರ್ಡರ್ ಸ್ಥಾನ',
@@ -219,7 +219,7 @@ export function Inventory({ language }: InventoryProps) {
       material: 'சாமனம்',
       available: 'उपलब्ध',
       allocated: 'விதிநिर्धாரித',
-      free: 'தொகுப்பு மூலம்',
+      free: 'டிரான்சிட் பங்கு',
       location: 'இடம்',
       status: 'நிலை',
       reorderLevel: 'மீட்டு மேல்',
@@ -238,7 +238,7 @@ export function Inventory({ language }: InventoryProps) {
       material: 'సమానం',
       available: 'ఉపపడిన',
       allocated: 'విభాజితం',
-      free: 'ముక్త స్టాక్',
+      free: 'ట్రాన్సిట్ స్టాక్',
       location: 'స్థానం',
       status: 'స్థితి',
       reorderLevel: 'పునరార్డర్ స్థానం',
@@ -257,7 +257,7 @@ export function Inventory({ language }: InventoryProps) {
       material: 'सामग्री',
       available: 'उपलब्ध',
       allocated: 'विभाजित',
-      free: 'मुक्त स्टॉक',
+      free: 'ट्रान्झिट स्टॉक',
       location: 'स्थान',
       status: 'स्थिति',
       reorderLevel: 'पुनरार्डर स्तर',
@@ -276,7 +276,7 @@ export function Inventory({ language }: InventoryProps) {
       material: 'માટેરિયલ',
       available: 'ઉપલબ્ધ',
       allocated: 'અનુદાન',
-      free: 'મુક્ત સ્ટોક',
+      free: 'ટ્રાન્ઝિટ સ્ટોક',
       location: 'સ્થાન',
       status: 'સ્થિતિ',
       reorderLevel: 'પન્નું આર્ડર સ્તર',
@@ -295,7 +295,7 @@ export function Inventory({ language }: InventoryProps) {
       material: 'ਮਾਟੇਰਿਅਲ',
       available: 'उपलब्ध',
       allocated: 'ਵਿਭਾਜਿਤ',
-      free: 'ਮੁਕਤ ਸਟੋਕ',
+      free: 'ਟ੍ਰਾਂਜਿਟ ਸਟਾਕ',
       location: 'ਸਥਾਨ',
       status: 'ਸਥਿਤਿ',
       reorderLevel: 'ਪੁਨ: ਆਰਡਰ ਸਤਰ',
@@ -389,51 +389,62 @@ export function Inventory({ language }: InventoryProps) {
       </div>
 
       {/* Stats */}
+      {/* Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card className="p-4">
+        {/* Total Materials Card */}
+        <Card className="p-4 border border-zinc-200 shadow-sm hover:shadow-md transition-all duration-200">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-zinc-600">{t.totalMaterials}</p>
-              <h2 className="mt-1">{inventoryItems.length}</h2>
+              <p className="text-sm font-medium text-zinc-500">{t.totalMaterials}</p>
+              <h2 className="mt-2 text-2xl font-bold text-zinc-900">{inventoryItems.length}</h2>
             </div>
-            <div className="h-12 w-12 rounded-lg bg-blue-500 text-white flex items-center justify-center">
-              <Package className="h-6 w-6" />
+            <div className="h-10 w-10 rounded-full bg-blue-50 flex items-center justify-center">
+              <Package className="h-5 w-5 text-blue-600" />
             </div>
           </div>
         </Card>
-        <Card className="p-4">
+
+        {/* Low Stock Card */}
+        <Card className="p-4 border border-zinc-200 shadow-sm hover:shadow-md transition-all duration-200">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-zinc-600">{t.lowStock}</p>
-              <h2 className="mt-1">{lowStockCount}</h2>
+              <p className="text-sm font-medium text-zinc-500">{t.lowStock}</p>
+              <h2 className="mt-2 text-2xl font-bold text-zinc-900">{lowStockCount}</h2>
             </div>
-            <div className="h-12 w-12 rounded-lg bg-yellow-500 text-white flex items-center justify-center">
-              <ArrowUpDown className="h-6 w-6" />
+            <div className="h-10 w-10 rounded-full bg-amber-50 flex items-center justify-center">
+              <ArrowUpDown className="h-5 w-5 text-amber-600" />
             </div>
           </div>
         </Card>
-        <Card className="p-4">
+
+        {/* Critical Card */}
+        <Card className="p-4 border border-zinc-200 shadow-sm hover:shadow-md transition-all duration-200">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-zinc-600">{t.critical}</p>
-              <h2 className="mt-1">{criticalCount}</h2>
+              <p className="text-sm font-medium text-zinc-500">{t.critical}</p>
+              <h2 className="mt-2 text-2xl font-bold text-zinc-900">{criticalCount}</h2>
             </div>
-            <div className="h-12 w-12 rounded-lg bg-red-500 text-white flex items-center justify-center">
-              <AlertTriangle className="h-6 w-6" />
+            <div className="h-10 w-10 rounded-full bg-red-50 flex items-center justify-center">
+              <AlertTriangle className="h-5 w-5 text-red-600" />
             </div>
           </div>
         </Card>
+
+        {/* Add Inventory Button/Card */}
         <Card
-          className="p-4 cursor-pointer hover:shadow-lg transition-shadow"
+          className="p-4 border border-dashed border-emerald-200 bg-emerald-50/50 cursor-pointer hover:bg-emerald-50 hover:border-emerald-300 transition-all duration-200 group"
           onClick={() => setIsAddModalOpen(true)}
         >
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between h-full">
             <div>
-              <p className="text-sm text-zinc-600">{t.addInventory}</p>
-              <h2 className="mt-1 text-emerald-600">+</h2>
+              <p className="text-sm font-medium text-emerald-700 group-hover:text-emerald-800">{t.addInventory}</p>
+              <div className="mt-2 flex items-center gap-1">
+                <PlusCircle className="h-5 w-5 text-emerald-600 group-hover:text-emerald-700" />
+                <span className="text-xs font-medium text-emerald-600 group-hover:text-emerald-700">New Item</span>
+              </div>
             </div>
-            <div className="h-12 w-12 rounded-lg bg-emerald-500 text-white flex items-center justify-center">
-              <PlusCircle className="h-6 w-6" />
+            <div className="h-10 w-10 rounded-full bg-emerald-100 flex items-center justify-center group-hover:bg-emerald-200 transition-colors">
+              <PlusCircle className="h-6 w-6 text-emerald-600 group-hover:text-emerald-700" />
             </div>
           </div>
         </Card>

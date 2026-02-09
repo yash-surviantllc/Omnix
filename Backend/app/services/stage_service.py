@@ -17,18 +17,38 @@ class StageService:
     # ============================================
     
     @staticmethod
-    async def list_stages(active_only: bool = True) -> List[StageResponse]:
-        """List all WIP stages"""
+    async def list_stages(active_only: bool = True, config_id: str = 'default') -> List[StageResponse]:
+        """List all WIP stages filtered by configuration using junction table"""
         db = get_db()
         
-        query = db.table('wip_stages').select('*').order('sequence_number')
-        
-        if active_only:
-            query = query.eq('is_active', True)
+        # Query junction table to get stages for this config
+        query = (
+            db.table('config_stages')
+            .select('*, wip_stages(*)')
+            .eq('config_id', config_id)
+            .order('sequence_number')
+        )
         
         result = query.execute()
         
-        return [StageResponse(**stage) for stage in result.data]
+        stages = []
+        for row in result.data:
+            stage = row['wip_stages']
+            
+            # Skip system stage
+            if stage['code'] == 'SYSTEM_CONFIG_RULES':
+                continue
+            
+            # Filter by active status if requested
+            if active_only and not stage['is_active']:
+                continue
+            
+            # Use sequence from junction table
+            stage['sequence_number'] = row['sequence_number']
+            
+            stages.append(StageResponse(**stage))
+        
+        return stages
     
     @staticmethod
     async def get_stage_by_id(stage_id: str) -> StageResponse:
@@ -43,8 +63,8 @@ class StageService:
         return StageResponse(**result.data[0])
     
     @staticmethod
-    async def create_stage(stage_data: StageCreate) -> StageResponse:
-        """Create a new WIP stage"""
+    async def create_stage(stage_data: StageCreate, config_id: str = 'default') -> StageResponse:
+        """Create a new WIP stage and assign to configuration"""
         db = get_db()
         
         # Check if code already exists
@@ -53,12 +73,57 @@ class StageService:
             raise Exception(f"Stage with code '{stage_data.code}' already exists")
         
         insert_data = stage_data.model_dump(mode="json")
+        
+        # FIX: Ensure a globally unique sequence number for the wip_stages table to satisfy unique constraint.
+        # This global sequence is just a placeholder; config_stages handles the actual sequencing.
+        global_max_res = (
+            db.table('wip_stages')
+            .select('sequence_number')
+            .order('sequence_number', desc=True)
+            .limit(1)
+            .execute()
+        )
+        
+        global_next_seq = 1000  # Start high to avoid any initial overlap
+        if global_max_res.data:
+            global_next_seq = global_max_res.data[0]['sequence_number'] + 1
+            
+        insert_data['sequence_number'] = global_next_seq
+        
+        # Create the stage
         result = db.table('wip_stages').insert(insert_data).execute()
         
         if not result.data:
             raise Exception("Failed to create stage")
         
-        return StageResponse(**result.data[0])
+        stage = result.data[0]
+        
+        # Assign to configuration via junction table
+        # Get next sequence number for this specific config
+        max_seq_result = (
+            db.table('config_stages')
+            .select('sequence_number')
+            .eq('config_id', config_id)
+            .order('sequence_number', desc=True)
+            .limit(1)
+            .execute()
+        )
+        
+        next_seq = 1
+        if max_seq_result.data:
+            next_seq = max_seq_result.data[0]['sequence_number'] + 1
+        
+        # Insert into junction table
+        db.table('config_stages').insert({
+            'config_id': config_id,
+            'stage_id': stage['id'],
+            'sequence_number': next_seq
+        }).execute()
+        
+        # Return with junction table sequence
+        stage['sequence_number'] = next_seq
+        
+        return StageResponse(**stage)
     
     @staticmethod
     async def update_stage(stage_id: str, stage_data: StageUpdate) -> StageResponse:
@@ -76,134 +141,217 @@ class StageService:
         
         # If updating code, check for duplicates
         if 'code' in update_data:
-            existing = (
-                db.table('wip_stages')
-                .select('id')
-                .eq('code', update_data['code'])
-                .neq('id', stage_id)
-                .execute()
-            )
-            if existing.data:
-                raise Exception(f"Stage with code '{update_data['code']}' already exists")
-        
+            check = db.table('wip_stages').select('id').eq('code', update_data['code']).neq('id', stage_id).execute()
+            if check.data:
+                raise Exception(f"Stage code exists")
+
         result = db.table('wip_stages').update(update_data).eq('id', stage_id).execute()
         
         if not result.data:
-            raise Exception(f"Stage {stage_id} not found")
+            raise Exception("Stage not found")
         
         return StageResponse(**result.data[0])
     
     @staticmethod
     async def delete_stage(stage_id: str, force: bool = False) -> dict:
-        """
-        Delete a stage (soft delete by default)
-        
-        Args:
-            stage_id: ID of the stage to delete
-            force: If True, attempts hard delete (will fail if stage is in use due to trigger)
-        
-        Returns:
-            Success message
-        """
+        """Delete a stage (removes from all configurations)"""
         db = get_db()
-        
-        # Get the sequence number of the stage being deleted (for resequencing)
-        stage_to_delete = db.table('wip_stages').select('sequence_number').eq('id', stage_id).execute()
-        if not stage_to_delete.data:
-            raise Exception(f"Stage {stage_id} not found")
-        
-        deleted_sequence = stage_to_delete.data[0]['sequence_number']
         
         if force:
-            # Attempt hard delete (will be blocked by trigger if in use)
             try:
-                result = db.table('wip_stages').delete().eq('id', stage_id).execute()
-                if not result.data:
-                    raise Exception(f"Stage {stage_id} not found")
+                # Delete from junction tables first (CASCADE will handle this, but explicit is better)
+                db.table('config_stages').delete().eq('stage_id', stage_id).execute()
                 
-                # Auto-resequence remaining stages
-                await StageService._resequence_stages(deleted_sequence)
-                
-                return {"message": "Stage deleted successfully"}
+                # Delete the stage itself
+                res = db.table('wip_stages').delete().eq('id', stage_id).execute()
+                if not res.data:
+                    raise Exception("Stage not found/deleted")
+                return {"message": "Deleted"}
             except Exception as e:
-                if "is currently assigned" in str(e):
-                    raise Exception(
-                        "Cannot delete stage as it is in use. "
-                        "Please remove all product assignments and complete active work orders first, "
-                        "or use soft delete instead."
-                    )
-                raise
+                raise Exception(f"Cannot delete stage: {str(e)}")
         else:
-            # Soft delete (set is_active = False)
-            result = db.table('wip_stages').update({'is_active': False}).eq('id', stage_id).execute()
-            
-            if not result.data:
-                raise Exception(f"Stage {stage_id} not found")
-            
-            # Auto-resequence remaining ACTIVE stages
-            await StageService._resequence_stages(deleted_sequence, active_only=True)
-            
-            return {"message": "Stage deactivated successfully"}
-    
-    @staticmethod
-    async def _resequence_stages(deleted_sequence: int, active_only: bool = False):
-        """
-        Resequence stages after deletion to maintain sequential order without gaps
-        
-        Args:
-            deleted_sequence: The sequence number of the deleted stage
-            active_only: If True, only resequence active stages (for soft delete)
-        """
-        db = get_db()
-        
-        # Get all remaining stages ordered by sequence number
-        query = db.table('wip_stages').select('id', 'sequence_number').order('sequence_number')
-        
-        if active_only:
-            query = query.eq('is_active', True)
-        
-        remaining_stages = query.execute()
-        
-        # Renumber stages sequentially starting from 1
-        for idx, stage in enumerate(remaining_stages.data, start=1):
-            if stage['sequence_number'] != idx:
-                db.table('wip_stages').update({
-                    'sequence_number': idx
-                }).eq('id', stage['id']).execute()
-    
-    @staticmethod
-    async def get_stage_usage(stage_id: str) -> StageUsageStats:
-        """Get usage statistics for a stage"""
-        db = get_db()
-        
-        result = db.table('vw_stage_usage').select('*').eq('id', stage_id).execute()
-        
-        if not result.data:
-            raise Exception(f"Stage {stage_id} not found")
-        
-        return StageUsageStats(**result.data[0])
-    
+            # Soft delete - just deactivate
+            db.table('wip_stages').update({'is_active': False}).eq('id', stage_id).execute()
+            return {"message": "Deactivated"}
+
+
+
     @staticmethod
     async def reorder_stages(stage_orders: List[dict]) -> List[StageResponse]:
-        """
-        Reorder stages by updating sequence numbers
+        """Reorder stages within a configuration using junction table"""
+        db = get_db()
+        if not stage_orders: return []
         
-        Args:
-            stage_orders: List of {stage_id: str, sequence_number: int}
+        # Get config_id from first stage's junction table entry
+        first_junction = (
+            db.table('config_stages')
+            .select('config_id')
+            .eq('stage_id', stage_orders[0]['stage_id'])
+            .limit(1)
+            .execute()
+        )
         
-        Returns:
-            Updated list of stages
-        """
+        if not first_junction.data:
+            raise Exception("Stage not assigned to any configuration")
+        
+        config_id = first_junction.data[0]['config_id']
+        
+        # Update sequence numbers in junction table
+        # Use temp sequence to avoid unique constraint violations
+        temp_base = 10000
+        
+        # Pass 1: Set to temp values
+        for order in stage_orders:
+            db.table('config_stages').update({
+                'sequence_number': order['sequence_number'] + temp_base
+            }).eq('config_id', config_id).eq('stage_id', order['stage_id']).execute()
+        
+        # Pass 2: Set to final values
+        for order in stage_orders:
+            db.table('config_stages').update({
+                'sequence_number': order['sequence_number']
+            }).eq('config_id', config_id).eq('stage_id', order['stage_id']).execute()
+        
+        return await StageService.list_stages(active_only=False, config_id=config_id)
+
+    @staticmethod
+    async def assign_stage_to_config(config_id: str, stage_id: str, sequence_number: Optional[int] = None) -> dict:
+        """Assign an existing stage to a configuration"""
         db = get_db()
         
-        # Update each stage's sequence number
-        for order in stage_orders:
-            db.table('wip_stages').update({
-                'sequence_number': order['sequence_number']
-            }).eq('id', order['stage_id']).execute()
+        # Verify stage exists
+        stage_check = db.table('wip_stages').select('id').eq('id', stage_id).execute()
+        if not stage_check.data:
+            raise Exception(f"Stage {stage_id} not found")
         
-        # Return updated list
-        return await StageService.list_stages(active_only=False)
+        # Check if already assigned
+        existing = (
+            db.table('config_stages')
+            .select('id')
+            .eq('config_id', config_id)
+            .eq('stage_id', stage_id)
+            .execute()
+        )
+        
+        if existing.data:
+            raise Exception(f"Stage already assigned to {config_id}")
+        
+        # Get next sequence if not provided
+        if sequence_number is None:
+            max_seq_result = (
+                db.table('config_stages')
+                .select('sequence_number')
+                .eq('config_id', config_id)
+                .order('sequence_number', desc=True)
+                .limit(1)
+                .execute()
+            )
+            sequence_number = 1
+            if max_seq_result.data:
+                sequence_number = max_seq_result.data[0]['sequence_number'] + 1
+        
+        # Insert into junction table
+        db.table('config_stages').insert({
+            'config_id': config_id,
+            'stage_id': stage_id,
+            'sequence_number': sequence_number
+        }).execute()
+        
+        return {"message": f"Stage assigned to {config_id}", "sequence_number": sequence_number}
+
+    @staticmethod
+    async def remove_stage_from_config(config_id: str, stage_id: str) -> dict:
+        """Remove a stage from a configuration (doesn't delete the stage itself)"""
+        db = get_db()
+        
+        result = (
+            db.table('config_stages')
+            .delete()
+            .eq('config_id', config_id)
+            .eq('stage_id', stage_id)
+            .execute()
+        )
+        
+        if not result.data:
+            raise Exception(f"Stage not assigned to {config_id}")
+        
+        return {"message": f"Stage removed from {config_id}"}
+
+    # ============================================
+    # CONFIG ASSIGNMENT HELPER
+    # ============================================
+
+    @staticmethod
+    async def _get_raw_stage(stage_id: str) -> dict:
+        db = get_db()
+        res = db.table('wip_stages').select('*').eq('id', stage_id).single().execute()
+        if not res.data:
+            raise Exception("Stage not found")
+        return res.data
+
+    # ============================================
+    # ASSIGNMENT LOGIC
+    # ============================================
+
+    @staticmethod
+    async def get_assignments() -> dict:
+        """Get assignments from hidden stage"""
+        db = get_db()
+        res = db.table('wip_stages').select('description').eq('code', 'SYSTEM_CONFIG_RULES').execute()
+        if res.data:
+            import json
+            try:
+                return json.loads(res.data[0]['description'])
+            except:
+                pass
+        return {"sku_assignments": {}, "wo_assignments": {}}
+
+    @staticmethod
+    async def save_assignments(assignments: dict) -> None:
+        """Save assignments to hidden stage"""
+        db = get_db()
+        import json
+        payload = json.dumps(assignments)
+        
+        existing = db.table('wip_stages').select('id').eq('code', 'SYSTEM_CONFIG_RULES').execute()
+        if existing.data:
+            db.table('wip_stages').update({'description': payload}).eq('id', existing.data[0]['id']).execute()
+        else:
+            # Create hidden stage
+            db.table('wip_stages').insert({
+                'name': 'SYSTEM_CONFIG_RULES',
+                'code': 'SYSTEM_CONFIG_RULES',
+                'sequence_number': 9999,
+                'target_avg_time_minutes': 0,
+                'is_active': False,
+                'description': payload,
+                'color': '#000000'
+            }).execute()
+
+    @staticmethod
+    async def resolve_config_for_entity(sku: Optional[str], wo_no: Optional[str]) -> str:
+        """Resolve config ID based on rules"""
+        assignments = await StageService.get_assignments()
+        
+        print(f"[DEBUG] Resolve Config: SKU={sku}, WO={wo_no}")
+        print(f"[DEBUG] Assignments: {assignments}")
+
+        # Priority 1: Work Order Number
+        if wo_no:
+            wo_clean = wo_no.strip()
+            if wo_clean in assignments.get('wo_assignments', {}):
+                print(f"[DEBUG] Matched WO: {assignments['wo_assignments'][wo_clean]}")
+                return assignments['wo_assignments'][wo_clean]
+            
+        # Priority 2: SKU
+        if sku:
+            sku_clean = sku.strip()
+            if sku_clean in assignments.get('sku_assignments', {}):
+                print(f"[DEBUG] Matched SKU: {assignments['sku_assignments'][sku_clean]}")
+                return assignments['sku_assignments'][sku_clean]
+            
+        print("[DEBUG] No match found, returning default")
+        return 'default'
     
     # ============================================
     # PRODUCT-STAGE ASSIGNMENTS
@@ -221,11 +369,59 @@ class StageService:
         product_result = db.table('products').select('name').eq('id', product_id).execute()
         product_name = product_result.data[0]['name'] if product_result.data else None
         
-        # Call database function to get stages
-        result = db.rpc('get_product_stages', {'p_product_id': product_id}).execute()
+        # Call database function to get stages? NO, we override with new config logic.
         
-        stages = [ProductStageDetail(**stage) for stage in result.data]
+        # 1. Check for custom legacy assignments
+        custom_stages_res = (
+            db.table('product_stages')
+            .select('*, wip_stages(name, code, color, icon, description, target_avg_time_minutes, is_active)')
+            .eq('product_id', product_id)
+            .order('sequence_number')
+            .execute()
+        )
         
+        stages = []
+        if custom_stages_res.data:
+            # Map custom assignments
+            for row in custom_stages_res.data:
+                stage_info = row['wip_stages']
+                # Merge overrides
+                stages.append(ProductStageDetail(
+                    id=row['stage_id'],
+                    name=stage_info['name'],
+                    code=stage_info['code'],
+                    sequence_number=row['sequence_number'],
+                    target_avg_time_minutes=stage_info['target_avg_time_minutes'],
+                    color=stage_info['color'],
+                    icon=stage_info['icon'],
+                    description=StageService._extract_description_text(stage_info.get('description')),
+                    is_required=row['is_required'],
+                    is_active=stage_info['is_active']
+                ))
+        else:
+            # 2. Use New Config Logic
+            # Get product Code for resolution
+            prod_res = db.table('products').select('code').eq('id', product_id).single().execute()
+            sku = prod_res.data['code'] if prod_res.data else None
+            
+            config_id = await StageService.resolve_config_for_entity(sku=sku, wo_no=None)
+            config_stages = await StageService.list_stages(config_id=config_id)
+            
+            # Map Response -> ProductDetail
+            for s in config_stages:
+                stages.append(ProductStageDetail(
+                    id=s.id,
+                    name=s.name,
+                    code=s.code,
+                    sequence_number=s.sequence_number,
+                    target_avg_time_minutes=s.target_avg_time_minutes,
+                    color=s.color,
+                    icon=s.icon,
+                    description=s.description,
+                    is_required=True,
+                    is_active=s.is_active
+                ))
+
         # Calculate total estimated time
         total_time = sum(stage.target_avg_time_minutes for stage in stages)
         

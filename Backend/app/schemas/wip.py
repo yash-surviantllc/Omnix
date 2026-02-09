@@ -12,7 +12,7 @@ from decimal import Decimal
 class WorkingOrderBase(BaseModel):
     purchase_order_id: str
     product_id: Optional[str] = None # Added product_id linkage
-    operation: str = Field(..., description="Operation name (e.g., Cutting, Sewing)")
+    operation: Optional[str] = Field(None, description="Operation name (auto-assigned if config_id provided)")
     shift: Optional[str] = "Morning" # Added shift field
     workstation_id: Optional[str] = None  # Added
     workstation_name: Optional[str] = None  # Renamed from workstation
@@ -26,7 +26,7 @@ class WorkingOrderBase(BaseModel):
 
 
 class WorkingOrderCreate(WorkingOrderBase):
-    pass
+    config_id: Optional[str] = None
 
 
 class WorkingOrderUpdate(BaseModel):
@@ -49,6 +49,7 @@ class WorkingOrderUpdate(BaseModel):
 class WorkingOrderResponse(WorkingOrderBase):
     id: str
     work_order_number: str
+    config_id: Optional[str] = None # Support dynamic config tracking
     completed_qty: Decimal
     rejected_qty: Decimal
     status: str
@@ -89,9 +90,22 @@ class WorkingOrderListItem(BaseModel):
     product_name: Optional[str] = None
     product_code: Optional[str] = None
     purchase_order_number: Optional[str] = None
+    config_id: Optional[str] = None # Support dynamic config resolution
     
     class Config:
         from_attributes = True
+
+
+class UniqueWorkingOrderItem(BaseModel):
+    """Unique working order for dropdown selection (one per work_order_number)"""
+    id: str
+    work_order_number: str
+    product_name: str
+    status: str
+    
+    class Config:
+        from_attributes = True
+
 
 
 # ============================================
@@ -132,13 +146,13 @@ class WIPStageMetricsListItem(BaseModel):
     id: str
     stage_name: str
     stage_sequence: int
-    orders_count: int = Field(alias="orders")
-    units_count: int = Field(alias="units")
-    avg_time_minutes: Decimal = Field(alias="avgTime")
-    target_time_minutes: Decimal = Field(alias="targetAvgTime")
-    utilization_percentage: Decimal = Field(alias="utilization")
-    health_status: str = Field(alias="health")
-    
+    orders_count: int
+    units_count: int
+    avg_time_minutes: Decimal
+    target_avg_time_minutes: Decimal = Field(validation_alias="target_time_minutes", serialization_alias="target_avg_time_minutes")
+    utilization_percentage: Decimal
+    health_status: str
+
     class Config:
         from_attributes = True
         populate_by_name = True

@@ -17,15 +17,17 @@ router = APIRouter()
 @router.get("", response_model=List[StageResponse])
 async def list_stages(
     active_only: bool = Query(default=True, description="Filter to active stages only"),
+    config_id: str = Query(default="default", description="Configuration ID (default, config_2, config_3)"),
     current_user: dict = Depends(get_current_user)
 ):
     """
     List all WIP stages
     
     - **active_only**: If true, only returns active stages (default: true)
+    - **config_id**: Configuration ID to filter by
     """
     try:
-        return await stage_service.list_stages(active_only=active_only)
+        return await stage_service.list_stages(active_only=active_only, config_id=config_id)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -47,24 +49,50 @@ async def get_stage(
 @router.post("", response_model=StageResponse, status_code=201)
 async def create_stage(
     stage_data: StageCreate,
+    config_id: str = Query(default="default", description="Configuration ID"),
     current_user: dict = Depends(get_current_user)
 ):
     """
     Create a new WIP stage
     
-    - **name**: Stage name (e.g., "Embroidery", "Printing")
-    - **code**: Unique code (e.g., "EMBROIDERY", "PRINTING")
-    - **sequence_number**: Display order
-    - **target_avg_time_minutes**: Target time in minutes
-    - **color**: Hex color for UI (default: #3B82F6)
-    - **icon**: Optional Lucide icon name
-    - **description**: Optional description
+    - **config_id**: Which configuration this stage belongs to
     """
     try:
-        return await stage_service.create_stage(stage_data)
+        return await stage_service.create_stage(stage_data, config_id=config_id)
     except Exception as e:
         if "already exists" in str(e).lower():
             raise HTTPException(status_code=409, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/assignments/rules", response_model=dict)
+async def get_assignments(
+    current_user: dict = Depends(get_current_user)
+):
+    """Get global configuration assignment rules"""
+    try:
+        return await stage_service.get_assignments()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/assignments/rules", response_model=dict)
+async def update_assignments(
+    assignments: dict,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Update global configuration assignment rules.
+    Expected format:
+    {
+        "sku_assignments": {"SKU123": "config_2"},
+        "wo_assignments": {"WO-2024-001": "config_3"}
+    }
+    """
+    try:
+        await stage_service.save_assignments(assignments)
+        return assignments
+    except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -158,6 +186,59 @@ async def reorder_stages(
     try:
         return await stage_service.reorder_stages(reorder_data.stage_orders)
     except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================
+# CONFIG-STAGE ASSIGNMENT ENDPOINTS
+# ============================================
+
+@router.post("/config/{config_id}/assign/{stage_id}")
+async def assign_stage_to_configuration(
+    config_id: str,
+    stage_id: str,
+    sequence_number: Optional[int] = Query(default=None, description="Position in sequence (auto-assigned if not provided)"),
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Assign an existing stage to a configuration
+    
+    This enables stage reuse - the same stage can be assigned to multiple configurations.
+    
+    - **config_id**: Configuration ID (default, config_2, config_3)
+    - **stage_id**: UUID of the stage to assign
+    - **sequence_number**: Optional position in the sequence (auto-calculated if omitted)
+    """
+    try:
+        return await stage_service.assign_stage_to_config(config_id, stage_id, sequence_number)
+    except Exception as e:
+        if "not found" in str(e).lower():
+            raise HTTPException(status_code=404, detail=str(e))
+        if "already assigned" in str(e).lower():
+            raise HTTPException(status_code=409, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/config/{config_id}/remove/{stage_id}")
+async def remove_stage_from_configuration(
+    config_id: str,
+    stage_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Remove a stage from a configuration
+    
+    This does NOT delete the stage itself - it only removes the assignment.
+    The stage remains available to be assigned to other configurations.
+    
+    - **config_id**: Configuration ID (default, config_2, config_3)
+    - **stage_id**: UUID of the stage to remove
+    """
+    try:
+        return await stage_service.remove_stage_from_config(config_id, stage_id)
+    except Exception as e:
+        if "not assigned" in str(e).lower():
+            raise HTTPException(status_code=404, detail=str(e))
         raise HTTPException(status_code=500, detail=str(e))
 
 

@@ -36,7 +36,7 @@ type FormErrors = {
 const UNITS = ['m', 'pcs', 'kg', 'L', 'rolls', 'boxes'];
 const LOCATIONS = ['RM Store A', 'RM Store B', 'Store Room', 'Accessories', 'Packaging', 'Warehouse 1', 'Warehouse 2'];
 
-export function AddInventoryModal({ open, onOpenChange, language, onAddMaterial, mode = 'add', initialData, onUpdateMaterial, currentInventory = {} }: AddInventoryModalProps) {
+export function AddInventoryModal({ open, onOpenChange, language, onAddMaterial, mode = 'add', initialData, onUpdateMaterial }: AddInventoryModalProps) {
   const [formData, setFormData] = useState<FormData>({
     materialCode: '',
     materialName: '',
@@ -61,7 +61,7 @@ export function AddInventoryModal({ open, onOpenChange, language, onAddMaterial,
         status: initialData.status || 'Sufficient',
         unitCost: String(initialData.unitCost || ''),
       });
-      setOriginalMaterialName(initialData.materialName || '');
+
     } else if (mode === 'add' && open) {
       // Reset form for add mode
       setFormData({
@@ -81,7 +81,7 @@ export function AddInventoryModal({ open, onOpenChange, language, onAddMaterial,
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitSuccess, setSubmitSuccess] = useState(false);
   const [submitError, setSubmitError] = useState<string>('');
-  const [originalMaterialName, setOriginalMaterialName] = useState<string>('');
+
 
   const translations = {
     en: {
@@ -423,13 +423,13 @@ export function AddInventoryModal({ open, onOpenChange, language, onAddMaterial,
   return (
     <Dialog open={open} onOpenChange={onOpenChange} modal={true}>
       <DialogContent
-        className="max-w-2xl h-auto overflow-hidden p-0"
+        className="max-w-2xl h-auto overflow-hidden p-0 border-0 [&_[data-slot=close-btn]]:!text-white [&_[data-slot=close-btn]]:!top-5 [&_[data-slot=close-btn]]:!right-5 [&_[data-slot=close-btn]]:!bg-white/10 [&_[data-slot=close-btn]]:hover:!bg-white/20 [&_[data-slot=close-btn]]:hover:!text-white [&_[data-slot=close-btn]]:hover:!shadow-md [&_[data-slot=close-btn]]:!h-8 [&_[data-slot=close-btn]]:!w-8 [&_[data-slot=close-btn]]:!rounded-md [&_[data-slot=close-btn]]:!flex [&_[data-slot=close-btn]]:!items-center [&_[data-slot=close-btn]]:!justify-center [&_[data-slot=close-btn]>span]:!hidden [&_[data-slot=close-btn]_svg]:!h-5 [&_[data-slot=close-btn]_svg]:!w-5"
         style={{ display: 'grid', visibility: 'visible', opacity: 1, maxHeight: '90vh' }}
       >
         {/* Enhanced Header with Gradient */}
-        <div className="bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-600 text-white p-4 shadow-lg">
+        <div className="bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-600 text-white p-4 shadow-lg relative">
           <DialogHeader>
-            <DialogTitle className="text-xl font-bold text-white flex items-center gap-2">
+            <DialogTitle className="text-xl font-bold text-white flex items-center gap-2 pr-8">
               <div className="h-9 w-9 rounded-lg bg-white/20 backdrop-blur-sm flex items-center justify-center">
                 <Package className="h-5 w-5" />
               </div>

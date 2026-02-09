@@ -8,6 +8,7 @@ from app.schemas.inventory_items import (
 )
 from app.schemas.user import UserResponse
 from app.services.inventory_items_service import inventory_items_service
+from app.services.dashboard_service import dashboard_service
 from app.api.deps import get_current_user, require_role
 
 router = APIRouter()
@@ -94,10 +95,14 @@ async def create_inventory_item(
     - Material name must be unique
     - Reorder level cannot exceed quantity
     """
-    return await inventory_items_service.create_inventory_item(
+    new_item = await inventory_items_service.create_inventory_item(
         item_data=item_data,
         user_id=current_user.id
     )
+    await dashboard_service.broadcast_shortages_update()
+    await dashboard_service.broadcast_activities_update()
+    await dashboard_service.broadcast_kpis_update()
+    return new_item
 
 
 @router.put("/{item_id}", response_model=InventoryItemResponse)
@@ -112,11 +117,15 @@ async def update_inventory_item(
     **Note:** Material code cannot be changed.
     All other fields are optional.
     """
-    return await inventory_items_service.update_inventory_item(
+    updated_item = await inventory_items_service.update_inventory_item(
         item_id=item_id,
         item_data=item_data,
         user_id=current_user.id
     )
+    await dashboard_service.broadcast_shortages_update()
+    await dashboard_service.broadcast_activities_update()
+    await dashboard_service.broadcast_kpis_update()
+    return updated_item
 
 
 @router.delete("/{item_id}")
@@ -129,10 +138,14 @@ async def delete_inventory_item(
     
     **Requires Admin role.**
     """
-    return await inventory_items_service.delete_inventory_item(
+    result = await inventory_items_service.delete_inventory_item(
         item_id=item_id,
         user_id=current_user.id
     )
+    await dashboard_service.broadcast_shortages_update()
+    await dashboard_service.broadcast_activities_update()
+    await dashboard_service.broadcast_kpis_update()
+    return result
 
 
 # =============================================
@@ -153,10 +166,14 @@ async def adjust_inventory(
     
     Creates an ADJUST transaction in the audit trail.
     """
-    return await inventory_items_service.adjust_inventory(
+    result = await inventory_items_service.adjust_inventory(
         adjustment=adjustment,
         user_id=current_user.id
     )
+    await dashboard_service.broadcast_shortages_update()
+    await dashboard_service.broadcast_activities_update()
+    await dashboard_service.broadcast_kpis_update()
+    return result
 
 
 # =============================================
@@ -253,4 +270,16 @@ async def bulk_import_items(
                 "error": str(e)
             })
     
+    
     return results
+
+@router.post("/bulk/import/finalize")
+async def finalize_bulk_import():
+    """
+    Trigger dashboard update after bulk import.
+    This is a helper since loop broadcasting is inefficient.
+    """
+    await dashboard_service.broadcast_shortages_update()
+    await dashboard_service.broadcast_activities_update()
+    await dashboard_service.broadcast_kpis_update()
+    return {"status": "broadcast_sent"}

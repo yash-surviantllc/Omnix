@@ -1,20 +1,32 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Package, AlertTriangle, CheckCircle, XCircle, Send, History, Plus, X, Clock } from 'lucide-react';
 import { MaterialRequestProcessor, type MaterialRequest } from '@/lib/material-request-processor';
+import { apiClient } from '@/lib/api/client';
+import { inventoryItemsApi, type InventoryItemResponse } from '@/lib/api/inventory';
 
 type MaterialRequestProps = {
   language: string;
 };
+
+interface WorkOrder {
+  id: string;
+  order_number: string;
+  product_name: string;
+  status: string;
+}
 
 export function MaterialRequest({ language }: MaterialRequestProps) {
   const [requestText, setRequestText] = useState('');
   const [result, setResult] = useState<MaterialRequest | null>(null);
   const [showHistory, setShowHistory] = useState(false);
   const [showFormModal, setShowFormModal] = useState(false);
+  const [manualWorkOrderEntry, setManualWorkOrderEntry] = useState(false);
+  const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
+  const [loadingWorkOrders, setLoadingWorkOrders] = useState(false);
 
   // Form data state
   const [formData, setFormData] = useState({
@@ -23,7 +35,7 @@ export function MaterialRequest({ language }: MaterialRequestProps) {
     department: '',
     requestedBy: '',
     reviewedBy: '',
-    approvedBy: '',
+    // REMOVED: approvedBy field
     shiftNumber: 'Shift 1',
     startTime: '',
     endTime: '',
@@ -42,6 +54,75 @@ export function MaterialRequest({ language }: MaterialRequestProps) {
       priority: 'Normal'
     }
   ]);
+
+  const [availableStages, setAvailableStages] = useState<any[]>([]);
+  const [inventoryItems, setInventoryItems] = useState<InventoryItemResponse[]>([]);
+  const [manualItemEntry, setManualItemEntry] = useState<Record<number, boolean>>({});
+
+  const fetchInventoryItems = async () => {
+    console.log("🔄 Fetching inventory items...");
+    try {
+      // Use default params to match Inventory.tsx and leverage cache
+      const items = await inventoryItemsApi.list();
+      console.log("✅ Inventory items fetched:", items);
+      if (Array.isArray(items)) {
+        setInventoryItems(items);
+        console.log(`📦 Set ${items.length} items to state.`);
+      } else {
+        console.error("❌ Unexpected response format for inventory items:", items);
+        setInventoryItems([]);
+      }
+    } catch (error) {
+      console.error("❌ Failed to fetch inventory items:", error);
+    }
+  };
+
+  const fetchWorkOrders = async () => {
+    setLoadingWorkOrders(true);
+    try {
+      const response = await apiClient.get<any[]>('/wip/working-orders/unique?status=In Progress&status=Pending&status=Planned&status=Released&limit=100');
+      // Map backend response to frontend expectations
+      const mappedOrders = response.map(wo => ({
+        id: wo.id,
+        order_number: wo.work_order_number, // Map work_order_number to order_number
+        product_name: wo.product_name || 'Unknown Product',
+        status: wo.status
+      }));
+      setWorkOrders(mappedOrders);
+    } catch (error) {
+      console.error('Failed to fetch work orders:', error);
+    } finally {
+      setLoadingWorkOrders(false);
+    }
+  };
+
+  // Fetch data when modal opens
+  useEffect(() => {
+    if (showFormModal && !manualWorkOrderEntry) {
+      fetchWorkOrders();
+      fetchInventoryItems();
+    }
+  }, [showFormModal, manualWorkOrderEntry]);
+
+  // Fetch stages when Work Order is selected
+  useEffect(() => {
+    const fetchStages = async () => {
+      if (formData.formNumber && formData.formNumber.startsWith('WO-')) {
+        try {
+          const stages = await apiClient.get<any[]>(`/wip/working-orders/${formData.formNumber}/stages`);
+          setAvailableStages(stages);
+        } catch (error) {
+          console.error("Failed to fetch WO stages:", error);
+          setAvailableStages([]);
+        }
+      } else {
+        setAvailableStages([]);
+      }
+    };
+
+    const timer = setTimeout(fetchStages, 300);
+    return () => clearTimeout(timer);
+  }, [formData.formNumber]);
 
   // WebSocket refs and states (unused)
 
@@ -62,8 +143,8 @@ export function MaterialRequest({ language }: MaterialRequestProps) {
       dateOfRequest: 'Date of Request',
       requestedBy: 'Requested By',
       reviewedBy: 'Reviewed By',
-      approvedBy: 'Approved By',
-      itemCode: 'Item Code',
+      // REMOVED: approvedBy
+      rmCode: 'RM Code',
       materialDescription: 'Material Description',
       unitOfMeasure: 'Unit of Measure',
       requiredDate: 'Required Date',
@@ -117,8 +198,8 @@ export function MaterialRequest({ language }: MaterialRequestProps) {
       dateOfRequest: 'अनुरोध की तारीख',
       requestedBy: 'अनुरोध किया गया',
       reviewedBy: 'रिव्यू किया गया',
-      approvedBy: 'स्वीकार किया गया',
-      itemCode: 'आइटम कोड',
+      // REMOVED: approvedBy
+      rmCode: 'आरएम कोड',
       materialDescription: 'सामग्री का विवरण',
       unitOfMeasure: 'मात्रा की इकाई',
       requiredDate: 'अपराधित तारीख',
@@ -219,6 +300,70 @@ export function MaterialRequest({ language }: MaterialRequestProps) {
         return <XCircle className="w-4 h-4" />;
       default:
         return <Package className="w-4 h-4" />;
+    }
+  };
+
+  const handleSubmit = async () => {
+    try {
+      // Find if selected department is actually a stage
+      const selectedStage = availableStages.find(s => s.name === formData.department);
+
+      const requisitionData = {
+        work_order_number: formData.formNumber || null,
+        department: formData.department,
+        requesting_stage: selectedStage ? formData.department : null,
+        requested_by: formData.requestedBy,
+        reviewed_by: formData.reviewedBy || null,
+        shift: formData.shiftNumber,
+        start_time: formData.startTime || null,
+        end_time: formData.endTime || null,
+        delivery_instructions: formData.deliveryInstructions || null,
+        items: materialItems.map(item => ({
+          rm_code: item.itemCode,
+          material_description: item.materialDescription,
+          unit_of_measure: item.unitOfMeasure,
+          quantity_requested: parseFloat(item.quantity) || 0,
+          required_date: item.requiredDate || null,
+          location: item.location || null,
+          priority: item.priority
+        }))
+      };
+
+      const result = await apiClient.post<any>('/material-requisitions', requisitionData);
+
+      alert(`✅ ${language === 'en' ? 'Material Requisition Created!' : 'सामग्री अनुरोध बनाया गया!'}
+
+📋 Requisition Number: ${result.requisition_number}
+🏢 Work Order: ${result.work_order_number || 'N/A'}
+🏭 Department: ${result.department}
+📦 Items: ${result.items.length}
+⏰ Shift: ${result.shift}`);
+
+      // Reset form
+      setFormData({
+        formNumber: '',
+        dateOfRequest: '',
+        department: '',
+        requestedBy: '',
+        reviewedBy: '',
+        shiftNumber: 'Shift 1',
+        startTime: '',
+        endTime: '',
+        deliveryInstructions: ''
+      });
+      setMaterialItems([{
+        itemCode: '',
+        materialDescription: '',
+        unitOfMeasure: '',
+        quantity: '',
+        requiredDate: '',
+        location: '',
+        priority: 'Normal'
+      }]);
+      setShowFormModal(false);
+    } catch (error: any) {
+      console.error('Error creating requisition:', error);
+      alert(`❌ ${language === 'en' ? 'Error creating requisition' : 'अनुरोध बनाने में त्रुटि'}: ${error.message || 'Unknown error'}`);
     }
   };
 
@@ -555,16 +700,42 @@ export function MaterialRequest({ language }: MaterialRequestProps) {
                   {/* Column 1 */}
                   <div className="space-y-4">
                     <div>
-                      <label className="text-sm font-medium text-slate-700 mb-1 block">
-                        {t.formNumber}
+                      <label className="text-sm font-medium text-slate-700 mb-1 block flex items-center justify-between">
+                        <span>{t.formNumber}</span>
+                        <button
+                          type="button"
+                          onClick={() => setManualWorkOrderEntry(!manualWorkOrderEntry)}
+                          className="text-xs text-blue-600 hover:text-blue-700 underline"
+                        >
+                          {manualWorkOrderEntry ? 'Select from list' : 'Enter manually'}
+                        </button>
                       </label>
-                      <input
-                        type="text"
-                        value={formData.formNumber}
-                        onChange={(e) => setFormData({ ...formData, formNumber: e.target.value })}
-                        className="w-full p-2.5 border-2 border-slate-300 rounded-md"
-                        placeholder="e.g., WO-2025-001"
-                      />
+                      {manualWorkOrderEntry ? (
+                        <input
+                          type="text"
+                          value={formData.formNumber}
+                          onChange={(e) => setFormData({ ...formData, formNumber: e.target.value })}
+                          className="w-full p-2.5 border-2 border-slate-300 rounded-md"
+                          placeholder="e.g., WO-2025-001"
+                        />
+                      ) : (
+                        <select
+                          value={formData.formNumber}
+                          onChange={(e) => setFormData({ ...formData, formNumber: e.target.value })}
+                          className="w-full p-2.5 border-2 border-slate-300 rounded-md"
+                        >
+                          <option value="">Select Work Order</option>
+                          {loadingWorkOrders ? (
+                            <option disabled>Loading...</option>
+                          ) : (
+                            workOrders.map((wo) => (
+                              <option key={wo.id} value={wo.order_number}>
+                                {wo.order_number} - {wo.product_name} ({wo.status})
+                              </option>
+                            ))
+                          )}
+                        </select>
+                      )}
                     </div>
                     <div>
                       <label className="text-sm font-medium text-slate-700 mb-1 block">
@@ -590,13 +761,21 @@ export function MaterialRequest({ language }: MaterialRequestProps) {
                         onChange={(e) => setFormData({ ...formData, department: e.target.value })}
                         className="w-full p-2.5 border-2 border-slate-300 rounded-md"
                       >
-                        <option value="">Select Department</option>
-                        <option value="Project Management">Project Management</option>
-                        <option value="Cutting Floor">Cutting Floor</option>
-                        <option value="Sewing Floor">Sewing Floor</option>
-                        <option value="QC Floor">QC Floor</option>
-                        <option value="Packaging Floor">Packaging Floor</option>
-                        <option value="Maintenance">Maintenance</option>
+                        <option value="">Select Department / Stage</option>
+                        {availableStages.length > 0 ? (
+                          availableStages.map(stage => (
+                            <option key={stage.id} value={stage.name}>{stage.name}</option>
+                          ))
+                        ) : (
+                          <>
+                            <option value="Project Management">Project Management</option>
+                            <option value="Cutting Floor">Cutting Floor</option>
+                            <option value="Sewing Floor">Sewing Floor</option>
+                            <option value="QC Floor">QC Floor</option>
+                            <option value="Packaging Floor">Packaging Floor</option>
+                            <option value="Maintenance">Maintenance</option>
+                          </>
+                        )}
                       </select>
                     </div>
                     <div>
@@ -625,20 +804,8 @@ export function MaterialRequest({ language }: MaterialRequestProps) {
                     </div>
                   </div>
 
-                  {/* Column 3 */}
+                  {/* Column 3 - REMOVED Approved By field */}
                   <div className="space-y-4">
-                    <div>
-                      <label className="text-sm font-medium text-slate-700 mb-1 block">
-                        {t.approvedBy}
-                      </label>
-                      <input
-                        type="text"
-                        value={formData.approvedBy}
-                        onChange={(e) => setFormData({ ...formData, approvedBy: e.target.value })}
-                        className="w-full p-2.5 border-2 border-slate-300 rounded-md"
-                        placeholder="e.g., William Jones - Project Manager"
-                      />
-                    </div>
                     <div>
                       <label className="text-sm font-medium text-slate-700 mb-1 block">
                         {t.shiftNumber}
@@ -732,7 +899,7 @@ export function MaterialRequest({ language }: MaterialRequestProps) {
                   <table className="w-full">
                     <thead className="bg-slate-100 border-b-2 border-slate-300">
                       <tr>
-                        <th className="p-2 text-left text-xs font-medium text-slate-700">{t.itemCode}</th>
+                        <th className="p-2 text-left text-xs font-medium text-slate-700">{t.rmCode}</th>
                         <th className="p-2 text-left text-xs font-medium text-slate-700">{t.materialDescription}</th>
                         <th className="p-2 text-left text-xs font-medium text-slate-700">{t.unitOfMeasure}</th>
                         <th className="p-2 text-left text-xs font-medium text-slate-700">{t.quantity}</th>
@@ -745,18 +912,60 @@ export function MaterialRequest({ language }: MaterialRequestProps) {
                     <tbody>
                       {materialItems.map((item, index) => (
                         <tr key={index} className="border-b border-slate-200 hover:bg-slate-50">
-                          <td className="p-2">
-                            <input
-                              type="text"
-                              value={item.itemCode}
-                              onChange={(e) => {
-                                const newItems = [...materialItems];
-                                newItems[index].itemCode = e.target.value;
-                                setMaterialItems(newItems);
-                              }}
-                              className="w-full p-1.5 border border-slate-300 rounded text-sm"
-                              placeholder="CEH-001"
-                            />
+                          <td className="p-2 align-top">
+                            <div className="flex flex-col gap-1">
+                              {manualItemEntry[index] ? (
+                                <input
+                                  type="text"
+                                  value={item.itemCode}
+                                  onChange={(e) => {
+                                    const newItems = [...materialItems];
+                                    newItems[index].itemCode = e.target.value;
+                                    setMaterialItems(newItems);
+                                  }}
+                                  className="w-full p-1.5 border border-slate-300 rounded text-sm"
+                                  placeholder="Enter code manually"
+                                />
+                              ) : (
+                                <select
+                                  value={item.itemCode}
+                                  onChange={(e) => {
+                                    const selectedCode = e.target.value;
+                                    const selectedItem = inventoryItems.find(i => i.material_code === selectedCode);
+                                    const newItems = [...materialItems];
+
+                                    newItems[index].itemCode = selectedCode;
+                                    if (selectedItem) {
+                                      // Auto-fill logic
+                                      newItems[index].materialDescription = selectedItem.material_name;
+                                      newItems[index].unitOfMeasure = selectedItem.unit;
+                                      newItems[index].location = selectedItem.location || '';
+                                    }
+
+                                    setMaterialItems(newItems);
+                                  }}
+                                  className="w-full p-1.5 border border-slate-300 rounded text-sm"
+                                >
+                                  <option value="">Select Item</option>
+                                  {inventoryItems.length > 0 ? (
+                                    inventoryItems.map(inv => (
+                                      <option key={inv.id} value={inv.material_code}>
+                                        {inv.material_code} - {inv.material_name}
+                                      </option>
+                                    ))
+                                  ) : (
+                                    <option disabled>No items found</option>
+                                  )}
+                                </select>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => setManualItemEntry(prev => ({ ...prev, [index]: !prev[index] }))}
+                                className="text-[10px] text-blue-600 hover:text-blue-700 text-right underline"
+                              >
+                                {manualItemEntry[index] ? 'Select from list' : 'Enter manually'}
+                              </button>
+                            </div>
                           </td>
                           <td className="p-2">
                             <input
@@ -899,15 +1108,7 @@ export function MaterialRequest({ language }: MaterialRequestProps) {
                   {t.cancel}
                 </Button>
                 <Button
-                  onClick={() => {
-                    alert(`✅ ${language === 'en' ? 'Material Requisition Submitted!' : 'सामग्री अनुरोध जमा किया गया!'}
-
-Form Number: ${formData.formNumber}
-Department: ${formData.department}
-Items: ${materialItems.length}
-Shift: ${formData.shiftNumber}`);
-                    setShowFormModal(false);
-                  }}
+                  onClick={handleSubmit}
                   className="flex-1 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
                 >
                   {t.submitForm}

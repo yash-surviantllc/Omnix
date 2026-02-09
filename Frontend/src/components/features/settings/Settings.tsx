@@ -15,6 +15,7 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 
 import { WIPSettings } from './WIPSettings';
+import { ShiftSettings } from './ShiftSettings';
 
 type Language = 'en' | 'hi' | 'kn' | 'ta' | 'te' | 'mr' | 'gu' | 'pa';
 
@@ -476,6 +477,9 @@ export function Settings({ language, onLanguageChange, onClose }: SettingsProps)
 
       {/* WIP Settings */}
       <WIPSettings language={language} />
+
+      {/* Shift Settings */}
+      <ShiftSettings language={language} />
 
       {/* Save Button */}
       <div className="flex justify-end gap-3">

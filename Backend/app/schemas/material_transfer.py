@@ -14,6 +14,8 @@ class MaterialTransferBase(BaseModel):
     reason: Optional[str] = None
     notes: Optional[str] = None
     reference_order_id: Optional[str] = Field(None, description="Link to purchase order")
+    work_order_id: Optional[str] = Field(None, description="Associated work order ID")
+    work_order_number: Optional[str] = Field(None, description="Work order number for reference")
 
 
 class MaterialTransferCreate(MaterialTransferBase):

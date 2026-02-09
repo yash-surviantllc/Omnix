@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { MaterialCard } from './components/MaterialCard';
+import { NotificationBell } from './components/NotificationBell';
 import { apiClient } from '@/lib/api/client';
 import { Language } from '@/types/inventory';
 import { InventoryItemResponse } from '@/lib/api/inventory';
@@ -39,6 +40,7 @@ const translations = {
     selectToStage: 'Select destination stage',
     orderReference: 'Work Order',
     enterOrderRef: 'Enter Work Order number',
+    workOrderOptional: 'Work Order (Optional)',
     productCode: 'Product Code',
     enterProductCode: 'Enter product code (e.g., TS-001)',
     addMaterial: 'Add Material',
@@ -114,6 +116,7 @@ const translations = {
     selectToStage: 'गंतव्य स्टेज चुनें',
     orderReference: 'वर्क ऑर्डर',
     enterOrderRef: 'वर्क ऑर्डर नंबर दर्ज करें',
+    workOrderOptional: 'वर्क ऑर्डर (वैकल्पिक)',
     productCode: 'उत्पाद कोड',
     enterProductCode: 'उत्पाद कोड दर्ज करें (जैसे, TS-001)',
     addMaterial: 'सामग्री जोड़ें',
@@ -175,7 +178,7 @@ export function MaterialTransfer({ language, refreshMaterialTransferData }: Mate
   const [transferData, setTransferData] = useState<any>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [showTransferModal, setShowTransferModal] = useState(false);
-  const [, setIsSubmittingTransfer] = useState(false);
+  const [isSubmittingTransfer, setIsSubmittingTransfer] = useState(false);
   const [, setSubmitError] = useState<string | null>(null);
   const [, setSuccessMessage] = useState<string | null>(null);
   const [transferHistory, setTransferHistory] = useState<any[]>([]);
@@ -186,9 +189,11 @@ export function MaterialTransfer({ language, refreshMaterialTransferData }: Mate
     fromStageId: '',
     toStageId: '',
     orderId: '',
+    orderNumber: '',
     quantity: '',
     notes: ''
   });
+  const [availableStages, setAvailableStages] = useState<any[]>([]);
 
   // Fetch inventory data on component mount
   useEffect(() => {
@@ -200,7 +205,7 @@ export function MaterialTransfer({ language, refreshMaterialTransferData }: Mate
 
   async function fetchInventoryData() {
     try {
-      const response = await apiClient.get<InventoryItemResponse[]>('/inventory-items');
+      const response = await apiClient.get<InventoryItemResponse[]>('/inventory-items/');
       setInventoryItems(response);
     } catch (error) {
       console.error('Failed to fetch inventory data:', error);
@@ -209,7 +214,7 @@ export function MaterialTransfer({ language, refreshMaterialTransferData }: Mate
 
   const fetchTransferHistory = async () => {
     try {
-      const response = await apiClient.get<any[]>('/material-transfers');
+      const response = await apiClient.get<any[]>('/material-transfers/');
       setTransferHistory(response);
     } catch (error) {
       console.error('Failed to fetch transfer history:', error);
@@ -218,7 +223,7 @@ export function MaterialTransfer({ language, refreshMaterialTransferData }: Mate
 
   const fetchWipStages = async () => {
     try {
-      const response = await apiClient.get<any[]>('/wip-stages');
+      const response = await apiClient.get<any[]>('/wip-board/stages');
       setWipStages(response);
     } catch (error) {
       console.error('Failed to fetch WIP stages:', error);
@@ -227,10 +232,29 @@ export function MaterialTransfer({ language, refreshMaterialTransferData }: Mate
 
   const fetchWorkingOrders = async () => {
     try {
-      const response = await apiClient.get<any[]>('/working-orders');
+      // Fetch ALL working orders (no status filter) for debugging
+      const url = `/wip/working-orders/unique`;
+      console.log('Fetching working orders from:', url);
+
+      const response = await apiClient.get<any[]>(url);
+      console.log('Working orders response:', response);
       setWorkingOrders(response);
     } catch (error) {
       console.error('Failed to fetch working orders:', error);
+    }
+  };
+
+  const fetchWorkOrderStages = async (workOrderNumber: string) => {
+    try {
+      const url = `/wip/working-orders/${workOrderNumber}/stages`;
+      console.log('Fetching stages from:', url);
+
+      const response = await apiClient.get<any[]>(url);
+      console.log('Stages response:', response);
+      setAvailableStages(response);
+    } catch (error) {
+      console.error('Failed to fetch work order stages:', error);
+      setAvailableStages([]);
     }
   };
 
@@ -269,7 +293,8 @@ export function MaterialTransfer({ language, refreshMaterialTransferData }: Mate
       uom: material.uom,
       quantity: 0,
       toLocation: '',
-      transferReason: ''
+      transferReason: '',
+      workOrderNumber: ''  // Add work order field
     });
     setShowTransferModal(true);
     setErrors({});
@@ -320,6 +345,7 @@ export function MaterialTransfer({ language, refreshMaterialTransferData }: Mate
         quantity: transferData.quantity,
         unit: transferData.uom,
         reason: transferData.transferReason,
+        work_order_number: transferData.workOrderNumber || null,  // Add work order
       });
 
       setSuccessMessage('Transfer created successfully.');
@@ -348,9 +374,13 @@ export function MaterialTransfer({ language, refreshMaterialTransferData }: Mate
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-zinc-900 mb-2">{t.title}</h1>
-        <p className="text-zinc-600">{t.subtitle}</p>
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-zinc-900 mb-2">{t.title}</h1>
+          <p className="text-zinc-600">{t.subtitle}</p>
+        </div>
+        {/* Notification Bell */}
+        <NotificationBell language={language === 'kn' ? 'en' : language as 'en' | 'hi'} />
       </div>
 
       {/* Tabs */}
@@ -358,8 +388,8 @@ export function MaterialTransfer({ language, refreshMaterialTransferData }: Mate
         <button
           onClick={() => setActiveTab('new')}
           className={`px-4 py-2 border-b-2 transition-colors ${activeTab === 'new'
-              ? 'border-emerald-600 text-emerald-900'
-              : 'border-transparent text-zinc-600 hover:text-zinc-900'
+            ? 'border-emerald-600 text-emerald-900'
+            : 'border-transparent text-zinc-600 hover:text-zinc-900'
             }`}
         >
           {t.newTransfer}
@@ -367,8 +397,8 @@ export function MaterialTransfer({ language, refreshMaterialTransferData }: Mate
         <button
           onClick={() => setActiveTab('history')}
           className={`px-4 py-2 border-b-2 transition-colors ${activeTab === 'history'
-              ? 'border-emerald-600 text-emerald-900'
-              : 'border-transparent text-zinc-600 hover:text-zinc-900'
+            ? 'border-emerald-600 text-emerald-900'
+            : 'border-transparent text-zinc-600 hover:text-zinc-900'
             }`}
         >
           <div className="flex items-center gap-2">
@@ -667,6 +697,20 @@ export function MaterialTransfer({ language, refreshMaterialTransferData }: Mate
                   </div>
                 )}
               </div>
+
+              {/* Work Order (Optional) */}
+              <div>
+                <label className="block mb-2 text-zinc-900">
+                  {t.workOrderOptional}
+                </label>
+                <Input
+                  type="text"
+                  value={transferData.workOrderNumber || ''}
+                  onChange={(e) => setTransferData({ ...transferData, workOrderNumber: e.target.value })}
+                  placeholder={t.enterOrderRef}
+                  className="border-zinc-200"
+                />
+              </div>
             </div>
 
             {/* Modal Footer */}
@@ -717,67 +761,85 @@ export function MaterialTransfer({ language, refreshMaterialTransferData }: Mate
 
             {/* Modal Body */}
             <div className="p-6 space-y-6">
-              {/* Stage Selection */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block mb-2 text-zinc-900 font-medium">
-                    {t.fromStage} <span className="text-red-500">*</span>
-                  </label>
-                  <select
-                    value={stageTransferData.fromStageId}
-                    onChange={(e) => setStageTransferData({ ...stageTransferData, fromStageId: e.target.value })}
-                    className="w-full p-2.5 border border-zinc-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="">{t.selectFromStage}</option>
-                    {wipStages.map((stage) => (
-                      <option key={stage.id} value={stage.id}>
-                        {stage.name} ({stage.items} units)
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block mb-2 text-zinc-900 font-medium">
-                    {t.toStage} <span className="text-red-500">*</span>
-                  </label>
-                  <select
-                    value={stageTransferData.toStageId}
-                    onChange={(e) => setStageTransferData({ ...stageTransferData, toStageId: e.target.value })}
-                    className="w-full p-2.5 border border-zinc-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="">{t.selectToStage}</option>
-                    {wipStages.map((stage) => (
-                      <option
-                        key={stage.id}
-                        value={stage.id}
-                        disabled={stage.id === stageTransferData.fromStageId}
-                      >
-                        {stage.name} ({stage.items} units)
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              {/* Work Order */}
+              {/* Work Order - MOVED TO TOP */}
               <div>
                 <label className="block mb-2 text-zinc-900 font-medium">
                   {t.orderReference} <span className="text-red-500">*</span>
                 </label>
                 <select
                   value={stageTransferData.orderId}
-                  onChange={(e) => setStageTransferData({ ...stageTransferData, orderId: e.target.value })}
+                  onChange={(e) => {
+                    const selectedOrder = workingOrders.find(wo => wo.id === e.target.value);
+                    setStageTransferData({
+                      ...stageTransferData,
+                      orderId: e.target.value,
+                      orderNumber: selectedOrder?.work_order_number || '',
+                      fromStageId: '',
+                      toStageId: ''
+                    });
+                    if (selectedOrder) {
+                      fetchWorkOrderStages(selectedOrder.work_order_number);
+                    } else {
+                      setAvailableStages([]);
+                    }
+                  }}
                   className="w-full p-2.5 border border-zinc-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="">{t.enterOrderRef}</option>
                   {workingOrders.map((order) => (
                     <option key={order.id} value={order.id}>
-                      {order.work_order_number || order.workOrderNumber} - {order.operation} ({order.status})
+                      {order.work_order_number} - {order.product_name}
                     </option>
                   ))}
                 </select>
               </div>
+
+              {/* Stage Selection - ONLY SHOW AFTER WORK ORDER SELECTED */}
+              {stageTransferData.orderId && (
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block mb-2 text-zinc-900 font-medium">
+                      {t.fromStage} <span className="text-red-500">*</span>
+                    </label>
+                    <select
+                      value={stageTransferData.fromStageId}
+                      onChange={(e) => setStageTransferData({ ...stageTransferData, fromStageId: e.target.value })}
+                      className="w-full p-2.5 border border-zinc-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      disabled={availableStages.length === 0}
+                    >
+                      <option value="">{availableStages.length === 0 ? 'Loading stages...' : t.selectFromStage}</option>
+                      {availableStages.map((stage) => (
+                        <option key={stage.id} value={stage.id}>
+                          {stage.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block mb-2 text-zinc-900 font-medium">
+                      {t.toStage} <span className="text-red-500">*</span>
+                    </label>
+                    <select
+                      value={stageTransferData.toStageId}
+                      onChange={(e) => setStageTransferData({ ...stageTransferData, toStageId: e.target.value })}
+                      className="w-full p-2.5 border border-zinc-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      disabled={availableStages.length === 0}
+                    >
+                      <option value="">{availableStages.length === 0 ? 'Loading stages...' : t.selectToStage}</option>
+                      {availableStages.map((stage) => (
+                        <option
+                          key={stage.id}
+                          value={stage.id}
+                          disabled={stage.id === stageTransferData.fromStageId}
+                        >
+                          {stage.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              )}
 
               {/* Quantity */}
               <div>
@@ -816,6 +878,7 @@ export function MaterialTransfer({ language, refreshMaterialTransferData }: Mate
                     fromStageId: '',
                     toStageId: '',
                     orderId: '',
+                    orderNumber: '',
                     quantity: '',
                     notes: ''
                   });
@@ -828,7 +891,9 @@ export function MaterialTransfer({ language, refreshMaterialTransferData }: Mate
               <Button
                 onClick={async () => {
                   if (!stageTransferData.toStageId || !stageTransferData.orderId || !stageTransferData.quantity) return;
-                  
+                  if (isSubmittingTransfer) return; // Prevent double-click
+
+                  setIsSubmittingTransfer(true);
                   try {
                     await apiClient.post('/material-transfers/wip-stage-transfer', {
                       order_id: stageTransferData.orderId,
@@ -839,28 +904,44 @@ export function MaterialTransfer({ language, refreshMaterialTransferData }: Mate
                     });
 
                     alert(language === 'en' ? '✅ Stage Transfer Successful!' : '✅ स्टेज स्थानांतरण सफल!');
-                    
+
                     setShowStageTransferModal(false);
                     setStageTransferData({
                       fromStageId: '',
                       toStageId: '',
                       orderId: '',
+                      orderNumber: '',
                       quantity: '',
                       notes: ''
                     });
-                    // Refresh data
+                    // Refresh data to show updated state
                     fetchWipStages();
                     fetchWorkingOrders();
+                    fetchTransferHistory();
                   } catch (err: any) {
                     console.error('Stage transfer failed', err);
                     alert(`❌ Error: ${err?.detail || 'Failed to transfer'}`);
+                  } finally {
+                    setIsSubmittingTransfer(false);
                   }
                 }}
-                className="flex-1 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
-                disabled={!stageTransferData.toStageId || !stageTransferData.orderId || !stageTransferData.quantity}
+                className="flex-1 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={!stageTransferData.toStageId || !stageTransferData.orderId || !stageTransferData.quantity || isSubmittingTransfer}
               >
-                <Check className="w-4 h-4 mr-2" />
-                {t.initiateTransfer}
+                {isSubmittingTransfer ? (
+                  <>
+                    <svg className="animate-spin h-4 w-4 mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    {language === 'en' ? 'Processing...' : 'प्रसंस्करण...'}
+                  </>
+                ) : (
+                  <>
+                    <Check className="w-4 h-4 mr-2" />
+                    {t.initiateTransfer}
+                  </>
+                )}
               </Button>
             </div>
           </div>

@@ -103,9 +103,10 @@ export const stagesApi = {
     /**
      * List all WIP stages
      * @param activeOnly - Filter to active stages only (default: true)
+     * @param configId - Configuration ID (default: 'default')
      */
-    listStages: async (activeOnly: boolean = true): Promise<Stage[]> => {
-        return apiClient.get<Stage[]>(`/stages/?active_only=${activeOnly}`);
+    listStages: async (activeOnly: boolean = true, configId: string = 'default'): Promise<Stage[]> => {
+        return apiClient.get<Stage[]>(`/stages?active_only=${activeOnly}&config_id=${configId}`);
     },
 
     /**
@@ -118,8 +119,8 @@ export const stagesApi = {
     /**
      * Create a new WIP stage
      */
-    createStage: async (stageData: StageCreate): Promise<Stage> => {
-        return apiClient.post<Stage>('/stages', stageData);
+    createStage: async (stageData: StageCreate, configId: string = 'default'): Promise<Stage> => {
+        return apiClient.post<Stage>(`/stages?config_id=${configId}`, stageData);
     },
 
     /**
@@ -143,6 +144,20 @@ export const stagesApi = {
      */
     getStageUsage: async (stageId: string): Promise<StageUsageStats> => {
         return apiClient.get<StageUsageStats>(`/stages/${stageId}/usage`);
+    },
+
+    /**
+     * Get assignment rules
+     */
+    getAssignmentRules: async (): Promise<{ sku_assignments: Record<string, string>, wo_assignments: Record<string, string> }> => {
+        return apiClient.get(`/stages/assignments/rules`);
+    },
+
+    /**
+     * Update assignment rules
+     */
+    updateAssignmentRules: async (rules: { sku_assignments: Record<string, string>, wo_assignments: Record<string, string> }): Promise<void> => {
+        return apiClient.post(`/stages/assignments/rules`, rules);
     },
 
     /**

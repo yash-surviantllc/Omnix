@@ -7,6 +7,7 @@ from app.schemas.purchase_order import (
 )
 from app.schemas.user import UserResponse
 from app.services.purchase_order_service import purchase_order_service
+from app.services.dashboard_service import dashboard_service
 from app.api.deps import get_current_user, require_role
 from decimal import Decimal
 
@@ -32,7 +33,11 @@ async def create_purchase_order(
     - **due_date**: Target completion date
     - **priority**: Low/Medium/High/Urgent
     """
-    return await purchase_order_service.create_purchase_order(order_data, current_user.id)
+    result = await purchase_order_service.create_purchase_order(order_data, current_user.id)
+    # Broadcast updates
+    await dashboard_service.broadcast_orders_update()
+    await dashboard_service.broadcast_kpis_update()
+    return result
 
 
 @router.post("/{order_id}/duplicate", response_model=PurchaseOrderResponse)
@@ -50,7 +55,10 @@ async def duplicate_purchase_order(
     - Due date set to 7 days from now
     - Status: Planned
     """
-    return await purchase_order_service.duplicate_purchase_order(order_id, current_user.id)
+    result = await purchase_order_service.duplicate_purchase_order(order_id, current_user.id)
+    await dashboard_service.broadcast_orders_update()
+    await dashboard_service.broadcast_kpis_update()
+    return result
 
 
 @router.post("/multi-sku", response_model=PurchaseOrderResponse, status_code=201)
@@ -72,6 +80,8 @@ async def create_multi_sku_order(
     try:
         logging.info(f"Received multi-sku order payload: {order_data.model_dump()}")
         new_order = await purchase_order_service.create_multi_sku_order(order_data, current_user.id)
+        await dashboard_service.broadcast_orders_update()
+        await dashboard_service.broadcast_kpis_update()
         return new_order
     except Exception as e:
         logging.error(f"Error creating multi-sku order: {str(e)}")
@@ -139,11 +149,14 @@ async def update_order_status(
     """
     Update purchase order status (Planner/Supervisor only).
     """
-    return await purchase_order_service.update_order_status(
+    result = await purchase_order_service.update_order_status(
         order_id=order_id,
         status_data=status_data,
         user_id=current_user.id
     )
+    await dashboard_service.broadcast_orders_update()
+    await dashboard_service.broadcast_kpis_update()
+    return result
 
 
 @router.post("/{order_id}/archive", response_model=PurchaseOrderResponse)
@@ -185,6 +198,8 @@ async def delete_purchase_order(
     if success:
         return {"message": "Order deleted successfully"}
     else:
+        await dashboard_service.broadcast_orders_update()
+        await dashboard_service.broadcast_kpis_update()
         return {"message": "Order cancelled/archived successfully"}
 
 

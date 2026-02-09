@@ -8,6 +8,7 @@ from app.schemas.inventory import (
 )
 from app.schemas.user import UserResponse
 from app.services.inventory_service import inventory_service
+from app.services.dashboard_service import dashboard_service
 from app.api.deps import get_current_user, require_role
 from app.schemas.inventory import InventoryTransactionCreate
 from decimal import Decimal
@@ -156,6 +157,10 @@ async def record_transaction(
         if inv:
             asyncio.create_task(inventory_service.broadcast_stock_updated(transaction_data.product_id, location, inv.available_qty, inv.allocated_qty))
     
+    # Broadcast to dashboard
+    await dashboard_service.broadcast_shortages_update()
+    await dashboard_service.broadcast_activities_update()
+    await dashboard_service.broadcast_kpis_update()
     return result
 
 
@@ -212,7 +217,11 @@ async def create_stock_alert(
     - **max_qty**: Maximum stock level (optional)
     - **reorder_qty**: Recommended reorder quantity
     """
-    return await inventory_service.create_stock_alert(alert_data, current_user.id)
+    new_alert = await inventory_service.create_stock_alert(alert_data, current_user.id)
+    await dashboard_service.broadcast_shortages_update()
+    # Alerts affect KPI count (red/yellow status)
+    await dashboard_service.broadcast_kpis_update()
+    return new_alert
 
 
 @router.get("/alerts", response_model=List[StockAlertResponse])
@@ -254,7 +263,10 @@ async def update_stock_alert(
     
     Can update min_qty, max_qty, reorder_qty, or is_active status.
     """
-    return await inventory_service.update_stock_alert(alert_id, alert_data, current_user.id)
+    updated_alert = await inventory_service.update_stock_alert(alert_id, alert_data, current_user.id)
+    await dashboard_service.broadcast_shortages_update()
+    await dashboard_service.broadcast_kpis_update()
+    return updated_alert
 
 
 @router.delete("/alerts/{alert_id}")
@@ -265,7 +277,10 @@ async def delete_stock_alert(
     """
     Delete stock alert (Admin only).
     """
-    return await inventory_service.delete_stock_alert(alert_id)
+    result = await inventory_service.delete_stock_alert(alert_id)
+    await dashboard_service.broadcast_shortages_update()
+    await dashboard_service.broadcast_kpis_update()
+    return result
 
 
 # =============================================
@@ -474,6 +489,10 @@ async def allocate_inventory(
     if inv:
         asyncio.create_task(inventory_service.broadcast_allocation_changed(product_id, location_id, inv.allocated_qty))
     
+    # Broadcast to dashboard
+    await dashboard_service.broadcast_shortages_update()
+    await dashboard_service.broadcast_activities_update()
+    await dashboard_service.broadcast_kpis_update()
     return result
 
 
@@ -491,7 +510,7 @@ async def release_allocation(
     - Moves from allocated back to free
     - Used when production order is cancelled
     """
-    return await inventory_service.release_allocation(
+    result = await inventory_service.release_allocation(
         product_id=product_id,
         location_id=location_id,
         quantity=quantity,
@@ -499,3 +518,8 @@ async def release_allocation(
         reference_type=reference_type,
         user_id=current_user.id
     )
+    # Broadcast to dashboard
+    await dashboard_service.broadcast_shortages_update()
+    await dashboard_service.broadcast_activities_update()
+    await dashboard_service.broadcast_kpis_update()
+    return result

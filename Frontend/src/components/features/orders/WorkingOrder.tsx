@@ -17,6 +17,7 @@ interface WorkOrderOperation {
   name: string;
   id: string; // Added ID for action handling
   completedUnits: number;
+  transferredUnits: number; // Physical transfers via Stage Transfer
   status: 'pending' | 'in-progress' | 'completed' | 'on-hold';
   assignedTo: string;
   workstation: string;
@@ -182,12 +183,15 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
   }, [newWorkOrderData.product_id, newWorkOrderData.target_qty]);
 
   // Fetch work orders from backend API
-  const fetchWorkOrders = useCallback(async (silent: boolean = false) => {
+  const fetchWorkOrders = useCallback(async (silent: boolean = false, explicitStages?: Stage[]) => {
     if (!silent) setLoading(true);
     try {
       // Fetch working orders directly without complex transformation
       const workingOrdersData = await wipApi.listWorkingOrders({ limit: 100 });
       // Optimized: No longer need to fetch all Purchase Orders separately
+
+      // Use explicit stages if provided (for initial load), otherwise state
+      const currentStages = explicitStages || availableStages;
 
       // Safety check: Ensure responses are arrays
       if (!Array.isArray(workingOrdersData)) {
@@ -221,8 +225,8 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
         });
 
         // Get stage names from available stages (fallback to empty if not loaded yet)
-        const stageNames = availableStages.length > 0
-          ? availableStages.map(s => s.name)
+        const stageNames = currentStages.length > 0
+          ? currentStages.map(s => s.name)
           : [];
 
         // Merge with configured stages to ensure all stages are visible
@@ -251,6 +255,7 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
               name: wo.operation,
               id: wo.id,
               completedUnits: Number(wo.completed_qty) || 0,
+              transferredUnits: 0,
               status: validStatus,
               assignedTo: wo.assigned_team || 'Unassigned',
               workstation: wo.workstation_name || `${wo.operation} Station`,
@@ -262,6 +267,7 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
               name: opName,
               id: `placeholder-${opName}-${firstOp.id}`, // Temporary ID
               completedUnits: 0,
+              transferredUnits: 0,
               status: 'pending',
               assignedTo: 'Unassigned',
               workstation: 'TBD',
@@ -293,6 +299,7 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
               name: wo.operation,
               id: wo.id,
               completedUnits: Number(wo.completed_qty) || 0,
+              transferredUnits: 0,
               status: validStatus,
               assignedTo: wo.assigned_team || 'Unassigned',
               workstation: wo.workstation_name || `${wo.operation} Station`,
@@ -350,32 +357,53 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
   };
 
   // Fetch available stages
-  const fetchAvailableStages = async (silent: boolean = false) => {
+  const fetchAvailableStages = async (silent: boolean = false): Promise<Stage[]> => {
     if (!silent) setLoadingStages(true);
     try {
       const stages = await stagesApi.listStages(true); // Get only active stages
       if (Array.isArray(stages)) {
-        setAvailableStages(stages);
+        console.log('🔍 RAW stages from API:', stages.map(s => ({ name: s.name, seq: s.sequence_number })));
+        const sortedStages = [...stages].sort((a, b) => a.sequence_number - b.sequence_number);
+        console.log('✅ SORTED stages:', sortedStages.map(s => ({ name: s.name, seq: s.sequence_number })));
+        setAvailableStages(sortedStages);
+        return sortedStages;
       } else {
         console.warn('Invalid stages data received:', stages);
         // Don't clear stages on invalid data if we already have them
         if (availableStages.length === 0) {
           setAvailableStages([]);
         }
+        return [];
       }
     } catch (err: any) {
       console.error('Failed to load stages:', err);
       // Don't clear stages on error, keep stale data
+      return [];
     } finally {
       if (!silent) setLoadingStages(false);
     }
   };
 
-  // Initial data fetch
+  // Initial data fetch - SEQUENTIAL to avoid race condition
+  // Stages must be loaded and sorted BEFORE work orders are fetched
   useEffect(() => {
-    fetchProductionOrders();
-    fetchAvailableStages();
-    fetchWorkOrders(); // Fetch work orders on initial load
+    const initializeData = async () => {
+      // Step 1: Fetch production orders (independent)
+      fetchProductionOrders();
+
+      // Step 2: Fetch and sort stages FIRST
+      const sortedStages = await fetchAvailableStages();
+
+      // Step 3: THEN fetch work orders with the sorted stages
+      // Passing sortedStages explicitly avoids using stale state closure
+      if (sortedStages && sortedStages.length > 0) {
+        fetchWorkOrders(false, sortedStages);
+      } else {
+        fetchWorkOrders();
+      }
+    };
+
+    initializeData();
   }, []);
 
   // Periodic refresh of stages to catch configuration changes (every 30 seconds)
@@ -387,6 +415,99 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
 
     return () => clearInterval(intervalId);
   }, []);
+
+  // Initial fetch of transferred quantities when work orders load
+  useEffect(() => {
+    const fetchInitialQuantities = async () => {
+      if (workOrders.length === 0 || availableStages.length === 0) return;
+
+      console.log('🔄 INITIAL FETCH: Fetching transferred quantities for', workOrders.length, 'work orders');
+
+      try {
+        const updates = await Promise.all(
+          workOrders.map(async (wo) => {
+            try {
+              const quantities = await wipApi.getTransferredQuantities(wo.id);
+              return { workOrderId: wo.id, quantities };
+            } catch (err) {
+              return { workOrderId: wo.id, quantities: {} };
+            }
+          })
+        );
+
+        setWorkOrders(prevOrders =>
+          prevOrders.map(order => {
+            const update = updates.find(u => u.workOrderId === order.id);
+            if (!update) return order;
+
+            return {
+              ...order,
+              operations: order.operations.map(op => {
+                const matchingStage = availableStages.find(s => s.name === op.name);
+                const stageId = matchingStage?.id || '';
+                const transferredQty = stageId && update.quantities[stageId] ? update.quantities[stageId] : 0;
+
+                return {
+                  ...op,
+                  transferredUnits: transferredQty
+                };
+              })
+            };
+          })
+        );
+      } catch (err) {
+        console.error('Error fetching initial transferred quantities:', err);
+      }
+    };
+
+    fetchInitialQuantities();
+  }, [workOrders.length, availableStages.length]);
+
+  // Periodic refresh of transferred quantities (every 10 seconds)
+  useEffect(() => {
+    console.log('⏰ Setting up periodic refresh interval for transferred quantities');
+    const intervalId = setInterval(async () => {
+      if (workOrders.length === 0 || availableStages.length === 0) return;
+
+      try {
+        const updates = await Promise.all(
+          workOrders.map(async (wo) => {
+            try {
+              const quantities = await wipApi.getTransferredQuantities(wo.id);
+              return { workOrderId: wo.id, quantities };
+            } catch (err) {
+              return { workOrderId: wo.id, quantities: {} };
+            }
+          })
+        );
+
+        setWorkOrders(prevOrders =>
+          prevOrders.map(order => {
+            const update = updates.find(u => u.workOrderId === order.id);
+            if (!update) return order;
+
+            return {
+              ...order,
+              operations: order.operations.map(op => {
+                const matchingStage = availableStages.find(s => s.name === op.name);
+                const stageId = matchingStage?.id || '';
+                const transferredQty = stageId && update.quantities[stageId] ? update.quantities[stageId] : 0;
+
+                return {
+                  ...op,
+                  transferredUnits: transferredQty
+                };
+              })
+            };
+          })
+        );
+      } catch (err) {
+        // Silent error - don't spam console
+      }
+    }, 10000); // 10 seconds
+
+    return () => clearInterval(intervalId);
+  }, []); // Empty dependency - interval runs independently
 
   // Refresh stages when page becomes visible (user switches back to tab)
   useEffect(() => {
@@ -439,7 +560,7 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
         previousCount: previousStagesRef.current.length,
         currentCount: availableStages.length
       });
-      fetchWorkOrders(true); // Silent refetch to avoid loading glitch
+      fetchWorkOrders(true, availableStages); // Silent refetch to avoid loading glitch
       previousStagesRef.current = availableStages;
     }
   }, [availableStages]);
@@ -797,57 +918,60 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
     if (!order) return;
 
     try {
-      let targetOpId: string | null = null;
-      let status: 'Pending' | 'In Progress' | 'Completed' | 'On Hold' | 'Cancelled';
-      let updateData: any = {};
-
-      // Identify target operation based on action and current state
       if (action === 'start') {
-        // Find first Planned, Released, or On Hold operation
+        // Find operation to start (Planned, Released, or On Hold, or Pending)
         const op = order.operations.find(op => {
           const statusLower = op.status?.toLowerCase();
           return statusLower === 'planned' || statusLower === 'released' || statusLower === 'on hold' || statusLower === 'pending';
         });
-        if (op) {
-          targetOpId = op.id;
-          status = 'In Progress';
-          updateData = { status, actual_start: new Date().toISOString() };
-        }
-      } else if (action === 'pause') {
-        // Find first in-progress operation
-        const op = order.operations.find(op => op.status?.toLowerCase() === 'in progress');
-        if (op) {
-          targetOpId = op.id;
-          status = 'On Hold';
-          updateData = { status };
-        }
-      } else if (action === 'complete') {
-        // Find first in-progress operation
-        const op = order.operations.find(op => op.status?.toLowerCase() === 'in progress');
-        if (op) {
-          targetOpId = op.id;
-          status = 'Completed';
-          updateData = {
-            status,
-            actual_end: new Date().toISOString(),
-            completed_qty: op.targetUnits // Auto-fill quantity? Or let backend handle?
-          };
-        }
-      }
 
-      if (!targetOpId) {
-        // If no specific operation targeted, maybe user clicked main button but state changed?
-        // Fallback: Use the grouped ID (first op ID) if safe? No, risky.
-        console.warn("No suitable operation found for action:", action);
-        return;
-      }
+        if (!op) {
+          console.warn("No suitable operation found to start");
+          return;
+        }
 
-      // Update the specific operation
-      await wipApi.updateWorkingOrder(targetOpId, updateData);
+        // Use startOperation endpoint instead of generic update
+        // This handles "ghost" stages (placeholders) correctly by creating them
+        await wipApi.startOperation(order.workOrderNumber, op.name);
+
+      } else {
+        // Handle Pause / Complete using Update endpoint (requires valid ID)
+        let targetOpId: string | null = null;
+        let status: 'Pending' | 'In Progress' | 'Completed' | 'On Hold' | 'Cancelled';
+        let updateData: any = {};
+
+        if (action === 'pause') {
+          const op = order.operations.find(op => op.status?.toLowerCase() === 'in progress');
+          if (op) {
+            targetOpId = op.id;
+            status = 'On Hold';
+            updateData = { status };
+          }
+        } else if (action === 'complete') {
+          const op = order.operations.find(op => op.status?.toLowerCase() === 'in progress');
+          if (op) {
+            targetOpId = op.id;
+            status = 'Completed';
+            updateData = {
+              status,
+              actual_end: new Date().toISOString(),
+              completed_qty: op.targetUnits // Auto-fill quantity
+            };
+          }
+        }
+
+        if (!targetOpId || targetOpId.startsWith('placeholder-')) {
+          console.warn("Invalid operation ID for pause/complete:", targetOpId);
+          return;
+        }
+
+        await wipApi.updateWorkingOrder(targetOpId, updateData);
+      }
 
       // Refresh the work orders list
       await fetchWorkOrders();
     } catch (err: any) {
+      console.error('Action failed:', err);
       alert(`❌ ${language === 'en' ? 'Error' : 'त्रुटि'}: ${err?.detail || err?.message || 'Failed to update work order'}`);
     }
   };
@@ -1111,7 +1235,7 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
                       <div>
                         <h4 className="text-sm font-semibold text-zinc-700 mb-3">Operation Progress</h4>
                         <div className="flex gap-3">
-                          {order.operations.map((op) => {
+                          {order.operations.filter(op => !op.id.toString().startsWith('placeholder-')).map((op) => {
                             const opProgress = op.targetUnits > 0 ? Math.round((op.completedUnits / op.targetUnits) * 100) : 0;
 
                             return (
@@ -1125,10 +1249,22 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
                                 `}
                               >
                                 <div className="font-semibold text-sm text-zinc-900">{op.name}</div>
-                                <div className="text-xl font-bold text-zinc-900">{op.completedUnits} units</div>
-                                <div className="text-xs text-zinc-500">{opProgress}% of {op.targetUnits}</div>
-                                <div className="text-xs text-zinc-600 space-y-0.5 mt-1">
-                                  <div>Workstation: {op.workstation}</div>
+
+                                <div className="mt-2 space-y-1">
+                                  <div className="text-xs text-zinc-500 font-medium">Status Completion:</div>
+                                  <div className="text-lg font-bold text-zinc-900">{op.completedUnits} units</div>
+                                  <div className="text-xs text-zinc-500">{opProgress}% of {op.targetUnits}</div>
+                                </div>
+
+                                <div className="mt-2 pt-2 border-t border-zinc-200 space-y-1">
+                                  <div className="text-xs text-emerald-600 font-medium">Physically Transferred:</div>
+                                  <div className="text-lg font-bold text-emerald-700">{op.transferredUnits || 0} units</div>
+                                  <div className="text-[10px] text-zinc-400 italic">
+                                    {op.transferredUnits > 0 ? 'Via Stage Transfer' : 'No transfers yet'}
+                                  </div>
+                                </div>
+
+                                <div className="text-xs text-zinc-600 mt-2">
                                   <div>Assigned to: {op.assignedTo}</div>
                                 </div>
                               </div>

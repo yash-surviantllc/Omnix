@@ -46,8 +46,8 @@ export function Dashboard({ onNavigate, language }: DashboardProps) {
     const connectWebSocket = () => {
       // Use window.location.hostname to work in different environments
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsUrl = `${protocol}//${window.location.hostname}:8000/ws/dashboard?token=${token}`;
-      
+      const wsUrl = `${protocol}//${window.location.hostname}:8000/api/v1/ws/dashboard?token=${token}`;
+
       wsRef.current = new WebSocket(wsUrl);
 
       wsRef.current.onopen = () => {
@@ -117,12 +117,12 @@ export function Dashboard({ onNavigate, language }: DashboardProps) {
       liveOrders: 'Live Orders',
       shortages: 'Material Shortages',
       rework: 'Rework Alerts',
-      onTime: 'On-Time Delivery',
+      onTime: 'Work Orders Completed',
       viewDetails: 'View Details',
       ordersInProgress: 'Orders in Progress',
       criticalShortages: 'Critical Shortages',
       reworkItems: 'Items in Rework',
-      deliveryRate: 'This Month',
+      deliveryRate: 'For the Day',
       recentActivity: 'Recent Activity',
       askBot: 'Ask the bot for more details'
     },
@@ -131,12 +131,12 @@ export function Dashboard({ onNavigate, language }: DashboardProps) {
       liveOrders: 'लाइव ऑर्डर',
       shortages: 'सामग्री की कमी',
       rework: 'रीवर्क अलर्ट',
-      onTime: 'समय पर डिलीवरी',
+      onTime: 'कार्य आदेश पूर्ण',
       viewDetails: 'विवरण देखें',
       ordersInProgress: 'प्रगति में आदेश',
       criticalShortages: 'गंभीर कमी',
       reworkItems: 'रीवर्क में आइटम',
-      deliveryRate: 'इस महीने',
+      deliveryRate: 'दिन के लिए',
       recentActivity: 'हाल की गतिविधि',
       askBot: 'अधिक विवरण के लिए बॉट से पूछें'
     },
@@ -145,12 +145,12 @@ export function Dashboard({ onNavigate, language }: DashboardProps) {
       liveOrders: 'ಸ್ಥಿರ ಆರ್ಡರ್ಸ್',
       shortages: 'ಸಾಮಾನ್‍ಯ ಕೆಲಸ',
       rework: 'ರಿವರ್ಕ್ ಅಲರ್ಟ್',
-      onTime: 'ಸಮಯದಿಷ್ಟ ಪರಿವಹನ',
+      onTime: 'ಕಾರ್ಯ ಆದೇಶಗಳು ಪೂರ್ಣಗೊಂಡಿವೆ',
       viewDetails: 'ವಿವರಣೆಗಳನ್ನು ನೋಡಿ',
       ordersInProgress: 'ವಿವರ್ತಿತ ಆರ್ಡರ್ಸ್',
       criticalShortages: 'ಸುರಖ್ಷಿತ ಕೆಲಸ',
       reworkItems: 'ರಿವರ್ಕ್ ಮೀಟ್ಸ್',
-      deliveryRate: 'ಈ ಮಾಸ',
+      deliveryRate: 'ದಿನಕ್ಕೆ',
       recentActivity: 'ಕ್ರೀಡೆಯ ಕ್ರಿಯೆ',
       askBot: 'ಹೆಚ್ಚು ವಿವರಣೆಗಳನ್ನು ಬೋಟ್ ನಿಂದ ಕೇಳಿ'
     },
@@ -159,12 +159,12 @@ export function Dashboard({ onNavigate, language }: DashboardProps) {
       liveOrders: 'தற்போதைய ஆர்டர்கள்',
       shortages: 'விலக்ஷனம்',
       rework: 'மீட்சம் அலர்ட்கள்',
-      onTime: 'நேர்காலம் பரிவahanம்',
+      onTime: 'வேலை ஆர்டர்கள் முடிந்தது',
       viewDetails: 'விவரங்களை பாருங்கள்',
       ordersInProgress: 'உருவாக்கியில் ஆர்டர்கள்',
       criticalShortages: 'முக்கிய விலக்ஷனம்',
       reworkItems: 'மீட்சம் பொருட்கள்',
-      deliveryRate: 'இந்த மாதம்',
+      deliveryRate: 'நாளுக்கு',
       recentActivity: 'சமீப கொடுக்கம்',
       askBot: 'மேலும் விவரங்களுக்கு போட்டானின் கேள்வி'
     },
@@ -173,12 +173,12 @@ export function Dashboard({ onNavigate, language }: DashboardProps) {
       liveOrders: 'ప్రతిసాహిత ఆర్డర్స్',
       shortages: 'ప్రయత్నిక కెలసం',
       rework: 'రీవర్క్ అలర్ట్',
-      onTime: 'సమయం ప్రకటిత పరివహనం',
+      onTime: 'పని ఆర్డర్లు పూర్తయ్యాయి',
       viewDetails: 'వివరణలను చూడండి',
       ordersInProgress: 'ప్రకటిత ఆర్డర్స్',
       criticalShortages: 'సమాచారిక కెలసం',
       reworkItems: 'రీవర్క్ ప్రయత్నికం',
-      deliveryRate: 'ఈ మాసం',
+      deliveryRate: 'రోజుకు',
       recentActivity: 'సమీప కార్యకలాపం',
       askBot: 'మేలుమాత్రాల కోసం బోట్ నుండి ప్రశ్న'
     },
@@ -187,12 +187,12 @@ export function Dashboard({ onNavigate, language }: DashboardProps) {
       liveOrders: 'साकारात्मक आर्डर्स',
       shortages: 'कमी',
       rework: 'रीवर्क अलर्ट',
-      onTime: 'समय पर डिलीवरी',
+      onTime: 'कार्य आदेश पूर्ण',
       viewDetails: 'विवरण देखें',
       ordersInProgress: 'प्रगति में आर्डर्स',
       criticalShortages: 'गंभीर कमी',
       reworkItems: 'रीवर्क में आइटम',
-      deliveryRate: 'इस महीने',
+      deliveryRate: 'दिन के लिए',
       recentActivity: 'हाल की गतिविधि',
       askBot: 'अधिक विवरण के लिए बॉट से पूछें'
     },
@@ -201,12 +201,12 @@ export function Dashboard({ onNavigate, language }: DashboardProps) {
       liveOrders: 'લાઇવ આર્ડર્સ',
       shortages: 'માટેરિયલ કેલસ',
       rework: 'રીવર્ક અલર્ટ',
-      onTime: 'સમય પર ડિલિવરી',
+      onTime: 'કાર્ય ઓર્ડર્સ પૂર્ણ',
       viewDetails: 'વિવરણો દેખો',
       ordersInProgress: 'પ્રગતિમાં આર્ડર્સ',
       criticalShortages: 'ક્રિટિકલ કેલસ',
       reworkItems: 'રીવર્ક આઇટમ્સ',
-      deliveryRate: 'આ મહિને',
+      deliveryRate: 'દિવસ માટે',
       recentActivity: 'નિર્ણય કાર્ય',
       askBot: 'અધિક વિવરણ માટે બોટથી પુછો'
     },
@@ -215,12 +215,12 @@ export function Dashboard({ onNavigate, language }: DashboardProps) {
       liveOrders: 'ਲਾਈਵ ਆਰਡਰਜ਼',
       shortages: 'ਮਾਟੇਰਿਅਲ ਕੇਲਸ',
       rework: 'ਰੀਵਰਕ ਅਲਾਰਟ',
-      onTime: 'ਸਮਾਨ ਸਮੇਂ ਪ੍ਰਦਾਨ',
+      onTime: 'ਕੰਮ ਆਰਡਰ ਪੂਰੇ',
       viewDetails: 'ਵਿਸਤਾਰਤ ਵਿਵਰਨਾਵਾਂ ਦੇਖੋ',
       ordersInProgress: 'ਵਿਕਾਸ ਵਿਚ ਆਰਡਰਜ਼',
       criticalShortages: 'ਕ੍ਰਿਟੀਕਲ ਕੇਲਸ',
       reworkItems: 'ਰੀਵਰਕ ਆਇਟਮਜ਼',
-      deliveryRate: 'ਇਸ ਮਹੀਨੇ',
+      deliveryRate: 'ਦਿਨ ਲਈ',
       recentActivity: 'ਨਿਰਣਤ ਕਾਰਨਾ',
       askBot: 'ਵਿਸਤਾਰਤ ਵਿਵਰਨਾਵਾਂ ਲਈ ਬੋਟ ਤੋਂ ਪੁਛੋ'
     }
@@ -233,7 +233,7 @@ export function Dashboard({ onNavigate, language }: DashboardProps) {
     if (!dashboardData) return [];
 
     const kpis = dashboardData.kpis;
-    
+
     return [
       {
         title: t.liveOrders,
@@ -261,11 +261,11 @@ export function Dashboard({ onNavigate, language }: DashboardProps) {
       },
       {
         title: t.onTime,
-        value: `${kpis.otd_percentage.value}%`,
+        value: kpis.otd_percentage.value.toString(),
         subtitle: t.deliveryRate,
         icon: TrendingUp,
-        color: Number(kpis.otd_percentage.value) >= 90 ? 'bg-emerald-500' : 'bg-yellow-500',
-        trend: 'This month'
+        color: Number(kpis.otd_percentage.value) > 0 ? 'bg-emerald-500' : 'bg-blue-500',
+        trend: 'For the day'
       }
     ];
   };
@@ -316,10 +316,10 @@ export function Dashboard({ onNavigate, language }: DashboardProps) {
         <div className="text-center">
           <RefreshCw className="h-8 w-8 animate-spin text-emerald-600 mx-auto mb-4" />
           <p className="text-zinc-600">
-            {language === 'en' 
-              ? 'Loading dashboard...' 
-              : language === 'hi' 
-                ? 'डैशबोर्ड लोड हो रहा है...' 
+            {language === 'en'
+              ? 'Loading dashboard...'
+              : language === 'hi'
+                ? 'डैशबोर्ड लोड हो रहा है...'
                 : 'Loading...'}
           </p>
         </div>
@@ -336,24 +336,24 @@ export function Dashboard({ onNavigate, language }: DashboardProps) {
             <div className="flex items-center mb-4">
               <AlertTriangle className="h-5 w-5 text-red-600 mr-2" />
               <h3 className="text-lg font-medium text-red-800">
-                {language === 'en' 
-                  ? 'Failed to load dashboard' 
-                  : language === 'hi' 
-                    ? 'डैशबोर्ड लोड करने में विफल' 
+                {language === 'en'
+                  ? 'Failed to load dashboard'
+                  : language === 'hi'
+                    ? 'डैशबोर्ड लोड करने में विफल'
                     : 'Error loading dashboard'}
               </h3>
             </div>
             <p className="text-red-700 mb-4">{error}</p>
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               onClick={fetchDashboard}
               className="border-red-300 text-red-700 hover:bg-red-100"
             >
               <RefreshCw className="h-4 w-4 mr-2" />
-              {language === 'en' 
-                ? 'Retry' 
-                : language === 'hi' 
-                  ? 'पुनः प्रयास करें' 
+              {language === 'en'
+                ? 'Retry'
+                : language === 'hi'
+                  ? 'पुनः प्रयास करें'
                   : 'Retry'}
             </Button>
           </div>
@@ -475,13 +475,12 @@ export function Dashboard({ onNavigate, language }: DashboardProps) {
                   <span className="text-xl mt-1">{activity.icon}</span>
                 ) : (
                   <div
-                    className={`h-2 w-2 rounded-full mt-2 ${
-                      activity.type === 'info'
-                        ? 'bg-emerald-500'
-                        : activity.type === 'warning'
+                    className={`h-2 w-2 rounded-full mt-2 ${activity.type === 'info'
+                      ? 'bg-emerald-500'
+                      : activity.type === 'warning'
                         ? 'bg-yellow-500'
                         : 'bg-red-500'
-                    }`}
+                      }`}
                   />
                 )}
                 <div className="flex-1 min-w-0">

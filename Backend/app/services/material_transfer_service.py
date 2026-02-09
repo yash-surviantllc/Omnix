@@ -467,90 +467,204 @@ class MaterialTransferService:
         user_id: str
     ) -> WIPStageTransferResponse:
         """
-        Move purchase order between WIP stages.
-        Creates material transfer + WIP tracking.
+        Move working order between WIP stages.
+        Updates work_order_operations status for real-time sync.
+        
+        VALIDATION:
+        - Prevents transfers that exceed work order target quantity
+        - Tracks cumulative transferred quantities
+        - Ensures data integrity for production use
         """
-        db = get_db()
-        
-        # Validate order exists
-        order = db.table('purchase_orders').select('*').eq('id', wip_transfer.order_id).execute()
-        if not order.data:
-            raise NotFoundException(detail="Purchase order not found")
-        
-        # Validate stages
-        to_stage = db.table('wip_stages').select('*').eq('id', wip_transfer.to_stage_id).execute()
-        if not to_stage.data:
-            raise NotFoundException(detail="Destination stage not found")
-        
-        from_stage_name = None
-        if wip_transfer.from_stage_id:
-            from_stage = db.table('wip_stages').select('name').eq('id', wip_transfer.from_stage_id).execute()
-            from_stage_name = from_stage.data[0]['name'] if from_stage.data else None
-        
-        # Create WIP stage transfer record
-        wip_transfer_dict = {
-            'order_id': wip_transfer.order_id,
-            'from_stage_id': wip_transfer.from_stage_id,
-            'to_stage_id': wip_transfer.to_stage_id,
-            'quantity': float(wip_transfer.quantity),
-            'unit': order.data[0]['unit'],
-            'actual_time_minutes': wip_transfer.actual_time_minutes,
-            'notes': wip_transfer.notes,
-            'transferred_by': user_id
-        }
-        
-        result = db.table('wip_stage_transfers').insert(wip_transfer_dict).execute()
-        
-        # Update order stage tracking
-        if wip_transfer.from_stage_id:
-            # Reduce quantity in previous stage
-            db.table('order_stage_tracking').update({
-                'quantity_in_stage': Decimal(str(wip_transfer.quantity)) * -1,  # Reduce
-                'updated_at': datetime.utcnow().isoformat()
-            }).eq('order_id', wip_transfer.order_id).eq('current_stage_id', wip_transfer.from_stage_id).execute()
-        
-        # Add to new stage
-        existing_tracking = db.table('order_stage_tracking').select('*').eq(
-            'order_id', wip_transfer.order_id
-        ).eq('current_stage_id', wip_transfer.to_stage_id).execute()
-        
-        if existing_tracking.data:
-            # Update existing
-            new_qty = Decimal(str(existing_tracking.data[0]['quantity_in_stage'])) + wip_transfer.quantity
-            db.table('order_stage_tracking').update({
-                'quantity_in_stage': float(new_qty),
-                'updated_at': datetime.utcnow().isoformat()
-            }).eq('id', existing_tracking.data[0]['id']).execute()
-        else:
-            # Insert new
-            db.table('order_stage_tracking').insert({
+        try:
+            db = get_db()
+            
+            print(f"[DEBUG] Creating WIP stage transfer for order: {wip_transfer.order_id}")
+            
+            # Validate WORK ORDER exists (NOT purchase order!)
+            work_order = db.table('work_orders').select('*').eq('id', wip_transfer.order_id).execute()
+            if not work_order.data:
+                raise NotFoundException(detail="Working order not found")
+            
+            wo = work_order.data[0]
+            print(f"[DEBUG] Found work order: {wo.get('work_order_number')}")
+            
+            # CRITICAL VALIDATION: Check total transferred quantity
+            target_qty = Decimal(str(wo.get('target_qty', 0)))
+            if target_qty <= 0:
+                raise ValidationException(detail="Work order has no target quantity set")
+            
+            # Get all existing transfers for this work order to the destination stage
+            existing_transfers = db.table('wip_stage_transfers').select(
+                'quantity'
+            ).eq('order_id', wip_transfer.order_id).eq(
+                'to_stage_id', wip_transfer.to_stage_id
+            ).execute()
+            
+            # Calculate total already transferred to this stage
+            total_transferred = sum(
+                Decimal(str(t['quantity'])) for t in existing_transfers.data
+            ) if existing_transfers.data else Decimal('0')
+            
+            # Check if this transfer would exceed the target quantity
+            new_total = total_transferred + wip_transfer.quantity
+            
+            if new_total > target_qty:
+                raise ValidationException(
+                    detail=f"Transfer rejected: Would exceed work order quantity. "
+                           f"Target: {target_qty}, Already transferred to this stage: {total_transferred}, "
+                           f"Attempting to transfer: {wip_transfer.quantity}, "
+                           f"Total would be: {new_total}"
+                )
+            
+            print(f"[DEBUG] Validation passed - Target: {target_qty}, Already transferred: {total_transferred}, New transfer: {wip_transfer.quantity}")
+            
+            # Validate stages
+            from_stage = None
+            from_stage_name = None
+            if wip_transfer.from_stage_id:
+                from_stage_result = db.table('wip_stages').select('*').eq('id', wip_transfer.from_stage_id).execute()
+                if not from_stage_result.data:
+                    raise NotFoundException(detail="Source stage not found")
+                from_stage = from_stage_result.data[0]
+                from_stage_name = from_stage['name']
+                print(f"[DEBUG] From stage: {from_stage_name}")
+            
+            to_stage_result = db.table('wip_stages').select('*').eq('id', wip_transfer.to_stage_id).execute()
+            if not to_stage_result.data:
+                raise NotFoundException(detail="Destination stage not found")
+            
+            to_stage = to_stage_result.data[0]
+            to_stage_name = to_stage['name']
+            print(f"[DEBUG] To stage: {to_stage_name}")
+            
+            # Update work_order_operations for real-time sync
+            if from_stage:
+                # Complete the FROM stage operation
+                from_op = db.table('work_order_operations').select('*').eq(
+                    'work_order_id', wo['id']
+                ).eq('operation_name', from_stage_name).execute()
+                
+                if from_op.data:
+                    db.table('work_order_operations').update({
+                        'status': 'Completed',
+                        'actual_end': datetime.utcnow().isoformat(),
+                        'updated_at': datetime.utcnow().isoformat()
+                    }).eq('id', from_op.data[0]['id']).execute()
+                    print(f"[DEBUG] Completed FROM operation: {from_stage_name}")
+            
+            # Start the TO stage operation
+            to_op = db.table('work_order_operations').select('*').eq(
+                'work_order_id', wo['id']
+            ).eq('operation_name', to_stage_name).execute()
+            
+            if to_op.data:
+                # Update existing operation
+                db.table('work_order_operations').update({
+                    'status': 'In Progress',
+                    'actual_start': datetime.utcnow().isoformat(),
+                    'updated_at': datetime.utcnow().isoformat()
+                }).eq('id', to_op.data[0]['id']).execute()
+                print(f"[DEBUG] Started TO operation: {to_stage_name}")
+            else:
+                # Create new operation
+                db.table('work_order_operations').insert({
+                    'work_order_id': wo['id'],
+                    'operation_name': to_stage_name,
+                    'sequence_number': to_stage.get('sequence_number', 0),
+                    'status': 'In Progress',
+                    'actual_start': datetime.utcnow().isoformat()
+                }).execute()
+                print(f"[DEBUG] Created new TO operation: {to_stage_name}")
+            
+            # Get unit from work order (try both 'unit' and 'units' fields)
+            unit = wo.get('unit') or wo.get('units') or 'units'
+            
+            # Create WIP stage transfer record
+            wip_transfer_dict = {
                 'order_id': wip_transfer.order_id,
-                'current_stage_id': wip_transfer.to_stage_id,
-                'quantity_in_stage': float(wip_transfer.quantity),
-                'entered_stage_at': datetime.utcnow().isoformat()
-            }).execute()
-        
-        # Get user name
-        user = db.table('users').select('full_name', 'username').eq('id', user_id).execute()
-        user_name = user.data[0].get('full_name') or user.data[0].get('username') if user.data else None
-        
-        return WIPStageTransferResponse(
-            id=result.data[0]['id'],
-            transfer_id=None,
-            order_id=wip_transfer.order_id,
-            order_number=order.data[0]['order_number'],
-            from_stage_id=wip_transfer.from_stage_id,
-            from_stage_name=from_stage_name,
-            to_stage_id=wip_transfer.to_stage_id,
-            to_stage_name=to_stage.data[0]['name'],
-            quantity=wip_transfer.quantity,
-            unit=order.data[0]['unit'],
-            actual_time_minutes=wip_transfer.actual_time_minutes,
-            notes=wip_transfer.notes,
-            transferred_by=user_id,
-            transferred_by_name=user_name,
-            transferred_at=datetime.utcnow()
-        )
+                'from_stage_id': wip_transfer.from_stage_id,
+                'to_stage_id': wip_transfer.to_stage_id,
+                'quantity': float(wip_transfer.quantity),
+                'unit': unit,
+                'actual_time_minutes': wip_transfer.actual_time_minutes,
+                'notes': wip_transfer.notes,
+                'transferred_by': user_id
+            }
+            
+            print(f"[DEBUG] Inserting transfer record: {wip_transfer_dict}")
+            result = db.table('wip_stage_transfers').insert(wip_transfer_dict).execute()
+            
+            if not result.data:
+                raise Exception("Failed to create WIP stage transfer record")
+            
+            transfer_record = result.data[0]
+            print(f"[DEBUG] Created transfer record: {transfer_record.get('id')}")
+            
+            # Update order stage tracking (for quantity tracking)
+            if wip_transfer.from_stage_id:
+                # Reduce quantity in previous stage
+                existing_from = db.table('order_stage_tracking').select('*').eq(
+                    'order_id', wip_transfer.order_id
+                ).eq('current_stage_id', wip_transfer.from_stage_id).execute()
+                
+                if existing_from.data:
+                    new_qty = Decimal(str(existing_from.data[0]['quantity_in_stage'])) - wip_transfer.quantity
+                    if new_qty > 0:
+                        db.table('order_stage_tracking').update({
+                            'quantity_in_stage': float(new_qty),
+                            'updated_at': datetime.utcnow().isoformat()
+                        }).eq('id', existing_from.data[0]['id']).execute()
+                    else:
+                        # Remove if quantity reaches 0
+                        db.table('order_stage_tracking').delete().eq('id', existing_from.data[0]['id']).execute()
+            
+            # Update main work order operation (for legacy dashboard compatibility)
+            # This fixes the dashboard count without using the broken order_stage_tracking table
+            try:
+                db.table('work_orders').update({
+                    'operation': to_stage_name,
+                    'updated_at': datetime.utcnow().isoformat()
+                }).eq('id', wo['id']).execute()
+            except:
+                print(f"[WARN] Failed to update work_order operation to {to_stage_name}")
+            
+            # Update WIP metrics
+            from app.services.wip_service import WIPService
+            await WIPService._update_stage_metrics()
+            
+            # Broadcast update
+            await manager.broadcast_dashboard_update('wip', {
+                'action': 'stage_transfer',
+                'work_order_number': wo['work_order_number']
+            })
+            
+            # Get user name
+            user = db.table('users').select('full_name', 'username').eq('id', user_id).execute()
+            user_name = user.data[0].get('full_name') or user.data[0].get('username') if user.data else None
+            
+            return WIPStageTransferResponse(
+                id=transfer_record['id'],
+                transfer_id=None,
+                order_id=wip_transfer.order_id,
+                order_number=wo['work_order_number'],
+                from_stage_id=wip_transfer.from_stage_id,
+                from_stage_name=from_stage_name,
+                to_stage_id=wip_transfer.to_stage_id,
+                to_stage_name=to_stage_name,
+                quantity=wip_transfer.quantity,
+                unit=unit,
+                actual_time_minutes=wip_transfer.actual_time_minutes,
+                notes=wip_transfer.notes,
+                transferred_by=user_id,
+                transferred_by_name=user_name,
+                transferred_at=datetime.utcnow()
+            )
+        except Exception as e:
+            print(f"[ERROR] WIP stage transfer failed: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            raise
+
 
 
 # Singleton instance

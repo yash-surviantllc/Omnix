@@ -10,6 +10,8 @@ from app.api.v1.endpoints import (
     purchase_orders,
     material_transfers,
     material_requests,
+    material_requisitions, # NEW
+    notifications,  # NEW
     wip,
     wip_board,
     alerts,
@@ -17,7 +19,8 @@ from app.api.v1.endpoints import (
     gate_exits,
     websockets,
     qc,
-    stages
+    stages,
+    shifts # NEW
 )
 
 api_router = APIRouter()
@@ -145,4 +148,25 @@ api_router.include_router(
     stages.router,
     prefix="/stages",
     tags=["Stage Management"]
+)
+
+# Material Requisitions routes
+api_router.include_router(
+    material_requisitions.router,
+    prefix="/material-requisitions",
+    tags=["Material Requisitions"]
+)
+
+# Notifications routes
+api_router.include_router(
+    notifications.router,
+    prefix="/notifications",
+    tags=["Notifications"]
+)
+
+# Shift Management routes
+api_router.include_router(
+    shifts.router,
+    prefix="/shifts",
+    tags=["Shift Management"]
 )

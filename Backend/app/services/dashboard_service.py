@@ -139,42 +139,33 @@ class DashboardService:
         )
         
         # ========================================
-        # 4. ON-TIME DELIVERY KPI (REAL DATA!)
+        # 4. WORK ORDERS COMPLETED FOR THE DAY KPI (REAL DATA!)
         # ========================================
-        otd_percentage_value = 0.0
+        completed_today_count = 0
         
         try:
-            # Get completed orders from last 30 days
-            from datetime import timedelta
-            thirty_days_ago = (datetime.utcnow() - timedelta(days=30)).isoformat()
+            # Get work orders completed today
+            from datetime import date
+            today = date.today().isoformat()
             
+            # Count orders completed today
             completed_orders = db.table('purchase_orders').select(
-                'id', 'due_date', 'completion_date'
-            ).eq('status', 'Completed').gte('completion_date', thirty_days_ago).execute()
+                'id', count='exact'
+            ).eq('status', 'Completed').gte('completion_date', today).execute()
             
-            if completed_orders.data:
-                on_time_count = 0
-                total_count = len(completed_orders.data)
-                
-                for order in completed_orders.data:
-                    due_date = datetime.fromisoformat(order['due_date']).date() if isinstance(order['due_date'], str) else order['due_date']
-                    completed_at = datetime.fromisoformat(order['completion_date'].replace('Z', '+00:00')).date()
-                    
-                    if completed_at <= due_date:
-                        on_time_count += 1
-                
-                otd_percentage_value = (on_time_count / total_count * 100) if total_count > 0 else 0
+            completed_today_count = completed_orders.count if hasattr(completed_orders, 'count') else len(completed_orders.data or [])
+            
         except Exception:
             pass
         
         otd_percentage = KPICard(
-            title="On-Time Delivery",
-            value=round(otd_percentage_value, 1),
-            unit="%",
-            trend="up" if otd_percentage_value >= 90 else "down",
+            title="Work Orders Completed",
+            value=completed_today_count,
+            unit="orders",
+            trend="up" if completed_today_count > 0 else "stable",
             trend_percentage=0.0,
             icon="✅",
-            color="green" if otd_percentage_value >= 90 else "yellow" if otd_percentage_value >= 70 else "red"
+            color="green" if completed_today_count > 0 else "blue"
         )
         
         # ========================================
@@ -467,6 +458,45 @@ class DashboardService:
                     icon=icon
                 ))
         
+        except Exception:
+            pass
+        
+        # ========================================
+        # 4. Get recent material requisitions (NEW!)
+        # ========================================
+        try:
+            requisitions = db.table('material_requisitions').select(
+                'id', 'requisition_number', 'department', 'status', 'created_by', 'created_at'
+            ).order('created_at', desc=True).limit(5).execute()
+            
+            for req in requisitions.data:
+                # Get user name
+                user_name = "Unknown"
+                if req.get('created_by'):
+                    user = db.table('users').select('full_name', 'username').eq('id', req['created_by']).execute()
+                    if user.data:
+                        user_name = user.data[0].get('full_name') or user.data[0].get('username')
+                
+                status_icons = {
+                    'Draft': '📝',
+                    'Pending': '⏳',
+                    'Approved': '✅',
+                    'Rejected': '❌',
+                    'Fulfilled': '📦',
+                    'Cancelled': '🚫'
+                }
+                
+                icon = status_icons.get(req['status'], '📝')
+                description = f"Material Request {req['status']}: {req['requisition_number']} - {req['department']}"
+                
+                activities.append(RecentActivity(
+                    id=req['id'],
+                    activity_type=f"requisition_{req['status'].lower()}",
+                    description=description,
+                    user_name=user_name,
+                    timestamp=datetime.fromisoformat(req['created_at'].replace('Z', '+00:00')).replace(tzinfo=None),
+                    icon=icon
+                ))
         except Exception:
             pass
         

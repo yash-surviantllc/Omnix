@@ -455,20 +455,22 @@ class WIPBoardService:
         if target is None or target == Decimal("0"):
             return Decimal("0")
         if avg_time == Decimal("0"):
-            return Decimal("100")
+            return Decimal("0")
         ratio = (target / avg_time) * Decimal("100")
-        return max(Decimal("0"), min(Decimal("150"), ratio))
+        return ratio
 
     def _determine_health(
         self, avg_time: Decimal, target: Decimal, utilization: Decimal
     ) -> WIPHealthStatus:
-        if target == Decimal("0"):
-            return WIPHealthStatus.GREEN
-        if avg_time <= target and utilization >= Decimal("70"):
-            return WIPHealthStatus.GREEN
-        if avg_time <= target * Decimal("1.2") and utilization >= Decimal("60"):
-            return WIPHealthStatus.YELLOW
-        return WIPHealthStatus.RED
+        if target == Decimal("0") and avg_time == Decimal("0"):
+             return WIPHealthStatus.GREEN # Default/Empty
+             
+        if utilization < Decimal("80"):
+            return WIPHealthStatus.RED # Delayed / Underutilized
+        elif utilization <= Decimal("110"):
+             return WIPHealthStatus.GREEN # Healthy / Ideal
+        else:
+            return WIPHealthStatus.YELLOW # Warning / Overutilized
 
     def _build_trend_points(
         self, transfer_rows: List[Dict], days: int
