@@ -33,26 +33,39 @@ class QCService:
         user_id: str
     ) -> QCInspectionResponse:
         """
-        Create a new QC inspection record.
+        Create a new QC inspection record and update related orders.
         """
         db = get_db()
         
-        # Validate Purchase Order
-        if data.purchase_order_id:
-            po = db.table('purchase_orders').select('id').eq('id', data.purchase_order_id).execute()
+        # 1. Validate Orders
+        target_order_type = None
+        target_order_id = None
+        
+        if data.work_order_id:
+            wo = db.table('work_orders').select('id, purchase_order_id, target_qty, completed_qty, rejected_qty').eq('id', data.work_order_id).execute()
+            if not wo.data:
+                raise NotFoundException(detail="Working Order not found")
+            target_order_type = 'work_order'
+            target_order_id = data.work_order_id
+            order_data = wo.data[0]
+        elif data.purchase_order_id:
+            po = db.table('purchase_orders').select('id, quantity, quantity_completed, rejected_qty').eq('id', data.purchase_order_id).execute()
             if not po.data:
                 raise NotFoundException(detail="Purchase Order not found")
+            target_order_type = 'purchase_order'
+            target_order_id = data.purchase_order_id
+            order_data = po.data[0]
+        else:
+            raise ValidationException(detail="Either Purchase Order or Working Order ID is required")
 
-        # Validate Product
-        product = db.table('products').select('id').eq('id', data.product_id).execute()
-        if not product.data:
-            raise NotFoundException(detail="Product not found")
-
+        # 2. Generate Inspection Number
         inspection_number = QCService._generate_inspection_number()
         
+        # 3. Insert Inspection
         inspection_dict = {
             'inspection_number': inspection_number,
             'purchase_order_id': data.purchase_order_id,
+            'work_order_id': data.work_order_id,
             'product_id': data.product_id,
             'quantity_checked': float(data.quantity_checked),
             'passed_qty': float(data.passed_qty),
@@ -69,7 +82,7 @@ class QCService:
             
         inspection_id = result.data[0]['id']
         
-        # Insert Defects
+        # 4. Insert Defects
         if data.defects:
             defects_to_insert = []
             for defect in data.defects:
@@ -85,11 +98,55 @@ class QCService:
             if defects_to_insert:
                 db.table('qc_defects').insert(defects_to_insert).execute()
         
-        # Broadcast update via WebSocket
+        # 5. Update Order Quantities
+        passed_qty = float(data.passed_qty)
+        scrap_qty = float(data.scrap_qty)
+        
+        if target_order_type == 'work_order':
+            # Update Work Order
+            new_completed = float(order_data.get('completed_qty' or 0)) + passed_qty
+            new_rejected = float(order_data.get('rejected_qty' or 0)) + scrap_qty
+            
+            update_data = {
+                'completed_qty': new_completed,
+                'rejected_qty': new_rejected,
+                'updated_at': datetime.utcnow().isoformat()
+            }
+            
+            # Auto-complete if total qty reached
+            if new_completed + new_rejected >= float(order_data['target_qty']):
+                update_data['status'] = 'Completed'
+                update_data['actual_end'] = datetime.utcnow().isoformat()
+                
+            db.table('work_orders').update(update_data).eq('id', target_order_id).execute()
+            
+            # Also update the parent Purchase Order indirectly if needed? 
+            # Usually PO tracks total from all WOs. Let's stick to the direct link for now.
+            
+        elif target_order_type == 'purchase_order':
+            # Update Purchase Order
+            new_completed = float(order_data.get('quantity_completed' or 0)) + passed_qty
+            new_rejected = float(order_data.get('rejected_qty' or 0)) + scrap_qty
+            
+            update_data = {
+                'quantity_completed': new_completed,
+                'rejected_qty': new_rejected,
+                'updated_at': datetime.utcnow().isoformat()
+            }
+            
+            if new_completed + new_rejected >= float(order_data['quantity']):
+                update_data['status'] = 'Completed'
+                
+            db.table('purchase_orders').update(update_data).eq('id', target_order_id).execute()
+
+        # 6. Broadcast update via WebSocket
         await manager.broadcast_dashboard_update('qc', {
             'action': 'created',
             'inspection_number': inspection_number,
-            'inspector': user_id
+            'passed': passed_qty,
+            'scrap': scrap_qty,
+            'order_type': target_order_type,
+            'order_id': target_order_id
         })
 
         return await QCService.get_inspection_by_id(inspection_id)
@@ -109,11 +166,23 @@ class QCService:
         # Fetch Defects
         defects_res = db.table('qc_defects').select('*').eq('inspection_id', inspection_id).execute()
         
-        # Fetch Related Names (Product, Inspector, PO)
+        # Fetch Related Names
         product_res = db.table('products').select('name, code').eq('id', inspection['product_id']).execute()
         product_name = product_res.data[0]['name'] if product_res.data else "Unknown"
         product_code = product_res.data[0]['code'] if product_res.data else "Unknown"
         
+        po_number = None
+        if inspection.get('purchase_order_id'):
+            po_res = db.table('purchase_orders').select('order_number').eq('id', inspection['purchase_order_id']).execute()
+            if po_res.data:
+                po_number = po_res.data[0]['order_number']
+                
+        wo_number = None
+        if inspection.get('work_order_id'):
+            wo_res = db.table('work_orders').select('work_order_number').eq('id', inspection['work_order_id']).execute()
+            if wo_res.data:
+                wo_number = wo_res.data[0]['work_order_number']
+
         inspector_name = None
         if inspection.get('inspector_id'):
             user_res = db.table('users').select('full_name, username').eq('id', inspection['inspector_id']).execute()
@@ -125,6 +194,9 @@ class QCService:
             id=inspection['id'],
             inspection_number=inspection['inspection_number'],
             purchase_order_id=inspection['purchase_order_id'],
+            purchase_order_number=po_number,
+            work_order_id=inspection['work_order_id'],
+            work_order_number=wo_number,
             product_id=inspection['product_id'],
             product_name=product_name,
             product_code=product_code,
@@ -138,7 +210,7 @@ class QCService:
             notes=inspection['notes'],
             created_at=datetime.fromisoformat(inspection['created_at'].replace('Z', '+00:00')),
             updated_at=datetime.fromisoformat(inspection['updated_at'].replace('Z', '+00:00')),
-            defects=defects_res.data
+            defects=[{**d, 'id': str(d['id']), 'inspection_id': str(d['inspection_id'])} for d in defects_res.data]
         )
 
     @staticmethod
@@ -151,7 +223,7 @@ class QCService:
         db = get_db()
         offset = (page - 1) * limit
         
-        query = db.table('qc_inspections').select('*', count='exact')
+        query = db.table('qc_inspections').select('id', count='exact')
         if status:
             query = query.eq('status', status)
             
@@ -159,47 +231,46 @@ class QCService:
         
         inspections = []
         for row in result.data:
-            # We can optimize this by joining or batch fetching, but for now simple loop is fine
-            # Reusing get_inspection_by_id logic or simplified version
-            # For list view we might not need defects, but let's keep it consistent
-            # To avoid N+1 queries, we heavily rely on Supabase performance or should write a view.
-            # Sticking to simple individual fetches for consistency with other services in this codebase.
             inspections.append(await QCService.get_inspection_by_id(row['id']))
             
         return inspections
 
     @staticmethod
     async def get_stats() -> QCStats:
-        """Get Dashboard Stats for QC."""
+        """Get Real Dashboard Stats for QC using SQL."""
         db = get_db()
         
-        # Simple counts
-        # Warning: This is expensive on large datasets without aggregation tables/views
-        # Assuming low volume for MVP
+        # 1. Basic Counts
+        total_res = db.table('qc_inspections').select('id', count='exact').execute()
+        total_inspections = total_res.count if hasattr(total_res, 'count') else 0
         
-        total_inspections = db.table('qc_inspections').select('id', count='exact').execute().count
-        
-        # passed/rework/scrap totals
-        # Supabase-py doesn't support SUM easily without RPC. 
-        # For now, we'll fetch basic counts of status if applicable, or we might need an RPC function.
-        # Let's fallback to calculating from a recent subset or just simplified 'inspections count by status'
-        # Actually, status in table is 'Pending', 'In Progress', 'Completed'.
-        # Passed/Rework/Scrap implies the OUTCOME of the units check.
-        
-        # Let's implement a safe basic stat:
-        # Total Inspections Today
         today_start = datetime.utcnow().date().isoformat()
-        today_inspections = db.table('qc_inspections').select('id', count='exact').gte('created_at', today_start).execute().count
+        today_res = db.table('qc_inspections').select('id', count='exact').gte('created_at', today_start).execute()
+        today_inspections = today_res.count if hasattr(today_res, 'count') else 0
         
-        # Pending Rework (defects where type='Rework') 
-        # We can count form 'qc_defects'
-        pending_rework = db.table('qc_defects').select('quantity', count='exact').eq('defect_type', 'Rework').execute().count
+        # 2. Aggregates for Pass Rate
+        # Since supabase-py doesn't do SUM well, we can fetch the last 100 inspections and calculate
+        # Or use a RPC if available. For now, let's pull the last 100 and average.
+        recent = db.table('qc_inspections').select('passed_qty, quantity_checked').order('created_at', desc=True).limit(100).execute()
+        
+        pass_rate = 0.0
+        if recent.data:
+            total_checked = sum(float(r['quantity_checked']) for r in recent.data)
+            total_passed = sum(float(r['passed_qty']) for r in recent.data)
+            if total_checked > 0:
+                pass_rate = round((total_passed / total_checked) * 100, 2)
+        
+        # 3. Pending Rework
+        # Sum of rework_qty where it hasn't been re-inspected? 
+        # Simplified: Current total of rework_qty in last 30 days
+        rework_res = db.table('qc_inspections').select('rework_qty').execute()
+        pending_rework = sum(int(float(r['rework_qty'])) for r in rework_res.data) if rework_res.data else 0
         
         return QCStats(
             total_inspections=total_inspections or 0,
             today_inspections=today_inspections or 0,
             pending_rework=pending_rework or 0,
-            pass_rate=95.5 # Placeholder until we have math logic
+            pass_rate=pass_rate
         )
 
     @staticmethod
@@ -209,88 +280,43 @@ class QCService:
         Returns order details for QC inspection.
         """
         db = get_db()
+        order_number = order_number.upper().strip()
         
-        # First try to find as Working Order (WO-YYYY-XXXX format)
-        if order_number.upper().startswith('WO-'):
-            wo_result = db.table('work_orders').select('*').eq('work_order_number', order_number.upper()).execute()
-            if wo_result.data:
-                wo = wo_result.data[0]
-                # Get product info
-                product = db.table('products').select('name, code').eq('id', wo['product_id']).execute()
-                product_name = product.data[0]['name'] if product.data else None
-                product_code = product.data[0]['code'] if product.data else None
-                
-                return {
-                    'order_type': 'work_order',
-                    'order_id': wo['id'],
-                    'order_number': wo['work_order_number'],
-                    'product_id': wo['product_id'],
-                    'product_name': product_name,
-                    'product_code': product_code,
-                    'quantity': float(wo.get('target_qty', 0)),
-                    'completed_qty': float(wo.get('completed_qty', 0)),
-                    'status': wo['status']
-                }
-        
-        # Try to find as Purchase Order (PO-YYYY-XXXX format)
-        if order_number.upper().startswith('PO-'):
-            po_result = db.table('purchase_orders').select('*').eq('order_number', order_number.upper()).execute()
-            if po_result.data:
-                po = po_result.data[0]
-                # Get product info
-                product = db.table('products').select('name, code').eq('id', po['product_id']).execute()
-                product_name = product.data[0]['name'] if product.data else None
-                product_code = product.data[0]['code'] if product.data else None
-                
-                return {
-                    'order_type': 'purchase_order',
-                    'order_id': po['id'],
-                    'order_number': po['order_number'],
-                    'product_id': po['product_id'],
-                    'product_name': product_name,
-                    'product_code': product_code,
-                    'quantity': float(po.get('quantity', 0)),
-                    'completed_qty': float(po.get('completed_qty', 0)),
-                    'status': po['status']
-                }
-        
-        # If no prefix, try both
-        wo_result = db.table('work_orders').select('*').ilike('work_order_number', f'%{order_number}%').execute()
+        # Try Working Order
+        wo_result = db.table('work_orders').select('*, products(name, code)').ilike('work_order_number', f'%{order_number}%').limit(1).execute()
         if wo_result.data:
             wo = wo_result.data[0]
-            product = db.table('products').select('name, code').eq('id', wo['product_id']).execute()
-            product_name = product.data[0]['name'] if product.data else None
-            product_code = product.data[0]['code'] if product.data else None
+            prod = wo.get('products') or {}
             
             return {
                 'order_type': 'work_order',
                 'order_id': wo['id'],
                 'order_number': wo['work_order_number'],
                 'product_id': wo['product_id'],
-                'product_name': product_name,
-                'product_code': product_code,
+                'product_name': prod.get('name'),
+                'product_code': prod.get('code'),
                 'quantity': float(wo.get('target_qty', 0)),
                 'completed_qty': float(wo.get('completed_qty', 0)),
                 'status': wo['status']
             }
         
-        po_result = db.table('purchase_orders').select('*').ilike('order_number', f'%{order_number}%').execute()
+        # Try Purchase Order
+        po_result = db.table('purchase_orders').select('*, products(name, code)').ilike('order_number', f'%{order_number}%').limit(1).execute()
         if po_result.data:
             po = po_result.data[0]
-            product = db.table('products').select('name, code').eq('id', po['product_id']).execute()
-            product_name = product.data[0]['name'] if product.data else None
-            product_code = product.data[0]['code'] if product.data else None
+            prod = po.get('products') or {}
             
             return {
                 'order_type': 'purchase_order',
                 'order_id': po['id'],
                 'order_number': po['order_number'],
                 'product_id': po['product_id'],
-                'product_name': product_name,
-                'product_code': product_code,
+                'product_name': prod.get('name'),
+                'product_code': prod.get('code'),
                 'quantity': float(po.get('quantity', 0)),
-                'completed_qty': float(po.get('completed_qty', 0)),
+                'completed_qty': float(po.get('quantity_completed', 0)),
                 'status': po['status']
             }
         
         raise ValueError(f"Order '{order_number}' not found")
+

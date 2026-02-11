@@ -105,6 +105,34 @@ async def start_operation_endpoint(
     return await wip_service.start_operation(work_order_number, operation, current_user.id)
 
 
+@router.post("/working-orders/{work_order_number}/pause", response_model=WorkingOrderResponse)
+async def pause_operation_endpoint(
+    work_order_number: str,
+    operation: str = Query(..., description="Name of the operation to pause"),
+    current_user: UserResponse = Depends(require_role("Supervisor"))
+):
+    """
+    Pause an in-progress operation for a Work Order.
+    Changes operation status to 'On Hold'.
+    """
+    return await wip_service.pause_operation(work_order_number, operation, current_user.id)
+
+
+@router.post("/working-orders/{work_order_number}/complete", response_model=WorkingOrderResponse)
+async def complete_operation_endpoint(
+    work_order_number: str,
+    operation: str = Query(..., description="Name of the operation to complete"),
+    completed_qty: Optional[float] = Query(None, description="Completed quantity (defaults to target qty)"),
+    current_user: UserResponse = Depends(require_role("Supervisor"))
+):
+    """
+    Complete an in-progress operation for a Work Order.
+    Changes operation status to 'Completed' and records completion time.
+    """
+    return await wip_service.complete_operation(work_order_number, operation, current_user.id, completed_qty)
+
+
+
 @router.put("/working-orders/{order_id}", response_model=WorkingOrderResponse)
 async def update_working_order(
     order_id: str,

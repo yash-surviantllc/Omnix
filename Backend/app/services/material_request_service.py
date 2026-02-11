@@ -1,6 +1,7 @@
 from datetime import datetime, date
 from typing import List, Optional
 from decimal import Decimal
+import logging
 from app.database import get_db
 from app.schemas.material_request import (
     MaterialRequestCreate, MaterialRequestUpdate, MaterialRequestResponse,
@@ -10,6 +11,9 @@ from app.schemas.material_request import (
 )
 from app.core.exceptions import NotFoundException, ValidationException
 from app.services.websocket_manager import manager  # Import the global manager
+
+# Setup logger
+logger = logging.getLogger(__name__)
 
 class MaterialRequestService:
     
@@ -91,8 +95,11 @@ class MaterialRequestService:
         """
         db = get_db()
         
+        logger.info(f"Creating material request for department: {request_data.department}, user: {user_id}")
+        
         # Generate request number
         request_number = MaterialRequestService._generate_request_number()
+        logger.info(f"Generated request number: {request_number}")
         
         # Create request
         request_dict = {
@@ -113,57 +120,69 @@ class MaterialRequestService:
             'status': 'Pending'
         }
         
-        result = db.table('material_requests').insert(request_dict).execute()
-        
-        if not result.data:
-            raise Exception("Failed to create material request")
-        
-        request_id = result.data[0]['id']
-        
-        # Create request items with stock availability check
-        for item in request_data.items:
-            # Check stock availability
-            inv = db.table('inventory').select('available_qty', 'allocated_qty').eq(
-                'product_id', item.product_id
-            ).execute()
+        try:
+            result = db.table('material_requests').insert(request_dict).execute()
             
-            available_stock = Decimal('0')
-            if inv.data:
-                # Sum up free quantity across all locations
-                available_stock = sum(
-                    Decimal(str(i['available_qty'])) - Decimal(str(i['allocated_qty']))
-                    for i in inv.data
-                )
+            if not result.data:
+                logger.error("Failed to create material request - no data returned from insert")
+                raise Exception("Failed to create material request")
             
-            requested_qty = item.requested_qty
+            request_id = result.data[0]['id']
+            logger.info(f"Successfully created material request with ID: {request_id}")
             
-            # Determine availability status
-            if available_stock >= requested_qty:
-                availability_status = 'Available'
-            elif available_stock > 0:
-                availability_status = 'Partial'
-            else:
-                availability_status = 'Shortage'
+            # Create request items with stock availability check
+            items_created = 0
+            for item in request_data.items:
+                # Check stock availability
+                inv = db.table('inventory').select('available_qty', 'allocated_qty').eq(
+                    'product_id', item.product_id
+                ).execute()
+                
+                available_stock = Decimal('0')
+                if inv.data:
+                    # Sum up free quantity across all locations
+                    available_stock = sum(
+                        Decimal(str(i['available_qty'])) - Decimal(str(i['allocated_qty']))
+                        for i in inv.data
+                    )
+                
+                requested_qty = item.requested_qty
+                
+                # Determine availability status
+                if available_stock >= requested_qty:
+                    availability_status = 'Available'
+                elif available_stock > 0:
+                    availability_status = 'Partial'
+                else:
+                    availability_status = 'Shortage'
+                
+                item_dict = {
+                    'request_id': request_id,
+                    'product_id': item.product_id,
+                    'item_code': item.item_code,
+                    'material_description': item.material_description,
+                    'requested_qty': float(item.requested_qty),
+                    'unit': item.unit,
+                    'required_date': item.required_date.isoformat() if item.required_date else None,
+                    'location': item.location,
+                    'priority': item.priority,
+                    'availability_status': availability_status,
+                    'available_stock': float(available_stock),
+                    'notes': item.notes,
+                    'status': 'Pending'
+                }
+                
+                db.table('request_items').insert(item_dict).execute()
+                items_created += 1
             
-            item_dict = {
-                'request_id': request_id,
-                'product_id': item.product_id,
-                'item_code': item.item_code,
-                'material_description': item.material_description,
-                'requested_qty': float(item.requested_qty),
-                'unit': item.unit,
-                'required_date': item.required_date.isoformat() if item.required_date else None,
-                'location': item.location,
-                'priority': item.priority,
-                'availability_status': availability_status,
-                'available_stock': float(available_stock),
-                'notes': item.notes,
-                'status': 'Pending'
-            }
+            logger.info(f"Successfully created {items_created} items for request {request_id}")
+            logger.info(f"Material request {request_number} creation completed successfully")
             
-            db.table('request_items').insert(item_dict).execute()
-        
-        return await MaterialRequestService.get_request_by_id(request_id)
+            return await MaterialRequestService.get_request_by_id(request_id)
+            
+        except Exception as e:
+            logger.error(f"Error creating material request: {str(e)}", exc_info=True)
+            raise
     
     @staticmethod
     async def list_requests(

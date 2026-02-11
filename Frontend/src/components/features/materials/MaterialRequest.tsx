@@ -60,20 +60,19 @@ export function MaterialRequest({ language }: MaterialRequestProps) {
   const [manualItemEntry, setManualItemEntry] = useState<Record<number, boolean>>({});
 
   const fetchInventoryItems = async () => {
-    console.log("🔄 Fetching inventory items...");
+    console.log("Fetching inventory items...");
     try {
       // Use default params to match Inventory.tsx and leverage cache
       const items = await inventoryItemsApi.list();
-      console.log("✅ Inventory items fetched:", items);
+      console.log("Inventory items fetched:", items);
       if (Array.isArray(items)) {
         setInventoryItems(items);
-        console.log(`📦 Set ${items.length} items to state.`);
       } else {
-        console.error("❌ Unexpected response format for inventory items:", items);
+        console.error("Unexpected response format for inventory items:", items);
         setInventoryItems([]);
       }
     } catch (error) {
-      console.error("❌ Failed to fetch inventory items:", error);
+      console.error("Failed to fetch inventory items:", error);
     }
   };
 
@@ -305,39 +304,69 @@ export function MaterialRequest({ language }: MaterialRequestProps) {
 
   const handleSubmit = async () => {
     try {
-      // Find if selected department is actually a stage
-      const selectedStage = availableStages.find(s => s.name === formData.department);
+      // Validate required fields
+      if (!formData.department) {
+        alert(language === 'en' ? 'Please select a department' : 'कृपया विभाग चुनें');
+        return;
+      }
 
+      if (!formData.dateOfRequest) {
+        alert(language === 'en' ? 'Please select request date' : 'कृपया अनुरोध तिथि चुनें');
+        return;
+      }
+
+      // Validate material items
+      const validItems = materialItems.filter(item =>
+        item.itemCode && item.quantity && parseFloat(item.quantity) > 0
+      );
+
+      if (validItems.length === 0) {
+        alert(language === 'en' ? 'Please add at least one material item' : 'कृपया कम से कम एक सामग्री आइटम जोड़ें');
+        return;
+      }
+
+      // Map frontend data to backend schema (MaterialRequestCreate)
       const requisitionData = {
-        work_order_number: formData.formNumber || null,
         department: formData.department,
-        requesting_stage: selectedStage ? formData.department : null,
-        requested_by: formData.requestedBy,
-        reviewed_by: formData.reviewedBy || null,
-        shift: formData.shiftNumber,
-        start_time: formData.startTime || null,
-        end_time: formData.endTime || null,
+        shift: formData.shiftNumber || null,
+        request_date: formData.dateOfRequest, // Required field
+        required_date: null, // Can be set per item
+        start_time: formData.startTime ? new Date(formData.startTime).toISOString() : null,
+        end_time: formData.endTime ? new Date(formData.endTime).toISOString() : null,
         delivery_instructions: formData.deliveryInstructions || null,
-        items: materialItems.map(item => ({
-          rm_code: item.itemCode,
-          material_description: item.materialDescription,
-          unit_of_measure: item.unitOfMeasure,
-          quantity_requested: parseFloat(item.quantity) || 0,
-          required_date: item.requiredDate || null,
-          location: item.location || null,
-          priority: item.priority
-        }))
+        priority: 'Normal', // Default priority
+        reference_order_id: formData.formNumber || null, // Work order reference
+        requested_by_name: formData.requestedBy || null,
+        reviewed_by_name: formData.reviewedBy || null,
+        approved_by_name: null,
+        items: validItems.map(item => {
+          // Find id from inventory items by item code
+          const inventoryItem = inventoryItems.find(inv =>
+            inv.material_code === item.itemCode || inv.material_name === item.materialDescription
+          );
+
+          return {
+            product_id: inventoryItem?.id || item.itemCode, // Use id if found, fallback to item_code
+            item_code: item.itemCode,
+            material_description: item.materialDescription,
+            requested_qty: parseFloat(item.quantity),
+            unit: item.unitOfMeasure || 'pcs',
+            required_date: item.requiredDate || null,
+            location: item.location || null,
+            priority: item.priority || 'Normal',
+            notes: null
+          };
+        })
       };
+
+      console.log("Sending Material Request:", requisitionData);
 
       const result = await apiClient.post<any>('/material-requisitions', requisitionData);
 
-      alert(`✅ ${language === 'en' ? 'Material Requisition Created!' : 'सामग्री अनुरोध बनाया गया!'}
+      console.log("Material Request Created:", result);
 
-📋 Requisition Number: ${result.requisition_number}
-🏢 Work Order: ${result.work_order_number || 'N/A'}
-🏭 Department: ${result.department}
-📦 Items: ${result.items.length}
-⏰ Shift: ${result.shift}`);
+      // Show success message
+      alert(`${language === 'en' ? 'Material Request Created Successfully!' : 'सामग्री अनुरोध सफलतापूर्वक बनाया गया!'}\n\nRequest Number: ${result.request_number}\nDepartment: ${result.department}\nItems: ${result.items.length}\nShift: ${result.shift || 'N/A'}`);
 
       // Reset form
       setFormData({
@@ -362,8 +391,12 @@ export function MaterialRequest({ language }: MaterialRequestProps) {
       }]);
       setShowFormModal(false);
     } catch (error: any) {
-      console.error('Error creating requisition:', error);
-      alert(`❌ ${language === 'en' ? 'Error creating requisition' : 'अनुरोध बनाने में त्रुटि'}: ${error.message || 'Unknown error'}`);
+      console.error('Error creating Material Request:', error);
+
+      // Extract error message from response
+      const errorMessage = error.response?.data?.detail || error.message || 'Unknown error';
+
+      alert(`${language === 'en' ? 'Error Creating Request' : 'अनुरोध बनाने में त्रुटि'}\n\n${errorMessage}`);
     }
   };
 
@@ -413,10 +446,7 @@ export function MaterialRequest({ language }: MaterialRequestProps) {
 
           {/* Quick Request Form */}
           <Card className="p-6 border-2 border-emerald-200 bg-emerald-50">
-            <div className="flex items-center gap-2 mb-4">
-              <Package className="w-5 h-5 text-emerald-700" />
-              <h2 className="text-emerald-900">{t.quickRequest}</h2>
-            </div>
+            <h2 className="text-emerald-900">{t.quickRequest}</h2>
 
             <div className="space-y-4">
               <div>
@@ -496,14 +526,14 @@ export function MaterialRequest({ language }: MaterialRequestProps) {
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-2">
                     <h3 className="text-zinc-900">
-                      {result.status === 'Validated' ? '✅ Material Request Created' :
-                        result.status === 'Partial Stock' ? '⚠️ Partial Stock Available' :
-                          result.status === 'Insufficient Stock' ? '❌ Insufficient Stock' :
-                            '❓ Need More Information'}
+                      {result.status === 'Validated' ? 'Material Request Created' :
+                        result.status === 'Partial Stock' ? 'Partial Stock Available' :
+                          result.status === 'Insufficient Stock' ? 'Insufficient Stock' :
+                            'Need More Information'}
                     </h3>
                     {result.urgency === 'Urgent' && (
                       <Badge className="bg-red-100 text-red-800 border-red-300">
-                        🔴 URGENT
+                        URGENT
                       </Badge>
                     )}
                   </div>
@@ -561,7 +591,7 @@ export function MaterialRequest({ language }: MaterialRequestProps) {
                     {/* Warnings */}
                     {result.validation.warnings && result.validation.warnings.length > 0 && (
                       <div className="p-4 bg-orange-50 border border-orange-200 rounded-lg">
-                        <div className="text-sm text-orange-900 mb-2">⚠️ {t.warnings}</div>
+                        <div className="text-sm text-orange-900 mb-2">{t.warnings}</div>
                         <ul className="text-sm text-orange-800 space-y-1">
                           {result.validation.warnings.map((warning, i) => (
                             <li key={i}>• {warning}</li>
@@ -573,7 +603,7 @@ export function MaterialRequest({ language }: MaterialRequestProps) {
                     {/* Missing Info */}
                     {result.validation.missing_info && result.validation.missing_info.length > 0 && (
                       <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                        <div className="text-sm text-blue-900 mb-2">ℹ️ Required Information</div>
+                        <div className="text-sm text-blue-900 mb-2">Required Information</div>
                         <ul className="text-sm text-blue-800 space-y-1">
                           {result.validation.missing_info.map((info, i) => (
                             <li key={i}>• {info}</li>
@@ -585,7 +615,7 @@ export function MaterialRequest({ language }: MaterialRequestProps) {
                     {/* Next Steps */}
                     {result.next_steps && result.next_steps.length > 0 && (
                       <div className="p-4 bg-white/50 rounded-lg">
-                        <div className="text-sm text-zinc-600 mb-2">📱 {t.nextSteps}</div>
+                        <div className="text-sm text-zinc-600 mb-2">{t.nextSteps}</div>
                         <ul className="text-sm text-zinc-900 space-y-1">
                           {result.next_steps.map((step, i) => (
                             <li key={i}>{step}</li>

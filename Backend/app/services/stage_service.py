@@ -333,24 +333,17 @@ class StageService:
         """Resolve config ID based on rules"""
         assignments = await StageService.get_assignments()
         
-        print(f"[DEBUG] Resolve Config: SKU={sku}, WO={wo_no}")
-        print(f"[DEBUG] Assignments: {assignments}")
-
-        # Priority 1: Work Order Number
         if wo_no:
             wo_clean = wo_no.strip()
             if wo_clean in assignments.get('wo_assignments', {}):
-                print(f"[DEBUG] Matched WO: {assignments['wo_assignments'][wo_clean]}")
                 return assignments['wo_assignments'][wo_clean]
             
         # Priority 2: SKU
         if sku:
             sku_clean = sku.strip()
             if sku_clean in assignments.get('sku_assignments', {}):
-                print(f"[DEBUG] Matched SKU: {assignments['sku_assignments'][sku_clean]}")
                 return assignments['sku_assignments'][sku_clean]
             
-        print("[DEBUG] No match found, returning default")
         return 'default'
     
     # ============================================

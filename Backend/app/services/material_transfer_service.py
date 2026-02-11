@@ -478,15 +478,12 @@ class MaterialTransferService:
         try:
             db = get_db()
             
-            print(f"[DEBUG] Creating WIP stage transfer for order: {wip_transfer.order_id}")
-            
             # Validate WORK ORDER exists (NOT purchase order!)
             work_order = db.table('work_orders').select('*').eq('id', wip_transfer.order_id).execute()
             if not work_order.data:
                 raise NotFoundException(detail="Working order not found")
             
             wo = work_order.data[0]
-            print(f"[DEBUG] Found work order: {wo.get('work_order_number')}")
             
             # CRITICAL VALIDATION: Check total transferred quantity
             target_qty = Decimal(str(wo.get('target_qty', 0)))
@@ -510,13 +507,8 @@ class MaterialTransferService:
             
             if new_total > target_qty:
                 raise ValidationException(
-                    detail=f"Transfer rejected: Would exceed work order quantity. "
-                           f"Target: {target_qty}, Already transferred to this stage: {total_transferred}, "
-                           f"Attempting to transfer: {wip_transfer.quantity}, "
-                           f"Total would be: {new_total}"
+                    detail=f"Transfer rejected: Would exceed work order quantity. Total would be: {new_total}"
                 )
-            
-            print(f"[DEBUG] Validation passed - Target: {target_qty}, Already transferred: {total_transferred}, New transfer: {wip_transfer.quantity}")
             
             # Validate stages
             from_stage = None
@@ -527,7 +519,6 @@ class MaterialTransferService:
                     raise NotFoundException(detail="Source stage not found")
                 from_stage = from_stage_result.data[0]
                 from_stage_name = from_stage['name']
-                print(f"[DEBUG] From stage: {from_stage_name}")
             
             to_stage_result = db.table('wip_stages').select('*').eq('id', wip_transfer.to_stage_id).execute()
             if not to_stage_result.data:
@@ -535,7 +526,6 @@ class MaterialTransferService:
             
             to_stage = to_stage_result.data[0]
             to_stage_name = to_stage['name']
-            print(f"[DEBUG] To stage: {to_stage_name}")
             
             # Update work_order_operations for real-time sync
             if from_stage:
@@ -550,7 +540,6 @@ class MaterialTransferService:
                         'actual_end': datetime.utcnow().isoformat(),
                         'updated_at': datetime.utcnow().isoformat()
                     }).eq('id', from_op.data[0]['id']).execute()
-                    print(f"[DEBUG] Completed FROM operation: {from_stage_name}")
             
             # Start the TO stage operation
             to_op = db.table('work_order_operations').select('*').eq(
@@ -564,7 +553,6 @@ class MaterialTransferService:
                     'actual_start': datetime.utcnow().isoformat(),
                     'updated_at': datetime.utcnow().isoformat()
                 }).eq('id', to_op.data[0]['id']).execute()
-                print(f"[DEBUG] Started TO operation: {to_stage_name}")
             else:
                 # Create new operation
                 db.table('work_order_operations').insert({
@@ -574,7 +562,6 @@ class MaterialTransferService:
                     'status': 'In Progress',
                     'actual_start': datetime.utcnow().isoformat()
                 }).execute()
-                print(f"[DEBUG] Created new TO operation: {to_stage_name}")
             
             # Get unit from work order (try both 'unit' and 'units' fields)
             unit = wo.get('unit') or wo.get('units') or 'units'
@@ -591,14 +578,12 @@ class MaterialTransferService:
                 'transferred_by': user_id
             }
             
-            print(f"[DEBUG] Inserting transfer record: {wip_transfer_dict}")
             result = db.table('wip_stage_transfers').insert(wip_transfer_dict).execute()
             
             if not result.data:
                 raise Exception("Failed to create WIP stage transfer record")
             
             transfer_record = result.data[0]
-            print(f"[DEBUG] Created transfer record: {transfer_record.get('id')}")
             
             # Update order stage tracking (for quantity tracking)
             if wip_transfer.from_stage_id:
@@ -626,7 +611,7 @@ class MaterialTransferService:
                     'updated_at': datetime.utcnow().isoformat()
                 }).eq('id', wo['id']).execute()
             except:
-                print(f"[WARN] Failed to update work_order operation to {to_stage_name}")
+                pass
             
             # Update WIP metrics
             from app.services.wip_service import WIPService
@@ -660,7 +645,6 @@ class MaterialTransferService:
                 transferred_at=datetime.utcnow()
             )
         except Exception as e:
-            print(f"[ERROR] WIP stage transfer failed: {str(e)}")
             import traceback
             traceback.print_exc()
             raise

@@ -2,6 +2,7 @@ from typing import List, Optional, Union
 from datetime import datetime
 from decimal import Decimal
 from app.database import get_db
+from app.core.exceptions import NotFoundException, ValidationException
 from app.schemas.wip import (
     WorkingOrderCreate, WorkingOrderUpdate, WorkingOrderResponse, WorkingOrderListItem,
     UniqueWorkingOrderItem,
@@ -10,7 +11,9 @@ from app.schemas.wip import (
 )
 from app.services.bom_service import BOMService # Task 3: For Material Allocation
 from app.services.websocket_manager import manager # For Real-time Updates
+from app.services import dashboard_service
 from app.services.dashboard_service import dashboard_service
+
 
 
 class WIPService:
@@ -116,7 +119,7 @@ class WIPService:
             raise ValidationException(detail=f"Failed to calculate material requirements: {str(e)}")
         
         if not requirements:
-            logger.warning(f"No BOM materials found for product {product_id}")
+            logger.info(f"Inventory: No BOM materials found for product {product_id}")
             # This might be valid for some products, continue without allocation
         else:
             # PHASE 1: VALIDATION - Check all materials before allocating any
@@ -172,7 +175,7 @@ class WIPService:
                 logger.error(f"Material allocation validation failed for WO {work_order_number}: {validation_errors}")
                 
                 error_msg = f"Cannot create Working Order - Material allocation failed:\n\n"
-                error_msg += "\n".join(f"• {err}" for err in validation_errors)
+                error_msg += "\n".join(f"- {err}" for err in validation_errors)
                 error_msg += f"\n\nPlease ensure sufficient materials are available before creating this Working Order."
                 
                 raise ValidationException(detail=error_msg)
@@ -319,43 +322,26 @@ class WIPService:
         )
         
         if not op_res.data:
-            # Case: Operation not found in operations table. 
-            # We need to resolve the correct sequence number to avoid constraint violation.
-             
-            # Try to find stage config first
-            stage_res = db.table('wip_stages').select('sequence_number').eq('name', operation_name).execute()
-             
-            if stage_res.data:
-                seq_num = stage_res.data[0]['sequence_number']
-            else:
-                # Fallback: Find max sequence for this WO and add 1
-                max_seq_res = db.table('work_order_operations').select('sequence_number').eq('work_order_id', parent['id']).order('sequence_number', desc=True).limit(1).execute()
-                if max_seq_res.data:
-                    seq_num = max_seq_res.data[0]['sequence_number'] + 1
-                else:
-                    seq_num = 10 # Default start if no operations exist
+            raise ValidationException(detail=f"Operation '{operation_name}' not found for work order {work_order_number}")
+        
+        op_record = op_res.data[0]
+        
+        # 3. Validate current status (can start if Pending, Planned, Released, or On Hold)
+        current_status = op_record.get('status', '').lower()
+        valid_start_statuses = ['pending', 'planned', 'released', 'on hold']
+        if current_status not in valid_start_statuses:
+            raise ValidationException(detail=f"Operation '{operation_name}' cannot be started (current status: {op_record.get('status')})")
+        
+        # 4. Update status to In Progress
+        db.table('work_order_operations').update({
+            'status': 'In Progress',
+            'actual_start': datetime.utcnow().isoformat()
+        }).eq('id', op_record['id']).execute()
 
-            new_op_data = {
-               'work_order_id': parent['id'],
-               'operation_name': operation_name,
-               'sequence_number': seq_num,
-               'status': 'In Progress',
-               'actual_start': datetime.utcnow().isoformat()
-            }
-            ins_res = db.table('work_order_operations').insert(new_op_data).execute()
-            if not ins_res.data:
-                raise Exception("Failed to create operation record")
-            op_record = ins_res.data[0]
-        else:
-             op_record = op_res.data[0]
-             # Update status
-             db.table('work_order_operations').update({
-                 'status': 'In Progress',
-                 'actual_start': datetime.utcnow().isoformat()
-             }).eq('id', op_record['id']).execute()
-
-        # 4. Update metrics & Broadcast
+        # 5. Update metrics & Broadcast
         await WIPService._update_stage_metrics()
+        await dashboard_service.broadcast_orders_update()
+        await dashboard_service.broadcast_kpis_update()
         
         # Return the updated operation as a WO object (for frontend compatibility)
         # We need to construct the full object
@@ -365,12 +351,124 @@ class WIPService:
         row['id'] = op_record['id'] # Important: Return Op ID
         
         return WorkingOrderResponse(**row)
-            
-        # 4. Update metrics & Broadcast
-        await WIPService._update_stage_metrics()
+
+    @staticmethod
+    async def pause_operation(
+        work_order_number: str,
+        operation_name: str,
+        user_id: str
+    ) -> WorkingOrderResponse:
+        """
+        Pause an in-progress operation.
+        Uses work order number + operation name for robust identification.
+        """
+        db = get_db()
         
-        # Helper to map response
-        row = WIPService._map_db_row(result.data[0])
+        # 1. Find the parent work order
+        parent_res = db.table('work_orders').select('*').eq('work_order_number', work_order_number).limit(1).execute()
+        if not parent_res.data:
+            raise ValidationException(detail=f"Work Order {work_order_number} not found")
+        
+        parent = parent_res.data[0]
+        
+        # 2. Find the operation in work_order_operations
+        op_res = (
+            db.table('work_order_operations')
+            .select('id, status')
+            .eq('work_order_id', parent['id'])
+            .eq('operation_name', operation_name)
+            .execute()
+        )
+        
+        if not op_res.data:
+            raise ValidationException(detail=f"Operation '{operation_name}' not found for work order {work_order_number}")
+        
+        op_record = op_res.data[0]
+        
+        # 3. Validate current status
+        current_status = op_record.get('status', '').lower()
+        if current_status not in ['in progress', 'in-progress']:
+            raise ValidationException(detail=f"Operation '{operation_name}' is not in progress (current status: {op_record.get('status')})")
+        
+        # 4. Update to On Hold
+        db.table('work_order_operations').update({
+            'status': 'On Hold'
+        }).eq('id', op_record['id']).execute()
+        
+        # 5. Update metrics & Broadcast
+        await WIPService._update_stage_metrics()
+        await dashboard_service.broadcast_orders_update()
+        await dashboard_service.broadcast_kpis_update()
+        
+        # 6. Return response
+        row = WIPService._map_db_row(parent)
+        row['operation'] = operation_name
+        row['status'] = 'On Hold'
+        row['id'] = op_record['id']
+        
+        return WorkingOrderResponse(**row)
+
+    @staticmethod
+    async def complete_operation(
+        work_order_number: str,
+        operation_name: str,
+        user_id: str,
+        completed_qty: Optional[float] = None
+    ) -> WorkingOrderResponse:
+        """
+        Complete an in-progress operation.
+        Uses work order number + operation name for robust identification.
+        """
+        db = get_db()
+        
+        # 1. Find the parent work order
+        parent_res = db.table('work_orders').select('*').eq('work_order_number', work_order_number).limit(1).execute()
+        if not parent_res.data:
+            raise ValidationException(detail=f"Work Order {work_order_number} not found")
+        
+        parent = parent_res.data[0]
+        
+        # 2. Find the operation in work_order_operations
+        op_res = (
+            db.table('work_order_operations')
+            .select('id, status')
+            .eq('work_order_id', parent['id'])
+            .eq('operation_name', operation_name)
+            .execute()
+        )
+        
+        if not op_res.data:
+            raise ValidationException(detail=f"Operation '{operation_name}' not found for work order {work_order_number}")
+        
+        op_record = op_res.data[0]
+        
+        # 3. Validate current status
+        current_status = op_record.get('status', '').lower()
+        if current_status not in ['in progress', 'in-progress']:
+            raise ValidationException(detail=f"Operation '{operation_name}' is not in progress (current status: {op_record.get('status')})")
+        
+        # 4. Use provided qty or default to work order's target qty
+        final_qty = completed_qty if completed_qty is not None else parent.get('target_qty', 0)
+        
+        # 5. Update to Completed
+        db.table('work_order_operations').update({
+            'status': 'Completed',
+            'actual_end': datetime.utcnow().isoformat(),
+            'completed_qty': final_qty
+        }).eq('id', op_record['id']).execute()
+        
+        # 6. Update metrics & Broadcast
+        await WIPService._update_stage_metrics()
+        await dashboard_service.broadcast_orders_update()
+        await dashboard_service.broadcast_kpis_update()
+        
+        # 7. Return response
+        row = WIPService._map_db_row(parent)
+        row['operation'] = operation_name
+        row['status'] = 'Completed'
+        row['id'] = op_record['id']
+        row['completed_qty'] = final_qty
+        
         return WorkingOrderResponse(**row)
 
     @staticmethod
@@ -525,13 +623,60 @@ class WIPService:
             
             base['config_id'] = resolved_config
 
-            # NEW LOGIC: Fetch Operations from work_order_operations
-            # We want to return a list where each item represents an Operation.
-            # If the WO has operations in work_order_operations, we return those.
-            # If not, we return the base WO as a single item (legacy fallback).
-            
-            ops_query = db.table('work_order_operations').select('*').eq('work_order_id', wo['id']).execute()
-            ops = ops_query.data
+            # Batch fetch operations will be done below
+            items.append(base)  # Collect base items first
+
+        # OPTIMIZATION: Batch fetch ALL operations for all work orders at once (fixes N+1 problem)
+        wo_ids = [wo['id'] for wo in work_orders]
+        ops_by_wo = {}
+        
+        if wo_ids:
+            try:
+                all_ops_query = db.table('work_order_operations').select('*').in_('work_order_id', wo_ids).execute()
+                for op in all_ops_query.data:
+                    wo_id = op['work_order_id']
+                    if wo_id not in ops_by_wo:
+                        ops_by_wo[wo_id] = []
+                    ops_by_wo[wo_id].append(op)
+            except Exception as e:
+                print(f"Error batch fetching operations: {e}")
+
+        # OPTIMIZATION 2: Batch fetch ALL transferred quantities for all orders
+        # Aggregated by Production Run (Purchase Order) + Stage
+        transfers_by_po_stage = {}
+        target_pos = list(set([wo.get('purchase_order_id') for wo in work_orders if wo.get('purchase_order_id')]))
+        stage_name_to_id = {} # For mapping operation_name back to transfers
+        
+        if target_pos:
+            try:
+                # 1. Map all WIP stages (name -> id)
+                all_stages = db.table('wip_stages').select('id, name').execute()
+                stage_name_to_id = {s['name']: s['id'] for s in all_stages.data}
+
+                # 2. Get all work order IDs for these POs
+                related_wo_res = db.table('work_orders').select('id, purchase_order_id').in_('purchase_order_id', target_pos).execute()
+                all_related_wo_ids = [row['id'] for row in related_wo_res.data]
+                wo_to_po = {row['id']: row['purchase_order_id'] for row in related_wo_res.data}
+                
+                # 3. Fetch and aggregate transfers
+                if all_related_wo_ids:
+                    all_transfers = db.table('wip_stage_transfers').select('order_id, to_stage_id, quantity').in_('order_id', all_related_wo_ids).execute()
+                    
+                    for t in all_transfers.data:
+                        po_id = wo_to_po.get(t['order_id'])
+                        stage_id = t['to_stage_id']
+                        if po_id and stage_id:
+                            key = f"{po_id}:{stage_id}"
+                            transfers_by_po_stage[key] = transfers_by_po_stage.get(key, 0) + float(t['quantity'])
+            except Exception as e:
+                print(f"Error batch fetching transfers: {e}")
+
+        
+        # Now process items with their operations
+        final_items = []
+        for idx, wo in enumerate(work_orders):
+            base = items[idx]
+            ops = ops_by_wo.get(wo['id'], [])
             
             if ops:
                 # Filter by operation/status if needed (simple client-side filter here for robustness)
@@ -560,15 +705,24 @@ class WIPService:
                     item['completed_qty'] = op.get('completed_qty', 0)
                     item['rejected_qty'] = op.get('rejected_qty', 0)
 
-                    items.append(WorkingOrderListItem(**item))
+                    # Fix: Map transferred quantity from aggregated batch
+                    op_stage_id = stage_name_to_id.get(op['operation_name'])
+                    po_id = item.get('purchase_order_id')
+                    transferred_qty = 0
+                    if po_id and op_stage_id:
+                        transferred_qty = transfers_by_po_stage.get(f"{po_id}:{op_stage_id}", 0)
+                    item['transferred_qty'] = transferred_qty
+
+                    final_items.append(WorkingOrderListItem(**item))
+
             else:
                  # Legacy fallback: Return WO as is (single stage)
                  # Only if it matches operation filter
                  if operation and wo['operation'] != operation:
                      continue
-                 items.append(WorkingOrderListItem(**base))
+                 final_items.append(WorkingOrderListItem(**base))
 
-        return items
+        return final_items
     
     
     @staticmethod
@@ -629,33 +783,24 @@ class WIPService:
         
         db = get_db()
         
-        print(f"[DEBUG] Fetching stages for work order: {work_order_number}")
-        
         # Get work order
         wo_result = db.table('work_orders').select('*').eq('work_order_number', work_order_number).limit(1).execute()
         if not wo_result.data:
-            print(f"[DEBUG] Work order not found: {work_order_number}")
             return []
         
         wo = wo_result.data[0]
-        print(f"[DEBUG] Found work order: {wo.get('id')}")
         
         # Get operations for this work order to find which stages are configured
         ops_result = db.table('work_order_operations').select('operation_name').eq('work_order_id', wo['id']).execute()
         
         if not ops_result.data:
-            print(f"[DEBUG] No operations found for work order, returning all active stages")
             # Fallback: return all active stages if no operations defined
             stages_result = db.table('wip_stages').select('*').eq('is_active', True).order('sequence_number').execute()
         else:
             # Get unique operation names
             operation_names = list(set([op['operation_name'] for op in ops_result.data]))
-            print(f"[DEBUG] Found operations: {operation_names}")
-            
             # Get stages that match these operation names
             stages_result = db.table('wip_stages').select('*').in_('name', operation_names).eq('is_active', True).order('sequence_number').execute()
-        
-        print(f"[DEBUG] Found {len(stages_result.data) if stages_result.data else 0} stages")
         
         if not stages_result.data:
             return []
@@ -676,7 +821,6 @@ class WIPService:
             for s in stages_result.data
         ]
         
-        print(f"[DEBUG] Returning {len(stages)} stages: {[s.name for s in stages]}")
         return stages
     
     

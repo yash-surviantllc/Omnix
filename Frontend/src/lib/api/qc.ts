@@ -13,6 +13,9 @@ export interface QCInspection {
     id: string;
     inspection_number: string;
     purchase_order_id?: string;
+    purchase_order_number?: string;
+    work_order_id?: string;
+    work_order_number?: string;
     product_id: string;
     product_name?: string;
     product_code?: string;
@@ -80,11 +83,15 @@ export const qcApi = {
         return apiClient.get<QCStats>('/qc/stats/');
     },
 
-    getById: async (id: string): Promise<QCInspection> => {
+    async getById(id: string): Promise<QCInspection> {
         return apiClient.get<QCInspection>(`/qc/${id}`);
     },
 
-    lookupOrder: async (orderNumber: string): Promise<OrderLookupResponse> => {
+    async lookupOrder(orderNumber: string): Promise<OrderLookupResponse> {
         return apiClient.get<OrderLookupResponse>(`/qc/lookup/${encodeURIComponent(orderNumber)}`);
+    },
+
+    async getTrends(): Promise<{ date: string; yield: number }[]> {
+        return apiClient.get<{ date: string; yield: number }[]>('/qc/trends');
     }
 };

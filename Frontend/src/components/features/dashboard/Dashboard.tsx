@@ -1,8 +1,29 @@
 import { useState, useEffect, useRef } from 'react';
-import { Package, AlertTriangle, TrendingUp, Clock, ArrowRight, RefreshCw } from 'lucide-react';
+import {
+  Package, AlertTriangle, TrendingUp, Clock, ArrowRight, RefreshCw,
+  CheckCircle, BarChart, FileText, Clipboard, Settings, User, BarChart2
+} from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { dashboardApi, type DashboardResponse } from '@/lib/api/dashboard';
+
+// Icon mapping helper
+const getIcon = (iconName: string) => {
+  switch (iconName) {
+    case 'package': return <Package className="h-5 w-5 text-blue-500" />;
+    case 'alert-triangle': return <AlertTriangle className="h-5 w-5 text-amber-500" />;
+    case 'check-circle': return <CheckCircle className="h-5 w-5 text-emerald-500" />;
+    case 'clock': return <Clock className="h-5 w-5 text-orange-500" />;
+    case 'bar-chart': return <BarChart2 className="h-5 w-5 text-purple-500" />;
+    case 'file-text': return <FileText className="h-5 w-5 text-slate-500" />;
+    case 'clipboard': return <Clipboard className="h-5 w-5 text-indigo-500" />;
+    case 'settings': return <Settings className="h-5 w-5 text-slate-600" />;
+    case 'refresh-cw': return <RefreshCw className="h-5 w-5 text-blue-500" />;
+    case 'user': return <User className="h-5 w-5 text-cyan-500" />;
+    case 'trending-up': return <TrendingUp className="h-5 w-5 text-green-500" />;
+    default: return <Package className="h-5 w-5 text-slate-400" />;
+  }
+};
 
 type DashboardProps = {
   onNavigate: (view: string) => void;
@@ -472,7 +493,7 @@ export function Dashboard({ onNavigate, language }: DashboardProps) {
             activities.map((activity, idx) => (
               <div key={idx} className="flex items-start gap-3 p-3 bg-zinc-50 rounded-lg">
                 {activity.icon ? (
-                  <span className="text-xl mt-1">{activity.icon}</span>
+                  <div className="mt-1">{getIcon(activity.icon)}</div>
                 ) : (
                   <div
                     className={`h-2 w-2 rounded-full mt-2 ${activity.type === 'info'

@@ -70,6 +70,7 @@ export interface WorkingOrder {
   product_code?: string;
   purchase_order_number?: string;
   config_id?: string;
+  transferred_qty?: number;
 }
 
 export type WIPHealthStatus = 'Healthy' | 'Warning' | 'Delayed';
@@ -314,12 +315,19 @@ export const wipApi = {
     if (params?.search) queryParams.append('search', params.search);
 
     const url = `/wip/working-orders?${queryParams.toString()}`;
-    return apiClient.get<WorkingOrder[]>(url);
+    return apiClient.get<WorkingOrder[]>(url, {
+      useCache: true,
+      ttl: 60 // 1 minute
+    });
   },
 
   getWorkingOrder: async (orderId: string): Promise<WorkingOrder> => {
-    return apiClient.get<WorkingOrder>(`/wip/working-orders/${orderId}`);
+    return apiClient.get<WorkingOrder>(`/wip/working-orders/${orderId}`, {
+      useCache: true,
+      ttl: 60 // 1 minute
+    });
   },
+
 
   createWorkingOrder: async (orderData: WorkingOrderCreate): Promise<WorkingOrder> => {
     return apiClient.post<WorkingOrder>('/wip/working-orders', orderData);
@@ -331,6 +339,18 @@ export const wipApi = {
 
   startOperation: async (workOrderNumber: string, operationName: string): Promise<WorkingOrder> => {
     return apiClient.post<WorkingOrder>(`/wip/working-orders/${workOrderNumber}/start?operation=${encodeURIComponent(operationName)}`, {});
+  },
+
+  pauseOperation: async (workOrderNumber: string, operationName: string): Promise<WorkingOrder> => {
+    return apiClient.post<WorkingOrder>(`/wip/working-orders/${workOrderNumber}/pause?operation=${encodeURIComponent(operationName)}`, {});
+  },
+
+  completeOperation: async (workOrderNumber: string, operationName: string, completedQty?: number): Promise<WorkingOrder> => {
+    const params = new URLSearchParams({ operation: operationName });
+    if (completedQty !== undefined) {
+      params.append('completed_qty', completedQty.toString());
+    }
+    return apiClient.post<WorkingOrder>(`/wip/working-orders/${workOrderNumber}/complete?${params.toString()}`, {});
   },
 
   cancelWorkingOrder: async (orderId: string): Promise<{ message: string }> => {

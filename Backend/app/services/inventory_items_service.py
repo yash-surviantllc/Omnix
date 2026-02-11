@@ -70,16 +70,16 @@ class InventoryItemsService:
                     inv_res = db.table('inventory').select('allocated_qty').eq('product_id', p_id).execute()
                     if inv_res.data:
                         allocated = sum(Decimal(str(r['allocated_qty'])) for r in inv_res.data)
-                        print(f"✅ {item['material_code']}: Found allocated_qty = {allocated}")
+                        print(f"Inventory: {item['material_code']}: Found allocated_qty = {allocated}")
                         
                     # Transit from PO Items (Pending or In Progress)
                     po_res = db.table('purchase_order_items').select('quantity, completed_quantity').eq('product_id', p_id).in_('status', ['Pending', 'In Progress']).execute()
                     if po_res.data:
                          transit = sum(Decimal(str(r['quantity'])) - Decimal(str(r.get('completed_quantity', 0) or 0)) for r in po_res.data)
                 except Exception as e:
-                    print(f"❌ Error fetching metrics for {item['material_code']}: {e}")
+                    print(f"Error fetching metrics for {item['material_code']}: {e}")
             else:
-                print(f"⚠️  {item['material_code']}: NOT FOUND in products table - allocated_qty will be 0")
+                print(f"Inventory: {item['material_code']}: NOT FOUND in products table - allocated_qty will be 0")
 
 
             items.append(InventoryItemListResponse(

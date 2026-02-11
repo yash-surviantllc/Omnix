@@ -768,8 +768,8 @@ export function PurchaseOrders({ language, onNavigate }: PurchaseOrdersProps) {
     // Validate required fields
     if (!newOrderData.items || newOrderData.items.length === 0 || !newOrderData.dueDate) {
       alert(language === 'en'
-        ? '⚠️ Please fill in all required fields (Product, Quantity, Due Date)'
-        : '⚠️ कृपया सभी आवश्यक फ़ील्ड भरें (उत्पाद, मात्रा, नियत तारीख)');
+        ? 'Please fill in all required fields (Product, Quantity, Due Date)'
+        : 'कृपया सभी आवश्यक फ़ील्ड भरें (उत्पाद, मात्रा, नियत तारीख)');
       return;
     }
 
@@ -788,7 +788,7 @@ export function PurchaseOrders({ language, onNavigate }: PurchaseOrdersProps) {
         });
 
       if (itemsToCreate.length === 0) {
-        alert(language === 'en' ? '⚠️ Please add at least one product with quantity' : '⚠️ कृपया कम से कम एक उत्पाद मात्रा के साथ जोड़ें');
+        alert(language === 'en' ? 'Please add at least one product with quantity' : 'कृपया कम कम एक उत्पाद मात्रा के साथ जोड़ें');
         setIsLoading(false);
         return;
       }
@@ -803,15 +803,15 @@ export function PurchaseOrders({ language, onNavigate }: PurchaseOrdersProps) {
       });
 
       alert(language === 'en'
-        ? `✅ Success! New multi-SKU order created.`
-        : `✅ सफलता! नया मल्टी-SKU ऑर्डर बनाया गया।`);
+        ? `Success! New multi-SKU order created.`
+        : `सफलता! नया मल्टी-SKU ऑर्डर बनाया गया।`);
 
       fetchOrders();
       closeNewOrderModal();
     } catch (err: any) {
       console.error('Error creating order:', err);
       const errorMessage = err?.detail || err?.message || (language === 'en' ? 'Failed to create order(s)' : 'ऑर्डर बनाने में विफल');
-      alert(`❌ ${errorMessage}`);
+      alert(errorMessage);
     } finally {
       setIsLoading(false);
     }
@@ -831,14 +831,14 @@ export function PurchaseOrders({ language, onNavigate }: PurchaseOrdersProps) {
           if (editOrderData.notes !== undefined) updateData.notes = editOrderData.notes;
 
           await purchaseOrdersApi.updateOrder(selectedOrder.id, updateData);
-          alert(`✅ ${language === 'en' ? 'Order updated successfully' : 'ऑर्डर सफलतापूर्वक अपडेट किया गया'}`);
+          alert(language === 'en' ? 'Order updated successfully' : 'ऑर्डर सफलतापूर्वक अपडेट किया गया');
           fetchOrders(); // Refresh list
           break;
 
         case 'cancel':
           if (confirm(`${language === 'en' ? 'Are you sure you want to cancel this order?' : 'क्या आप वाकई इस ऑर्डर को रद्द करना चाहते हैं?'}\n${selectedOrder.order_number}`)) {
             await purchaseOrdersApi.updateStatus(selectedOrder.id, { status: 'Cancelled' });
-            alert(`✅ ${language === 'en' ? 'Order cancelled' : 'ऑर्डर रद्द किया गया'}`);
+            alert(language === 'en' ? 'Order cancelled' : 'ऑर्डर रद्द किया गया');
             fetchOrders();
           }
           break;
@@ -846,18 +846,18 @@ export function PurchaseOrders({ language, onNavigate }: PurchaseOrdersProps) {
         case 'delete':
           if (confirm(`${language === 'en' ? 'Are you sure you want to delete this order? This cannot be undone.' : 'क्या आप वाकई इस ऑर्डर को हटाना चाहते हैं? यह पूर्ववत नहीं किया जा सकता।'}\n${selectedOrder.order_number}`)) {
             const { message } = await purchaseOrdersApi.deleteOrder(selectedOrder.id);
-            alert(`✅ ${message}`);
+            alert(message);
             fetchOrders();
           }
           break;
 
         case 'print':
-          alert(`✅ ${language === 'en' ? 'Order sheet printed for' : 'ऑर्डर शीट प्रिंट की गई'} ${selectedOrder.order_number}`);
+          alert(`${language === 'en' ? 'Order sheet printed for' : 'ऑर्डर शीट प्रिंट की गई'} ${selectedOrder.order_number}`);
           break;
         case 'assignTeam':
           if (selectedTeam) {
             await purchaseOrdersApi.updateOrder(selectedOrder.id, { assigned_team: selectedTeam });
-            alert(`✅ ${selectedOrder.order_number} ${language === 'en' ? 'assigned to' : 'को असाइन किया गया'} ${selectedTeam}`);
+            alert(`${selectedOrder.order_number} ${language === 'en' ? 'assigned to' : 'को असाइन किया गया'} ${selectedTeam}`);
             fetchOrders();
           }
           break;
@@ -869,47 +869,47 @@ export function PurchaseOrders({ language, onNavigate }: PurchaseOrdersProps) {
               : `[${new Date().toLocaleString()}]\n${noteText}`;
 
             await purchaseOrdersApi.updateOrder(selectedOrder.id, { notes: updatedNotes });
-            alert(`✅ ${language === 'en' ? 'Note added to' : 'नोट जोड़ा गया'} ${selectedOrder.order_number}`);
+            alert(`${language === 'en' ? 'Note added to' : 'नोट जोड़ा गया'} ${selectedOrder.order_number}`);
             fetchOrders();
           }
           break;
         case 'downloadBOM':
-          alert(`✅ BOM ${language === 'en' ? 'downloaded for' : 'डाउनलोड किया गया'} ${selectedOrder.order_number}`);
+          alert(`BOM ${language === 'en' ? 'downloaded for' : 'डाउनलोड किया गया'} ${selectedOrder.order_number}`);
           break;
         case 'exportExcel':
-          alert(`✅ ${selectedOrder.order_number} ${language === 'en' ? 'exported to Excel' : 'Excel में निर्यात किया गया'}`);
+          alert(`${selectedOrder.order_number} ${language === 'en' ? 'exported to Excel' : 'Excel में निर्यात किया गया'}`);
           break;
         case 'sendToProduction':
           await purchaseOrdersApi.updateStatus(selectedOrder.id, { status: 'In Progress' });
-          alert(`✅ ${selectedOrder.order_number} ${language === 'en' ? 'sent to production floor' : 'उत्पादन में भेजा गया'}`);
+          alert(`${selectedOrder.order_number} ${language === 'en' ? 'sent to production floor' : 'उत्पादन में भेजा गया'}`);
           fetchOrders();
           break;
         case 'requestMaterials':
-          alert(`✅ ${language === 'en' ? 'Material request created for' : 'सामग्री अनुरोध बनाया गया'} ${selectedOrder.order_number}`);
+          alert(`${language === 'en' ? 'Material request created for' : 'सामग्री अनुरोध बनाया गया'} ${selectedOrder.order_number}`);
           break;
         case 'reschedule':
           if (newDueDate) {
             await purchaseOrdersApi.updateOrder(selectedOrder.id, { due_date: newDueDate });
-            alert(`✅ ${selectedOrder.order_number} ${language === 'en' ? 'rescheduled to' : 'पुनर्निर्धारित'} ${newDueDate}`);
+            alert(`${selectedOrder.order_number} ${language === 'en' ? 'rescheduled to' : 'पुनर्निर्धारित'} ${newDueDate}`);
             fetchOrders();
           }
           break;
         case 'duplicate':
           const duplicatedOrder = await purchaseOrdersApi.duplicateOrder(selectedOrder.id);
-          alert(`✅ ${language === 'en' ? 'Order duplicated successfully!' : 'ऑर्डर सफलतापूर्वक डुप्लिकेट किया गया!'}\n\n${language === 'en' ? 'New Order Number' : 'नया ऑर्डर नंबर'}: ${duplicatedOrder.order_number}`);
+          alert(`${language === 'en' ? 'Order duplicated successfully!' : 'ऑर्डर सफलतापूर्वक डुप्लिकेट किया गया!'}\n\n${language === 'en' ? 'New Order Number' : 'नया ऑर्डर नंबर'}: ${duplicatedOrder.order_number}`);
           fetchOrders();
           break;
         case 'share':
-          alert(`✅ ${selectedOrder.order_number} ${language === 'en' ? 'shared successfully' : 'सफलतापूर्वक साझा किया गया'}`);
+          alert(`${selectedOrder.order_number} ${language === 'en' ? 'shared successfully' : 'सफलतापूर्वक साझा किया गया'}`);
           break;
         case 'archive':
           await purchaseOrdersApi.archiveOrder(selectedOrder.id);
-          alert(`✅ ${selectedOrder.order_number} ${language === 'en' ? 'archived successfully' : 'सफलतापूर्वक संग्रहीत'}`);
+          alert(`${selectedOrder.order_number} ${language === 'en' ? 'archived successfully' : 'सफलतापूर्वक संग्रहीत'}`);
           fetchOrders();
           break;
         case 'priority':
           await purchaseOrdersApi.updateOrder(selectedOrder.id, { priority: 'Urgent' });
-          alert(`✅ ${selectedOrder.order_number} ${language === 'en' ? 'marked as priority' : 'प्राथमिकता के रूप में चिह्नित'}`);
+          alert(`${selectedOrder.order_number} ${language === 'en' ? 'marked as priority' : 'प्राथमिकता के रूप में चिह्नित'}`);
           fetchOrders();
           break;
       }
@@ -1457,7 +1457,7 @@ export function PurchaseOrders({ language, onNavigate }: PurchaseOrdersProps) {
                     link.href = selectedOrder.qr_code || '';
                     link.download = `${selectedOrder.order_number}-QR.png`;
                     link.click();
-                    alert(`✅ QR ${language === 'en' ? 'code downloaded' : 'कोड डाउनलोड किया गया'}`);
+                    alert(`QR ${language === 'en' ? 'code downloaded' : 'कोड डाउनलोड किया गया'}`);
                   }} className="flex-1">
                     <Download className="h-4 w-4 mr-2" />
                     {language === 'en' ? 'Download' : 'डाउनलोड करें'}

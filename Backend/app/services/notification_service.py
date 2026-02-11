@@ -102,17 +102,11 @@ class NotificationService:
             msg['To'] = recipient
             
             # Email body
-            severity_emoji = {
-                'info': 'ℹ️',
-                'warning': '⚠️',
-                'critical': '🚨'
-            }
-            
             html_body = f"""
             <html>
               <body style="font-family: Arial, sans-serif; padding: 20px;">
                 <h2 style="color: #{'dc2626' if alert_data['severity'] == 'critical' else 'f59e0b' if alert_data['severity'] == 'warning' else '3b82f6'};">
-                  {severity_emoji.get(alert_data['severity'], '📢')} WIP Alert
+                  WIP Alert
                 </h2>
                 <p><strong>Stage:</strong> {alert_data['stage_name']}</p>
                 <p><strong>Severity:</strong> {alert_data['severity'].upper()}</p>

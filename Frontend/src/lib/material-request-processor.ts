@@ -493,8 +493,8 @@ export class MaterialRequestProcessor {
   static generateResponse(request: MaterialRequest, language: 'en' | 'hi'): string {
     if (request.status === 'Error') {
       return language === 'en'
-        ? `❌ Error: ${request.validation.warnings?.join(', ')}`
-        : `❌ त्रुटि: ${request.validation.warnings?.join(', ')}`;
+        ? `Error: ${request.validation.warnings?.join(', ')}`
+        : `त्रुटि: ${request.validation.warnings?.join(', ')}`;
     }
 
     const material = request.materials[0];
@@ -502,8 +502,8 @@ export class MaterialRequestProcessor {
     if (request.status === 'Insufficient Stock') {
       const shortfall = request.validation.shortfall?.[0];
       return language === 'en'
-        ? `⚠️ Insufficient Stock\n\nMaterial: ${material.name}\nRequired: ${material.requested_qty} ${material.uom}\nAvailable: ${shortfall?.available} ${material.uom}\nShortage: ${shortfall?.shortage} ${material.uom}\n\n💡 Options:\n1. Transfer ${shortfall?.available} ${material.uom} (available stock)\n2. Create purchase requisition for ${shortfall?.shortage} ${material.uom}\n3. Adjust production quantity`
-        : `⚠️ अपर्याप्त स्टॉक\n\nसामग्री: ${material.name}\nआवश्यक: ${material.requested_qty} ${material.uom}\nउपलब्ध: ${shortfall?.available} ${material.uom}\nकमी: ${shortfall?.shortage} ${material.uom}\n\n💡 विकल्प:\n1. ${shortfall?.available} ${material.uom} स्थानांतरित करें\n2. ${shortfall?.shortage} ${material.uom} के लिए खरीद अनुरोध बनाएं\n3. उत्पादन मात्रा समायोजित करें`;
+        ? `Insufficient Stock\n\nMaterial: ${material.name}\nRequired: ${material.requested_qty} ${material.uom}\nAvailable: ${shortfall?.available} ${material.uom}\nShortage: ${shortfall?.shortage} ${material.uom}\n\nOptions:\n1. Transfer ${shortfall?.available} ${material.uom} (available stock)\n2. Create purchase requisition for ${shortfall?.shortage} ${material.uom}\n3. Adjust production quantity`
+        : `अपर्याप्त स्टॉक\n\nसामग्री: ${material.name}\nआवश्यक: ${material.requested_qty} ${material.uom}\nउपलब्ध: ${shortfall?.available} ${material.uom}\nकमी: ${shortfall?.shortage} ${material.uom}\n\nविकल्प:\n1. ${shortfall?.available} ${material.uom} स्थानांतरित करें\n2. ${shortfall?.shortage} ${material.uom} के लिए खरीद अनुरोध बनाएं\n3. उत्पादन मात्रा समायोजित करें`;
     }
 
     // Success response
@@ -511,8 +511,8 @@ export class MaterialRequestProcessor {
     const poInfo = request.linked_production_order ? `\nLinked PO: ${request.linked_production_order}` : '';
 
     return language === 'en'
-      ? `✅ Material Request Created\n\nRequest ID: ${request.request_id}\nType: ${request.request_type.toUpperCase()}\nMaterial: ${material.name} (${material.material_code})\nQuantity: ${material.requested_qty} ${material.uom}${sourceInfo}\nTo: ${request.destination}${poInfo}\nStatus: ${request.status}\n\n${request.validation.warnings?.length ? '⚠️ Warnings:\n' + request.validation.warnings.join('\n') : ''}\n\n📱 Next: Scan QR code to confirm`
-      : `✅ सामग्री अनुरोध बनाया गया\n\nअनुरोध ID: ${request.request_id}\nप्रकार: ${request.request_type.toUpperCase()}\nसामग्री: ${material.name} (${material.material_code})\nमात्रा: ${material.requested_qty} ${material.uom}${sourceInfo}\nगंतव्य: ${request.destination}${poInfo}\nस्थिति: ${request.status}\n\n${request.validation.warnings?.length ? '⚠️ चेतावनी:\n' + request.validation.warnings.join('\n') : ''}\n\n📱 अगला: पुष्टि के लिए QR कोड स्कैन करें`;
+      ? `Material Request Created\n\nRequest ID: ${request.request_id}\nType: ${request.request_type.toUpperCase()}\nMaterial: ${material.name} (${material.material_code})\nQuantity: ${material.requested_qty} ${material.uom}${sourceInfo}\nTo: ${request.destination}${poInfo}\nStatus: ${request.status}\n\n${request.validation.warnings?.length ? 'Warnings:\n' + request.validation.warnings.join('\n') : ''}\n\nNext: Scan QR code to confirm`
+      : `सामग्री अनुरोध बनाया गया\n\nअनुरोध ID: ${request.request_id}\nप्रकार: ${request.request_type.toUpperCase()}\nसामग्री: ${material.name} (${material.material_code})\nमात्रा: ${material.requested_qty} ${material.uom}${sourceInfo}\nगंतव्य: ${request.destination}${poInfo}\nस्थिति: ${request.status}\n\n${request.validation.warnings?.length ? 'चेतावनी:\n' + request.validation.warnings.join('\n') : ''}\n\nअगला: पुष्टि के लिए QR कोड स्कैन करें`;
   }
 
   // Extract purpose from text
@@ -630,7 +630,7 @@ export class MaterialRequestProcessor {
       // Warn if close to reorder level
       const reorderLevel = primaryAvailable * 0.2;
       if (primaryAvailable - required < reorderLevel && primaryAvailable >= required) {
-        validation.warnings?.push(`⚠️ ${material.name} will be below reorder level after this transaction`);
+        validation.warnings?.push(`${material.name} will be below reorder level after this transaction`);
       }
     }
 
@@ -658,14 +658,14 @@ export class MaterialRequestProcessor {
     // Determine next steps
     const next_steps: string[] = [];
     if (status === 'Validated') {
-      next_steps.push('✅ Ready to issue materials');
-      next_steps.push('📱 Scan QR to confirm pickup');
+      next_steps.push('Ready to issue materials');
+      next_steps.push('Scan QR to confirm pickup');
     } else if (status === 'Partial Stock') {
       next_steps.push('Option 1: Issue available stock now');
       next_steps.push('Option 2: Transfer from secondary warehouse');
       next_steps.push('Option 3: Create purchase requisition for shortage');
     } else if (status === 'Insufficient Stock') {
-      next_steps.push('❌ Create purchase requisition');
+      next_steps.push('Create purchase requisition');
       next_steps.push('Or adjust production quantity');
     }
 
@@ -717,15 +717,15 @@ export class MaterialRequestProcessor {
     // Handle pending clarification
     if (request.status === 'Pending Clarification') {
       return language === 'en'
-        ? `❓ Need More Information\\n\\n${request.validation.missing_info?.join('\\n')}\\n\\nPlease provide these details to create the material request.`
-        : `❓ अधिक जानकारी चाहिए\\n\\n${request.validation.missing_info?.join('\\n')}\\n\\nकृपया सामग्री अनुरोध बनाने के लिए ये विवरण प्रदान करें।`;
+        ? `Need More Information\n\n${request.validation.missing_info?.join('\n')}\n\nPlease provide these details to create the material request.`
+        : `अधिक जानकारी चाहिए\n\n${request.validation.missing_info?.join('\n')}\n\nकृपया सामग्री अनुरोध बनाने के लिए ये विवरण प्रदान करें।`;
     }
 
     // Handle error
     if (request.status === 'Error') {
       return language === 'en'
-        ? `❌ Error\\n\\n${request.validation.warnings?.join('\\n')}`
-        : `❌ त्रुटि\\n\\n${request.validation.warnings?.join('\\n')}`;
+        ? `Error\n\n${request.validation.warnings?.join('\n')}`
+        : `त्रुटि\n\n${request.validation.warnings?.join('\n')}`;
     }
 
     // Handle partial stock
@@ -737,32 +737,31 @@ export class MaterialRequestProcessor {
       if (hasSecondary) {
         const secLoc = shortfall!.available_in_secondary![0];
         secondaryInfo = language === 'en'
-          ? `\\n\\n📦 Additional Stock Found:\\n${secLoc.location}: ${secLoc.quantity} ${material.uom}`
-          : `\\n\\n📦 अतिरिक्त स्टॉक मिला:\\n${secLoc.location}: ${secLoc.quantity} ${material.uom}`;
+          ? `\n\nAdditional Stock Found:\n${secLoc.location}: ${secLoc.quantity} ${material.uom}`
+          : `\n\nअतिरिक्त स्टॉक मिला:\n${secLoc.location}: ${secLoc.quantity} ${material.uom}`;
       }
 
       return language === 'en'
-        ? `⚠️ Partial Stock Available\\n\\nRequest ID: ${request.request_id}\\nMaterial: ${material.name} (${material.material_code})\\nRequired: ${material.requested_qty} ${material.uom}\\nAvailable: ${shortfall?.available} ${material.uom}\\nShortage: ${shortfall?.shortage} ${material.uom}${secondaryInfo}\\n\\n💡 Options:\\n1️⃣ Issue ${shortfall?.available} ${material.uom} now\\n2️⃣ Transfer from secondary warehouse${hasSecondary ? '' : ' (if available)'}\\n3️⃣ Create purchase requisition for ${shortfall?.shortage} ${material.uom}\\n\\nWhat would you like to do?`
-        : `⚠️ आंशिक स्टॉक उपलब्ध\\n\\nअनुरोध ID: ${request.request_id}\\nसामग्री: ${material.name} (${material.material_code})\\nआवश्यक: ${material.requested_qty} ${material.uom}\\nउपलब्ध: ${shortfall?.available} ${material.uom}\\nकमी: ${shortfall?.shortage} ${material.uom}${secondaryInfo}\\n\\n💡 विकल्प:\\n1️⃣ अभी ${shortfall?.available} ${material.uom} जारी करें\\n2️⃣ द्वितीयक वेयरहाउस से स्थानांतरण करें\\n3️⃣ ${shortfall?.shortage} ${material.uom} के लिए खरीद अनुरोध बनाएं\\n\\nआप क्या करना चाहेंगे?`;
+        ? `Partial Stock Available\n\nRequest ID: ${request.request_id}\nMaterial: ${material.name} (${material.material_code})\nRequired: ${material.requested_qty} ${material.uom}\nAvailable: ${shortfall?.available} ${material.uom}\nShortage: ${shortfall?.shortage} ${material.uom}${secondaryInfo}\n\nOptions:\n1. Issue ${shortfall?.available} ${material.uom} now\n2. Transfer from secondary warehouse${hasSecondary ? '' : ' (if available)'}\n3. Create purchase requisition for ${shortfall?.shortage} ${material.uom}\n\nWhat would you like to do?`
+        : `आंशिक स्टॉक उपलब्ध\n\nअनुरोध ID: ${request.request_id}\nसामग्री: ${material.name} (${material.material_code})\nआवश्यक: ${material.requested_qty} ${material.uom}\nउपलब्ध: ${shortfall?.available} ${material.uom}\nकमी: ${shortfall?.shortage} ${material.uom}${secondaryInfo}\n\nविकल्प:\n1. अभी ${shortfall?.available} ${material.uom} जारी करें\n2. द्वितीयक वेयरहाउस से स्थानांतरण करें\n3. ${shortfall?.shortage} ${material.uom} के लिए खरीद अनुरोध बनाएं\n4. आप क्या करना चाहेंगे?`;
     }
 
     // Handle insufficient stock
     if (request.status === 'Insufficient Stock') {
       const shortfall = request.validation.shortfall?.[0];
       return language === 'en'
-        ? `❌ Insufficient Stock\\n\\nRequest ID: ${request.request_id}\\nMaterial: ${material.name}\\nRequired: ${material.requested_qty} ${material.uom}\\nAvailable: ${shortfall?.available || 0} ${material.uom}\\nShortage: ${shortfall?.shortage || material.requested_qty} ${material.uom}\\n\\n🛒 Action Required:\\nCreate Purchase Requisition for ${shortfall?.shortage || material.requested_qty} ${material.uom}\\n\\n📋 Approval: ${request.approval_level?.toUpperCase()} level\\n\\nProceed with purchase request? (Yes/No)`
-        : `❌ अपर्याप्त स्टॉक\\n\\nअनुरोध ID: ${request.request_id}\\nसामग्री: ${material.name}\\nआवश्यक: ${material.requested_qty} ${material.uom}\\nउपलब्ध: ${shortfall?.available || 0} ${material.uom}\\nकमी: ${shortfall?.shortage || material.requested_qty} ${material.uom}\\n\\n🛒 आवश्यक कार्रवाई:\\n${shortfall?.shortage || material.requested_qty} ${material.uom} के लिए खरीद आवश्यकता बनाएं\\n\\n📋 अनुमोदन: ${request.approval_level?.toUpperCase()} स्तर\\n\\nखरीद अनुरोध के साथ आगे बढ़ें? (हां/नहीं)`;
+        ? `Insufficient Stock\n\nRequest ID: ${request.request_id}\nMaterial: ${material.name}\nRequired: ${material.requested_qty} ${material.uom}\nAvailable: ${shortfall?.available || 0} ${material.uom}\nShortage: ${shortfall?.shortage || material.requested_qty} ${material.uom}\n\nAction Required:\nCreate Purchase Requisition for ${shortfall?.shortage || material.requested_qty} ${material.uom}\n\nApproval: ${request.approval_level?.toUpperCase()} level\n\nProceed with purchase request? (Yes/No)`
+        : `अपर्याप्त स्टॉक\n\nअनुरोध ID: ${request.request_id}\nसामग्री: ${material.name}\nआवश्यक: ${material.requested_qty} ${material.uom}\nउपलब्ध: ${shortfall?.available || 0} ${material.uom}\nकमी: ${shortfall?.shortage || material.requested_qty} ${material.uom}\n\nआवश्यक कार्रवाई:\n${shortfall?.shortage || material.requested_qty} ${material.uom} के लिए खरीद आवश्यकता बनाएं\n\nअनुमोदन: ${request.approval_level?.toUpperCase()} स्तर\n\nखरीद अनुरोध के साथ आगे बढ़ें? (हां/नहीं)`;
     }
 
     // Success - validated
-    const urgencyIcon = request.urgency === 'Urgent' ? '🔴 ' : '';
-    const sourceInfo = request.source_warehouse ? `\\nFrom: ${request.source_warehouse}` : '';
-    const poInfo = request.linked_production_order ? `\\nLinked PO: ${request.linked_production_order}` : '';
-    const purposeInfo = request.purpose ? `\\nPurpose: ${request.purpose}` : '';
-    const approvalInfo = request.approval_required ? `\\nApproval: ${request.approval_level?.toUpperCase()} required` : '';
+    const sourceInfo = request.source_warehouse ? `\nFrom: ${request.source_warehouse}` : '';
+    const poInfo = request.linked_production_order ? `\nLinked PO: ${request.linked_production_order}` : '';
+    const purposeInfo = request.purpose ? `\nPurpose: ${request.purpose}` : '';
+    const approvalInfo = request.approval_required ? `\nApproval: ${request.approval_level?.toUpperCase()} required` : '';
 
     return language === 'en'
-      ? `✅ Material Request Created\\n\\nRequest ID: ${urgencyIcon}${request.request_id}\\nType: ${request.request_type.toUpperCase()}\\nDepartment: ${request.requesting_department}\\nMaterial: ${material.name} (${material.material_code})\\nQuantity: ${material.requested_qty} ${material.uom}${sourceInfo}\\nTo: ${request.destination}${poInfo}${purposeInfo}${approvalInfo}\\nStatus: Ready to issue\\n\\n${request.validation.warnings?.length ? '⚠️ Warnings:\\n' + request.validation.warnings.join('\\n') + '\\n\\n' : ''}📱 Next Steps:\\n${request.next_steps?.join('\\n')}`
-      : `✅ सामग्री अनुरोध बनाया गया\\n\\nअनुरोध ID: ${urgencyIcon}${request.request_id}\\nप्रकार: ${request.request_type.toUpperCase()}\\nविभाग: ${request.requesting_department}\\nसामग्री: ${material.name} (${material.material_code})\\nमात्रा: ${material.requested_qty} ${material.uom}${sourceInfo}\\nगंतव्य: ${request.destination}${poInfo}${purposeInfo}${approvalInfo}\\nस्थिति: जारी करने के लिए तैयार\\n\\n${request.validation.warnings?.length ? '⚠️ चेतावनी:\\n' + request.validation.warnings.join('\\n') + '\\n\\n' : ''}📱 अगले कदम:\\n${request.next_steps?.join('\\n')}`;
+      ? `Material Request Created\n\nRequest ID: ${request.request_id}\nType: ${request.request_type.toUpperCase()}\nDepartment: ${request.requesting_department}\nMaterial: ${material.name} (${material.material_code})\nQuantity: ${material.requested_qty} ${material.uom}${sourceInfo}\nTo: ${request.destination}${poInfo}${purposeInfo}${approvalInfo}\nStatus: Ready to issue\n\n${request.validation.warnings?.length ? 'Warnings:\n' + request.validation.warnings.join('\n') + '\n\n' : ''}Next Steps:\n${request.next_steps?.join('\n')}`
+      : `सामग्री अनुरोध बनाया गया\n\nअनुरोध ID: ${request.request_id}\nप्रकार: ${request.request_type.toUpperCase()}\nविभाग: ${request.requesting_department}\nसामग्री: ${material.name} (${material.material_code})\nमात्रा: ${material.requested_qty} ${material.uom}${sourceInfo}\nगंतव्य: ${request.destination}${poInfo}${purposeInfo}${approvalInfo}\nस्थिति: जारी करने के लिए तैयार\n\n${request.validation.warnings?.length ? 'चेतावनी:\n' + request.validation.warnings.join('\n') + '\n\n' : ''}अगले कदम:\n${request.next_steps?.join('\n')}`;
   }
 }

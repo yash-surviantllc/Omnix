@@ -204,13 +204,20 @@ export const purchaseOrdersApi = {
     if (params?.due_date_to) queryParams.append('due_date_to', params.due_date_to);
 
     const url = `${PURCHASE_ORDER_BASE}${queryParams.toString() ? '?' + queryParams.toString() : ''}`;
-    return await apiClient.get<PurchaseOrder[]>(url);
+    return await apiClient.get<PurchaseOrder[]>(url, {
+      useCache: true,
+      ttl: 300 // 5 minutes
+    });
   },
 
   // Get single purchase order
   async getOrder(orderId: string): Promise<PurchaseOrder> {
-    return await apiClient.get<PurchaseOrder>(`${PURCHASE_ORDER_BASE}/${orderId}`);
+    return await apiClient.get<PurchaseOrder>(`${PURCHASE_ORDER_BASE}/${orderId}`, {
+      useCache: true,
+      ttl: 300 // 5 minutes
+    });
   },
+
 
   // Create purchase order
   async createOrder(data: CreatePurchaseOrderData): Promise<PurchaseOrder> {

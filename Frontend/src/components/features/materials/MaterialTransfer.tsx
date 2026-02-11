@@ -903,7 +903,7 @@ export function MaterialTransfer({ language, refreshMaterialTransferData }: Mate
                       notes: stageTransferData.notes || undefined
                     });
 
-                    alert(language === 'en' ? '✅ Stage Transfer Successful!' : '✅ स्टेज स्थानांतरण सफल!');
+                    alert(language === 'en' ? 'Stage Transfer Successful!' : 'स्टेज स्थानांतरण सफल!');
 
                     setShowStageTransferModal(false);
                     setStageTransferData({
@@ -920,7 +920,7 @@ export function MaterialTransfer({ language, refreshMaterialTransferData }: Mate
                     fetchTransferHistory();
                   } catch (err: any) {
                     console.error('Stage transfer failed', err);
-                    alert(`❌ Error: ${err?.detail || 'Failed to transfer'}`);
+                    alert(`Error: ${err?.detail || 'Failed to transfer'}`);
                   } finally {
                     setIsSubmittingTransfer(false);
                   }

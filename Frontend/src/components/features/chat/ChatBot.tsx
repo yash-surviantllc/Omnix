@@ -264,8 +264,8 @@ export function ChatBot({ isOpen, onToggle, language, onNavigate }: ChatBotProps
       id: Date.now().toString(),
       type: 'bot',
       content: language === 'en'
-        ? 'I can help you with:\n\n🔹 Material Requests\n• "Request 50 kg Cotton Fabric for Cutting"\n• "Cutting को 20 kg cotton भेज दो"\n• "QC-ge 5 litres chemical beku"\n\n🔹 BOMs & Production\n• "Show BOM for TS-001"\n• "Status of PO-1001"\n\n🔹 Inventory\n• "Stock status of Thread"\n• "Show material shortages"\n\n💡 Tip: Click here to open Material Request page →'
-        : 'मैं मदद कर सकता हूं:\n\n🔹 सामग्री अनुरोध\n• "कटिंग के लिए 50 किलो कपास का अनुरोध करें"\n• "Cutting को 20 kg cotton भेज दो"\n• "Stitching को thread चाहिए"\n\n🔹 BOM और उत्पादन\n• "TS-001 के लिए BOM दिखाएं"\n• "PO-1001 की स्थिति"\n\n🔹 इन्वेंटरी\n• "थ्रेड की स्टॉक स्थिति"\n• "सामग्री की कमी दिखाएं"\n\n💡 सुझाव: सामग्री अनुरोध पेज खोलने के लिए यहां क्लिक करें →',
+        ? 'I can help you with:\n\nMaterial Requests\n- "Request 50 kg Cotton Fabric for Cutting"\n- "Cutting को 20 kg cotton भेज दो"\n- "QC-ge 5 litres chemical beku"\n\nBOMs & Production\n- "Show BOM for TS-001"\n- "Status of PO-1001"\n\nInventory\n- "Stock status of Thread"\n- "Show material shortages"\n\nTip: Click here to open Material Request page'
+        : 'मैं मदद कर सकता हूं:\n\nसामग्री अनुरोध\n- "कटिंग के लिए 50 किलो कपास का अनुरोध करें"\n- "Cutting को 20 kg cotton भेज दो"\n- "Stitching को thread चाहिए"\n\nBOM और उत्पादन\n- "TS-001 के लिए BOM दिखाएं"\n- "PO-1001 की स्थिति"\n\nइन्वेंटरी\n- "थ्रेड की स्टॉक स्थिति"\n- "सामग्री की कमी दिखाएं"\n\nसुझाव: सामग्री अनुरोध पेज खोलने के लिए यहां क्लिक करें',
       actionCard: {
         type: 'navigation',
         data: {
@@ -318,8 +318,8 @@ export function ChatBot({ isOpen, onToggle, language, onNavigate }: ChatBotProps
       id: Date.now().toString(),
       type: 'bot',
       content: language === 'en'
-        ? '✓ Action completed successfully! The system has been updated.'
-        : '✓ क्रिया सफलतापूर्वक पूर्ण हुई! सिस्टम अपडेट हो गया है।'
+        ? 'Action completed successfully! The system has been updated.'
+        : 'क्रिया सफलतापूर्वक पूर्ण हुई! सिस्टम अपडेट हो गया है।'
     };
     setMessages(prev => [...prev, confirmMessage]);
   };

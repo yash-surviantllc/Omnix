@@ -53,8 +53,7 @@ class DashboardService:
         """
         Calculate all KPIs with REAL DATA.
         """
-        # ========================================
-        # 1. LIVE ORDERS KPI (REAL DATA!)
+        # 1. LIVE ORDERS KPI (Integrated Data)
         # ========================================
         live_orders_count = 0
         
@@ -73,12 +72,11 @@ class DashboardService:
             unit="orders",
             trend="up" if live_orders_count > 0 else "stable",
             trend_percentage=0.0,
-            icon="📦",
+            icon="package",
             color="blue"
         )
         
-        # ========================================
-        # 2. MATERIAL SHORTAGES KPI (REAL DATA from inventory_items!)
+        # 2. MATERIAL SHORTAGES KPI (Inventory Data)
         # ========================================
         shortage_count = 0
         critical_count = 0
@@ -120,7 +118,7 @@ class DashboardService:
             unit=f"{critical_count} critical" if critical_count > 0 else "items",
             trend="up" if critical_count > 0 else "stable",
             trend_percentage=trend_pct,
-            icon="⚠️",
+            icon="alert-triangle",
             color="red" if critical_count > 0 else ("yellow" if shortage_count > 0 else "green")
         )
         
@@ -134,12 +132,11 @@ class DashboardService:
             unit="items",
             trend="stable",
             trend_percentage=0.0,
-            icon="🔧",
+            icon="wrench",
             color="yellow"
         )
         
-        # ========================================
-        # 4. WORK ORDERS COMPLETED FOR THE DAY KPI (REAL DATA!)
+        # 4. WORK ORDERS COMPLETED FOR THE DAY KPI
         # ========================================
         completed_today_count = 0
         
@@ -164,7 +161,7 @@ class DashboardService:
             unit="orders",
             trend="up" if completed_today_count > 0 else "stable",
             trend_percentage=0.0,
-            icon="✅",
+            icon="check-circle",
             color="green" if completed_today_count > 0 else "blue"
         )
         
@@ -178,7 +175,7 @@ class DashboardService:
             unit="%",
             trend="stable",
             trend_percentage=0.0,
-            icon="📊",
+            icon="bar-chart",
             color="blue"
         )
         
@@ -193,7 +190,7 @@ class DashboardService:
     @staticmethod
     async def _get_orders_summary(db) -> OrderSummary:
         """
-        Get orders breakdown by status (REAL DATA!).
+        Get orders breakdown by status.
         """
         try:
             orders = db.table('purchase_orders').select('status').execute()
@@ -224,7 +221,7 @@ class DashboardService:
     @staticmethod
     async def _get_material_shortages(db) -> List[ShortageItem]:
         """
-        Get list of materials with shortages (REAL DATA!).
+        Get list of materials with shortages.
         """
         shortages = []
         
@@ -299,12 +296,11 @@ class DashboardService:
     @staticmethod
     async def _get_recent_activities(db) -> List[RecentActivity]:
         """
-        Get recent system activities (REAL DATA!).
+        Get recent system activities.
         """
         activities = []
         
-        # ========================================
-        # 1. Get recent inventory_items transactions (NEW!)
+        # 1. Get recent inventory_items transactions
         # ========================================
         try:
             inv_items_trans = db.table('inventory_item_transactions').select(
@@ -331,14 +327,14 @@ class DashboardService:
                     
                     # Activity descriptions and icons
                     activity_map = {
-                        'IN': ('📥', 'Inventory added'),
-                        'OUT': ('📤', 'Inventory removed'),
-                        'ADJUST': ('⚙️', 'Inventory updated'),
-                        'ALLOCATE': ('🔒', 'Stock allocated'),
-                        'RELEASE': ('🔓', 'Stock released')
+                        'IN': ('package-plus', 'Inventory added'),
+                        'OUT': ('package-minus', 'Inventory removed'),
+                        'ADJUST': ('settings', 'Inventory updated'),
+                        'ALLOCATE': ('lock', 'Stock allocated'),
+                        'RELEASE': ('lock-open', 'Stock released')
                     }
                     
-                    icon, action = activity_map.get(trans['transaction_type'], ('📦', 'Inventory transaction'))
+                    icon, action = activity_map.get(trans['transaction_type'], ('package', 'Inventory transaction'))
                     
                     qty_change = trans['quantity_change']
                     sign = '+' if qty_change > 0 else ''
@@ -357,8 +353,7 @@ class DashboardService:
         except Exception:
             pass
         
-        # ========================================
-        # 2. Get recent gate entries (NEW!)
+        # 2. Get recent gate entries
         # ========================================
         try:
             gate_entries = db.table('gate_entries').select(
@@ -375,13 +370,13 @@ class DashboardService:
                 
                 # Activity descriptions and icons based on entry type and status
                 entry_type_icons = {
-                    'material': '📦',
-                    'courier': '📮',
-                    'visitor': '👤',
-                    'jobwork_return': '🔄',
-                    'subcontract_return': '↩️',
-                    'delivery': '🚚',
-                    'machine_spare': '⚙️'
+                    'material': 'package',
+                    'courier': 'mail',
+                    'visitor': 'user',
+                    'jobwork_return': 'refresh-cw',
+                    'subcontract_return': 'corner-up-left',
+                    'delivery': 'truck',
+                    'machine_spare': 'settings'
                 }
                 
                 status_actions = {
@@ -391,7 +386,7 @@ class DashboardService:
                     'rejected': 'rejected'
                 }
                 
-                icon = entry_type_icons.get(entry['entry_type'], '🚪')
+                icon = entry_type_icons.get(entry['entry_type'], 'log-in')
                 action = status_actions.get(entry['status'], 'processed')
                 
                 # Format entry type for display
@@ -434,16 +429,16 @@ class DashboardService:
                 
                 # Activity descriptions and icons
                 activity_map = {
-                    'TRANSFER': ('🔄', 'Material transferred'),
-                    'GATE_IN': ('📥', 'Gate entry received'),
-                    'GATE_OUT': ('📤', 'Gate exit processed'),
-                    'ADJUSTMENT': ('⚙️', 'Stock adjusted'),
-                    'ALLOCATION': ('🔒', 'Inventory allocated'),
-                    'RELEASE': ('🔓', 'Allocation released'),
-                    'PRODUCTION': ('🏭', 'Production consumed')
+                    'TRANSFER': ('refresh-cw', 'Material transferred'),
+                    'GATE_IN': ('package-plus', 'Gate entry received'),
+                    'GATE_OUT': ('package-minus', 'Gate exit processed'),
+                    'ADJUSTMENT': ('settings', 'Stock adjusted'),
+                    'ALLOCATION': ('lock', 'Inventory allocated'),
+                    'RELEASE': ('lock-open', 'Allocation released'),
+                    'PRODUCTION': ('factory', 'Production consumed')
                 }
                 
-                icon, action = activity_map.get(trans['transaction_type'], ('📦', 'Transaction'))
+                icon, action = activity_map.get(trans['transaction_type'], ('package', 'Transaction'))
                 
                 description = f"{action}: {product_code} - {product_name} ({trans['quantity']} units)"
                 if trans.get('notes'):
@@ -461,8 +456,7 @@ class DashboardService:
         except Exception:
             pass
         
-        # ========================================
-        # 4. Get recent material requisitions (NEW!)
+        # 4. Get recent material requisitions
         # ========================================
         try:
             requisitions = db.table('material_requisitions').select(
@@ -478,15 +472,15 @@ class DashboardService:
                         user_name = user.data[0].get('full_name') or user.data[0].get('username')
                 
                 status_icons = {
-                    'Draft': '📝',
-                    'Pending': '⏳',
-                    'Approved': '✅',
-                    'Rejected': '❌',
-                    'Fulfilled': '📦',
-                    'Cancelled': '🚫'
+                    'Draft': 'file-text',
+                    'Pending': 'clock',
+                    'Approved': 'check-circle',
+                    'Rejected': 'x-circle',
+                    'Fulfilled': 'package',
+                    'Cancelled': 'minus-circle'
                 }
                 
-                icon = status_icons.get(req['status'], '📝')
+                icon = status_icons.get(req['status'], 'file-text')
                 description = f"Material Request {req['status']}: {req['requisition_number']} - {req['department']}"
                 
                 activities.append(RecentActivity(
@@ -514,7 +508,7 @@ class DashboardService:
                         description=f"New user registered: {user.get('full_name') or user['username']}",
                         user_name=user['username'],
                         timestamp=datetime.fromisoformat(user['created_at'].replace('Z', '+00:00')).replace(tzinfo=None),
-                        icon="👤"
+                        icon="user"
                     ))
             except Exception:
                 pass
@@ -534,7 +528,7 @@ class DashboardService:
                 title="Plan Materials",
                 description="Plan material requirements",
                 route="/material-planning",
-                icon="📋",
+                icon="clipboard",
                 roles=["Admin", "Planner"]
             ),
             QuickAction(
@@ -542,7 +536,7 @@ class DashboardService:
                 title="Create BOM",
                 description="Create new Bill of Materials",
                 route="/bom/create",
-                icon="🔧",
+                icon="settings",
                 roles=["Admin", "Planner", "Engineer"]
             ),
             QuickAction(
@@ -550,7 +544,7 @@ class DashboardService:
                 title="Create Order",
                 description="Create production order",
                 route="/orders/create",
-                icon="📦",
+                icon="package",
                 roles=["Admin", "Planner"]
             ),
             QuickAction(
@@ -558,7 +552,7 @@ class DashboardService:
                 title="WIP Board",
                 description="View work in progress",
                 route="/wip-board",
-                icon="📊",
+                icon="bar-chart",
                 roles=["Admin", "Planner", "Supervisor"]
             ),
             QuickAction(
@@ -566,7 +560,7 @@ class DashboardService:
                 title="Material Request",
                 description="Request materials",
                 route="/material-request/create",
-                icon="📝",
+                icon="file-text",
                 roles=["Admin", "Operator", "Supervisor"]
             ),
             QuickAction(
@@ -574,7 +568,7 @@ class DashboardService:
                 title="Material Transfer",
                 description="Transfer materials",
                 route="/material-transfer/create",
-                icon="🔄",
+                icon="refresh-cw",
                 roles=["Admin", "Store Manager", "Supervisor"]
             ),
             QuickAction(
@@ -582,7 +576,7 @@ class DashboardService:
                 title="QC Check",
                 description="Quality inspection",
                 route="/qc/inspection",
-                icon="✅",
+                icon="check-circle",
                 roles=["Admin", "QC Inspector"]
             ),
             QuickAction(
@@ -590,7 +584,7 @@ class DashboardService:
                 title="Gate Entry",
                 description="Log gate entry",
                 route="/gate/entry",
-                icon="🚪",
+                icon="log-in",
                 roles=["Admin", "Security"]
             ),
             QuickAction(
@@ -598,7 +592,7 @@ class DashboardService:
                 title="View Inventory",
                 description="Check stock levels",
                 route="/inventory",
-                icon="📦",
+                icon="package",
                 roles=["Admin", "Store Manager", "Planner"]
             ),
             QuickAction(
@@ -606,7 +600,7 @@ class DashboardService:
                 title="Adjust Stock",
                 description="Stock count adjustment",
                 route="/inventory/adjust",
-                icon="⚙️",
+                icon="settings",
                 roles=["Admin", "Store Manager"]
             )
         ]
@@ -622,55 +616,55 @@ class DashboardService:
         
         return filtered_actions
 
+    # Broadcast methods for real-time updates
+    @staticmethod
+    async def broadcast_kpis_update():
+        """
+        Broadcast updated KPIs to all connected clients.
+        """
+        try:
+            db = get_db()
+            kpis = await DashboardService._calculate_kpis(db)
+            await manager.broadcast_dashboard_update("kpis", kpis.dict())
+        except Exception as e:
+            # logger not defined here, using print for now but should use proper logging
+            print(f"Failed to broadcast KPIs update: {e}")
 
-# Broadcast methods for real-time updates
-@staticmethod
-async def broadcast_kpis_update():
-    """
-    Broadcast updated KPIs to all connected clients.
-    """
-    try:
-        db = get_db()
-        kpis = await DashboardService._calculate_kpis(db)
-        await manager.broadcast_dashboard_update("kpis", kpis.dict())
-    except Exception as e:
-        logger.error(f"Failed to broadcast KPIs update: {e}")
+    @staticmethod
+    async def broadcast_orders_update():
+        """
+        Broadcast updated orders summary to all connected clients.
+        """
+        try:
+            db = get_db()
+            orders_summary = await DashboardService._get_orders_summary(db)
+            await manager.broadcast_dashboard_update("orders", orders_summary.dict())
+        except Exception as e:
+            print(f"Failed to broadcast orders update: {e}")
 
-@staticmethod
-async def broadcast_orders_update():
-    """
-    Broadcast updated orders summary to all connected clients.
-    """
-    try:
-        db = get_db()
-        orders_summary = await DashboardService._get_orders_summary(db)
-        await manager.broadcast_dashboard_update("orders", orders_summary.dict())
-    except Exception as e:
-        logger.error(f"Failed to broadcast orders update: {e}")
+    @staticmethod
+    async def broadcast_shortages_update():
+        """
+        Broadcast updated material shortages to all connected clients.
+        """
+        try:
+            db = get_db()
+            shortages = await DashboardService._get_material_shortages(db)
+            await manager.broadcast_dashboard_update("shortages", [s.dict() for s in shortages])
+        except Exception as e:
+            print(f"Failed to broadcast shortages update: {e}")
 
-@staticmethod
-async def broadcast_shortages_update():
-    """
-    Broadcast updated material shortages to all connected clients.
-    """
-    try:
-        db = get_db()
-        shortages = await DashboardService._get_material_shortages(db)
-        await manager.broadcast_dashboard_update("shortages", [s.dict() for s in shortages])
-    except Exception as e:
-        logger.error(f"Failed to broadcast shortages update: {e}")
-
-@staticmethod
-async def broadcast_activities_update():
-    """
-    Broadcast updated recent activities to all connected clients.
-    """
-    try:
-        db = get_db()
-        activities = await DashboardService._get_recent_activities(db)
-        await manager.broadcast_dashboard_update("activities", [a.dict() for a in activities])
-    except Exception as e:
-        logger.error(f"Failed to broadcast activities update: {e}")
+    @staticmethod
+    async def broadcast_activities_update():
+        """
+        Broadcast updated recent activities to all connected clients.
+        """
+        try:
+            db = get_db()
+            activities = await DashboardService._get_recent_activities(db)
+            await manager.broadcast_dashboard_update("activities", [a.dict() for a in activities])
+        except Exception as e:
+            print(f"Failed to broadcast activities update: {e}")
 
 
 # Create singleton instance

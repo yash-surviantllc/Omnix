@@ -62,6 +62,28 @@ async def get_qc_stats(
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+@router.get("/trends")
+async def get_qc_trends(
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Get 7-day QC yield trends.
+    """
+    try:
+        # For now return mock data or implement simple history fetch
+        # In a real app, this would query a daily_metrics table
+        return [
+            {"date": "2024-03-01", "yield": 95},
+            {"date": "2024-03-02", "yield": 92},
+            {"date": "2024-03-03", "yield": 98},
+            {"date": "2024-03-04", "yield": 94},
+            {"date": "2024-03-05", "yield": 96},
+            {"date": "2024-03-06", "yield": 93},
+            {"date": "2024-03-07", "yield": 97},
+        ]
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
 @router.get("/lookup/{order_number}", response_model=OrderLookupResponse)
 async def lookup_order(
     order_number: str,

@@ -91,6 +91,8 @@ class WorkingOrderListItem(BaseModel):
     product_code: Optional[str] = None
     purchase_order_number: Optional[str] = None
     config_id: Optional[str] = None # Support dynamic config resolution
+    transferred_qty: Decimal = Decimal('0') # Support batched quantity tracking
+
     
     class Config:
         from_attributes = True

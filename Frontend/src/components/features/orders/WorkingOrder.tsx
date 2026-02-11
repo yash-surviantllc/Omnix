@@ -7,7 +7,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { wipApi, type WorkingOrderCreate } from '@/lib/api/wip';
 import { purchaseOrdersApi, type PurchaseOrder } from '@/lib/api/purchase-orders';
 import { bomApi } from '@/lib/api/bom';
-import { stagesApi, type Stage, type ProductStageDetail } from '@/lib/api/stages';
+import { stagesApi, type Stage } from '@/lib/api/stages';
 
 type WorkingOrderProps = {
   language: 'en' | 'hi' | 'kn' | 'ta' | 'te' | 'mr' | 'gu' | 'pa';
@@ -15,9 +15,9 @@ type WorkingOrderProps = {
 
 interface WorkOrderOperation {
   name: string;
-  id: string; // Added ID for action handling
+  id: string;
   completedUnits: number;
-  transferredUnits: number; // Physical transfers via Stage Transfer
+  transferredUnits: number;
   status: 'pending' | 'in-progress' | 'completed' | 'on-hold';
   assignedTo: string;
   workstation: string;
@@ -26,9 +26,9 @@ interface WorkOrderOperation {
 
 interface WorkOrder {
   id: string;
-  workOrderNumber: string; // Added work order number
+  workOrderNumber: string;
   purchaseOrderId: string;
-  purchaseOrderNumber: string; // Added PO number
+  purchaseOrderNumber: string;
   product: string;
   operations: WorkOrderOperation[];
   assignedTo: string;
@@ -69,17 +69,17 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
 
   const [newWorkOrderData, setNewWorkOrderData] = useState<{
     purchase_order_id: string;
-    product_id?: string; // Added product_id
-    operation: string;
-    shift: string; // Added shift
-    scheduled_start: string; // Added scheduled_start
+    product_id?: string;
+    config_id: string;
+    shift: string;
+    scheduled_start: string;
     target_qty: string;
     unit: string;
     priority: 'Low' | 'Normal' | 'High' | 'Urgent';
     notes: string;
   }>({
     purchase_order_id: '',
-    operation: '',
+    config_id: 'default', // Default to 'default' configuration
     shift: 'Morning', // Default
     scheduled_start: '',
     target_qty: '',
@@ -92,8 +92,6 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
 
   // Dynamic Stages State
   const [availableStages, setAvailableStages] = useState<Stage[]>([]);
-  const [productStages, setProductStages] = useState<ProductStageDetail[]>([]);
-  const [loadingStages, setLoadingStages] = useState(false);
 
   // Track previous stages to detect changes
   const previousStagesRef = useRef<Stage[]>([]);
@@ -183,15 +181,11 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
   }, [newWorkOrderData.product_id, newWorkOrderData.target_qty]);
 
   // Fetch work orders from backend API
-  const fetchWorkOrders = useCallback(async (silent: boolean = false, explicitStages?: Stage[]) => {
+  const fetchWorkOrders = useCallback(async (silent: boolean = false, _explicitStages?: Stage[]) => {
     if (!silent) setLoading(true);
     try {
       // Fetch working orders directly without complex transformation
       const workingOrdersData = await wipApi.listWorkingOrders({ limit: 100 });
-      // Optimized: No longer need to fetch all Purchase Orders separately
-
-      // Use explicit stages if provided (for initial load), otherwise state
-      const currentStages = explicitStages || availableStages;
 
       // Safety check: Ensure responses are arrays
       if (!Array.isArray(workingOrdersData)) {
@@ -214,98 +208,37 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
       const transformedOrders: WorkOrder[] = Array.from(groupedOrders.values()).map((group) => {
         const firstOp = group[0]; // Use first operation for common details
 
-        // Use enhanced fields directly from ID
+        // Use enhanced fields directly from API
         const poOrderNumber = firstOp.purchase_order_number || 'Unknown PO';
         const productName = firstOp.product_name || 'Unknown Product';
 
-        // Create map of existing operations
-        const existingOpsMap = new Map();
-        group.forEach(wo => {
-          if (wo.operation) existingOpsMap.set(wo.operation, wo);
-        });
+        // Build operations list from actual API data
+        const operations: WorkOrderOperation[] = group.map(wo => {
+          const rawStatus = wo.status || 'pending';
+          const statusMap: Record<string, 'pending' | 'in-progress' | 'completed' | 'on-hold'> = {
+            'planned': 'pending',
+            'released': 'pending',
+            'pending': 'pending',
+            'in progress': 'in-progress',
+            'in-progress': 'in-progress',
+            'completed': 'completed',
+            'on hold': 'on-hold',
+            'on-hold': 'on-hold',
+            'cancelled': 'on-hold'
+          };
+          const normalizedStatus = rawStatus.toLowerCase();
+          const validStatus = statusMap[normalizedStatus] || 'pending';
 
-        // Get stage names from available stages (fallback to empty if not loaded yet)
-        const stageNames = currentStages.length > 0
-          ? currentStages.map(s => s.name)
-          : [];
-
-        // Merge with configured stages to ensure all stages are visible
-        const operations: WorkOrderOperation[] = stageNames.map((opName: string) => {
-          const wo = existingOpsMap.get(opName);
-
-          if (wo) {
-            // Existing operation
-            const rawStatus = wo.status || 'pending';
-            // Map database status to frontend status
-            const statusMap: Record<string, 'pending' | 'in-progress' | 'completed' | 'on-hold'> = {
-              'planned': 'pending',
-              'released': 'pending',
-              'pending': 'pending',
-              'in progress': 'in-progress',
-              'in-progress': 'in-progress',
-              'completed': 'completed',
-              'on hold': 'on-hold',
-              'on-hold': 'on-hold',
-              'cancelled': 'on-hold'
-            };
-            const normalizedStatus = rawStatus.toLowerCase();
-            const validStatus = statusMap[normalizedStatus] || 'pending';
-
-            return {
-              name: wo.operation,
-              id: wo.id,
-              completedUnits: Number(wo.completed_qty) || 0,
-              transferredUnits: 0,
-              status: validStatus,
-              assignedTo: wo.assigned_team || 'Unassigned',
-              workstation: wo.workstation_name || `${wo.operation} Station`,
-              targetUnits: Number(wo.target_qty) || 0
-            };
-          } else {
-            // Placeholder operation (Not Started)
-            return {
-              name: opName,
-              id: `placeholder-${opName}-${firstOp.id}`, // Temporary ID
-              completedUnits: 0,
-              transferredUnits: 0,
-              status: 'pending',
-              assignedTo: 'Unassigned',
-              workstation: 'TBD',
-              targetUnits: Number(firstOp.target_qty) || 0 // Assume same target as others
-            };
-          }
-        });
-
-        // Add any non-standard operations that might exist (custom operations)
-        group.forEach(wo => {
-          if (wo.operation && !stageNames.includes(wo.operation)) {
-            const rawStatus = wo.status || 'pending';
-            // Map database status to frontend status
-            const statusMap: Record<string, 'pending' | 'in-progress' | 'completed' | 'on-hold'> = {
-              'planned': 'pending',
-              'released': 'pending',
-              'pending': 'pending',
-              'in progress': 'in-progress',
-              'in-progress': 'in-progress',
-              'completed': 'completed',
-              'on hold': 'on-hold',
-              'on-hold': 'on-hold',
-              'cancelled': 'on-hold'
-            };
-            const normalizedStatus = rawStatus.toLowerCase();
-            const validStatus = statusMap[normalizedStatus] || 'pending';
-
-            operations.push({
-              name: wo.operation,
-              id: wo.id,
-              completedUnits: Number(wo.completed_qty) || 0,
-              transferredUnits: 0,
-              status: validStatus,
-              assignedTo: wo.assigned_team || 'Unassigned',
-              workstation: wo.workstation_name || `${wo.operation} Station`,
-              targetUnits: Number(wo.target_qty) || 0
-            });
-          }
+          return {
+            name: wo.operation,
+            id: wo.id,
+            completedUnits: Number(wo.completed_qty) || 0,
+            transferredUnits: Number(wo.transferred_qty) || 0,
+            status: validStatus,
+            assignedTo: wo.assigned_team || 'Unassigned',
+            workstation: wo.workstation_name || `${wo.operation} Station`,
+            targetUnits: Number(wo.target_qty) || 0
+          };
         });
 
         // Determine aggregate status
@@ -313,7 +246,7 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
         const statuses = operations.map(op => op.status);
         if (statuses.every(s => s === 'completed')) aggregateStatus = 'completed';
         else if (statuses.some(s => s === 'in-progress')) aggregateStatus = 'in-progress';
-        else if (statuses.some(s => s === 'completed')) aggregateStatus = 'in-progress'; // Some completed, rest pending/in-progress
+        else if (statuses.some(s => s === 'completed')) aggregateStatus = 'in-progress';
         else if (statuses.some(s => s === 'on-hold')) aggregateStatus = 'on-hold';
 
         // Calculate total stats
@@ -344,7 +277,7 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [availableStages, wipApi]);
+  }, [wipApi]);
 
   // Fetch purchase orders for the dropdown
   const fetchProductionOrders = async () => {
@@ -357,19 +290,15 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
   };
 
   // Fetch available stages
-  const fetchAvailableStages = async (silent: boolean = false): Promise<Stage[]> => {
-    if (!silent) setLoadingStages(true);
+  const fetchAvailableStages = async (_silent: boolean = false): Promise<Stage[]> => {
     try {
       const stages = await stagesApi.listStages(true); // Get only active stages
       if (Array.isArray(stages)) {
-        console.log('🔍 RAW stages from API:', stages.map(s => ({ name: s.name, seq: s.sequence_number })));
         const sortedStages = [...stages].sort((a, b) => a.sequence_number - b.sequence_number);
-        console.log('✅ SORTED stages:', sortedStages.map(s => ({ name: s.name, seq: s.sequence_number })));
         setAvailableStages(sortedStages);
         return sortedStages;
       } else {
         console.warn('Invalid stages data received:', stages);
-        // Don't clear stages on invalid data if we already have them
         if (availableStages.length === 0) {
           setAvailableStages([]);
         }
@@ -377,25 +306,15 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
       }
     } catch (err: any) {
       console.error('Failed to load stages:', err);
-      // Don't clear stages on error, keep stale data
       return [];
-    } finally {
-      if (!silent) setLoadingStages(false);
     }
   };
 
-  // Initial data fetch - SEQUENTIAL to avoid race condition
-  // Stages must be loaded and sorted BEFORE work orders are fetched
+  // Initial data fetch
   useEffect(() => {
     const initializeData = async () => {
-      // Step 1: Fetch production orders (independent)
       fetchProductionOrders();
-
-      // Step 2: Fetch and sort stages FIRST
       const sortedStages = await fetchAvailableStages();
-
-      // Step 3: THEN fetch work orders with the sorted stages
-      // Passing sortedStages explicitly avoids using stale state closure
       if (sortedStages && sortedStages.length > 0) {
         fetchWorkOrders(false, sortedStages);
       } else {
@@ -406,114 +325,20 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
     initializeData();
   }, []);
 
-  // Periodic refresh of stages to catch configuration changes (every 30 seconds)
-  // Use silent refresh to avoid loading glitch
+  // Periodic refresh of stages (every 30 seconds)
   useEffect(() => {
     const intervalId = setInterval(() => {
-      fetchAvailableStages(true); // Silent refresh
-    }, 30000); // 30 seconds
+      fetchAvailableStages(true);
+    }, 30000);
 
     return () => clearInterval(intervalId);
   }, []);
 
-  // Initial fetch of transferred quantities when work orders load
-  useEffect(() => {
-    const fetchInitialQuantities = async () => {
-      if (workOrders.length === 0 || availableStages.length === 0) return;
-
-      console.log('🔄 INITIAL FETCH: Fetching transferred quantities for', workOrders.length, 'work orders');
-
-      try {
-        const updates = await Promise.all(
-          workOrders.map(async (wo) => {
-            try {
-              const quantities = await wipApi.getTransferredQuantities(wo.id);
-              return { workOrderId: wo.id, quantities };
-            } catch (err) {
-              return { workOrderId: wo.id, quantities: {} };
-            }
-          })
-        );
-
-        setWorkOrders(prevOrders =>
-          prevOrders.map(order => {
-            const update = updates.find(u => u.workOrderId === order.id);
-            if (!update) return order;
-
-            return {
-              ...order,
-              operations: order.operations.map(op => {
-                const matchingStage = availableStages.find(s => s.name === op.name);
-                const stageId = matchingStage?.id || '';
-                const transferredQty = stageId && update.quantities[stageId] ? update.quantities[stageId] : 0;
-
-                return {
-                  ...op,
-                  transferredUnits: transferredQty
-                };
-              })
-            };
-          })
-        );
-      } catch (err) {
-        console.error('Error fetching initial transferred quantities:', err);
-      }
-    };
-
-    fetchInitialQuantities();
-  }, [workOrders.length, availableStages.length]);
-
-  // Periodic refresh of transferred quantities (every 10 seconds)
-  useEffect(() => {
-    console.log('⏰ Setting up periodic refresh interval for transferred quantities');
-    const intervalId = setInterval(async () => {
-      if (workOrders.length === 0 || availableStages.length === 0) return;
-
-      try {
-        const updates = await Promise.all(
-          workOrders.map(async (wo) => {
-            try {
-              const quantities = await wipApi.getTransferredQuantities(wo.id);
-              return { workOrderId: wo.id, quantities };
-            } catch (err) {
-              return { workOrderId: wo.id, quantities: {} };
-            }
-          })
-        );
-
-        setWorkOrders(prevOrders =>
-          prevOrders.map(order => {
-            const update = updates.find(u => u.workOrderId === order.id);
-            if (!update) return order;
-
-            return {
-              ...order,
-              operations: order.operations.map(op => {
-                const matchingStage = availableStages.find(s => s.name === op.name);
-                const stageId = matchingStage?.id || '';
-                const transferredQty = stageId && update.quantities[stageId] ? update.quantities[stageId] : 0;
-
-                return {
-                  ...op,
-                  transferredUnits: transferredQty
-                };
-              })
-            };
-          })
-        );
-      } catch (err) {
-        // Silent error - don't spam console
-      }
-    }, 10000); // 10 seconds
-
-    return () => clearInterval(intervalId);
-  }, []); // Empty dependency - interval runs independently
-
-  // Refresh stages when page becomes visible (user switches back to tab)
+  // Refresh stages when page becomes visible
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
-        fetchAvailableStages(true); // Silent refresh
+        fetchAvailableStages(true);
       }
     };
 
@@ -521,26 +346,21 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
   }, []);
 
-  // Detect stage changes and refetch work orders when stages actually change
+  // Detect stage changes and refetch work orders
   useEffect(() => {
-    // Skip on initial render (when previousStagesRef is empty)
     if (previousStagesRef.current.length === 0 && availableStages.length > 0) {
       previousStagesRef.current = availableStages;
       return;
     }
 
-    // Check if stages have actually changed
-    // Use ID-based comparison instead of index-based to handle resequencing
     const prevStageIds = new Set(previousStagesRef.current.map(s => s.id));
     const currentStageIds = new Set(availableStages.map(s => s.id));
 
-    // Check for added or removed stages
     const stageCountChanged = previousStagesRef.current.length !== availableStages.length;
     const stagesAddedOrRemoved =
       previousStagesRef.current.some(s => !currentStageIds.has(s.id)) ||
       availableStages.some(s => !prevStageIds.has(s.id));
 
-    // Check for sequence or name changes (create maps by ID for comparison)
     const prevStageMap = new Map(previousStagesRef.current.map(s => [s.id, s]));
     const sequenceOrNameChanged = availableStages.some(currentStage => {
       const prevStage = prevStageMap.get(currentStage.id);
@@ -553,25 +373,17 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
     const stagesChanged = stageCountChanged || stagesAddedOrRemoved || sequenceOrNameChanged;
 
     if (stagesChanged && availableStages.length > 0) {
-      console.log('Stages changed, refetching work orders silently...', {
-        stageCountChanged,
-        stagesAddedOrRemoved,
-        sequenceOrNameChanged,
-        previousCount: previousStagesRef.current.length,
-        currentCount: availableStages.length
-      });
-      fetchWorkOrders(true, availableStages); // Silent refetch to avoid loading glitch
+      fetchWorkOrders(true, availableStages);
       previousStagesRef.current = availableStages;
     }
-  }, [availableStages]);
+  }, [availableStages, fetchWorkOrders]);
 
-  // Check for pre-selected PO from Purchase Orders screen (via sessionStorage)
+  // Check for pre-selected PO from Purchase Orders screen
   useEffect(() => {
     const storedPO = sessionStorage.getItem('createWorkingOrderForPO');
     if (storedPO) {
       try {
         const poData = JSON.parse(storedPO);
-        // Pre-fill the form and open the modal
         setNewWorkOrderData(prev => ({
           ...prev,
           purchase_order_id: poData.id,
@@ -579,11 +391,8 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
           unit: poData.unit || 'pcs'
         }));
 
-        // Fetch items for this PO so the second dropdown works
         fetchPOItems(poData.id);
-
         setShowNewWorkOrderModal(true);
-        // Clear the sessionStorage after using it
         sessionStorage.removeItem('createWorkingOrderForPO');
       } catch (err) {
         console.error('Failed to parse stored PO data:', err);
@@ -594,6 +403,7 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
 
   // Get unique purchase order IDs for filter dropdown
   const uniquePOs = [...new Set(workOrders.map(wo => wo.purchaseOrderId))];
+
 
   const translations = {
     en: {
@@ -919,7 +729,7 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
 
     try {
       if (action === 'start') {
-        // Find operation to start (Planned, Released, or On Hold, or Pending)
+        // Find operation to start (Planned, Released, On Hold, or Pending)
         const op = order.operations.find(op => {
           const statusLower = op.status?.toLowerCase();
           return statusLower === 'planned' || statusLower === 'released' || statusLower === 'on hold' || statusLower === 'pending';
@@ -927,52 +737,46 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
 
         if (!op) {
           console.warn("No suitable operation found to start");
+          alert(language === 'en' ? 'No operation available to start' : 'शुरू करने के लिए कोई ऑपरेशन उपलब्ध नहीं है');
           return;
         }
 
-        // Use startOperation endpoint instead of generic update
-        // This handles "ghost" stages (placeholders) correctly by creating them
+        // Use startOperation endpoint (works with work order number + operation name)
         await wipApi.startOperation(order.workOrderNumber, op.name);
 
-      } else {
-        // Handle Pause / Complete using Update endpoint (requires valid ID)
-        let targetOpId: string | null = null;
-        let status: 'Pending' | 'In Progress' | 'Completed' | 'On Hold' | 'Cancelled';
-        let updateData: any = {};
+      } else if (action === 'pause') {
+        // Find in-progress operation
+        const op = order.operations.find(op => op.status?.toLowerCase() === 'in-progress' || op.status?.toLowerCase() === 'in progress');
 
-        if (action === 'pause') {
-          const op = order.operations.find(op => op.status?.toLowerCase() === 'in progress');
-          if (op) {
-            targetOpId = op.id;
-            status = 'On Hold';
-            updateData = { status };
-          }
-        } else if (action === 'complete') {
-          const op = order.operations.find(op => op.status?.toLowerCase() === 'in progress');
-          if (op) {
-            targetOpId = op.id;
-            status = 'Completed';
-            updateData = {
-              status,
-              actual_end: new Date().toISOString(),
-              completed_qty: op.targetUnits // Auto-fill quantity
-            };
-          }
-        }
-
-        if (!targetOpId || targetOpId.startsWith('placeholder-')) {
-          console.warn("Invalid operation ID for pause/complete:", targetOpId);
+        if (!op) {
+          console.warn("No in-progress operation found to pause");
+          alert(language === 'en' ? 'No operation in progress to pause' : 'रोकने के लिए कोई ऑपरेशन प्रगति में नहीं है');
           return;
         }
 
-        await wipApi.updateWorkingOrder(targetOpId, updateData);
+        // Use dedicated pauseOperation endpoint (same pattern as start)
+        await wipApi.pauseOperation(order.workOrderNumber, op.name);
+
+      } else if (action === 'complete') {
+        // Find in-progress operation
+        const op = order.operations.find(op => op.status?.toLowerCase() === 'in-progress' || op.status?.toLowerCase() === 'in progress');
+
+        if (!op) {
+          console.warn("No in-progress operation found to complete");
+          alert(language === 'en' ? 'No operation in progress to complete' : 'पूर्ण करने के लिए कोई ऑपरेशन प्रगति में नहीं है');
+          return;
+        }
+
+        // Use dedicated completeOperation endpoint (same pattern as start)
+        await wipApi.completeOperation(order.workOrderNumber, op.name, op.targetUnits);
       }
 
       // Refresh the work orders list
       await fetchWorkOrders();
     } catch (err: any) {
       console.error('Action failed:', err);
-      alert(`❌ ${language === 'en' ? 'Error' : 'त्रुटि'}: ${err?.detail || err?.message || 'Failed to update work order'}`);
+      const errorMessage = err?.detail || err?.message || 'Failed to update work order';
+      alert(`${language === 'en' ? 'Error' : 'त्रुटि'}: ${errorMessage}`);
     }
   };
 
@@ -1006,7 +810,7 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
         const materials = await bomApi.getMaterialsWithShortages(bom.id, qty);
         console.log("BOM Materials Response:", materials);
 
-        // Map to local state - PARANOID CHECK: Ensure materials is an array
+        // Map to local state
         const safeMaterials = Array.isArray(materials) ? materials : [];
 
         const reqs: BOMRequirement[] = safeMaterials.map(m => ({
@@ -1032,10 +836,10 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
   }, [newWorkOrderData.product_id, newWorkOrderData.target_qty]);
 
   const handleCreateWorkOrder = async () => {
-    if (!newWorkOrderData.purchase_order_id || !newWorkOrderData.operation || !newWorkOrderData.target_qty) {
+    if (!newWorkOrderData.purchase_order_id || !newWorkOrderData.config_id || !newWorkOrderData.target_qty) {
       alert(language === 'en'
-        ? '⚠️ Please fill in required fields (Purchase Order, Operation, Target Quantity)'
-        : '⚠️ कृपया आवश्यक फ़ील्ड भरें (खरीद आदेश, ऑपरेशन, लक्ष्य मात्रा)');
+        ? 'Please fill in required fields (Purchase Order, Config, Target Quantity)'
+        : 'कृपया आवश्यक फ़ील्ड भरें (खरीद आदेश, कॉन्फ़िग, लक्ष्य मात्रा)');
       return;
     }
 
@@ -1044,7 +848,7 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
       const payload: WorkingOrderCreate = {
         purchase_order_id: newWorkOrderData.purchase_order_id,
         product_id: newWorkOrderData.product_id, // Pass product_id
-        operation: newWorkOrderData.operation,
+        config_id: newWorkOrderData.config_id, // WIP Stage Configuration
         shift: newWorkOrderData.shift, // Pass shift
         scheduled_start: newWorkOrderData.scheduled_start ? newWorkOrderData.scheduled_start : undefined, // Check if empty
         workstation_name: 'Pending Assignment', // Default
@@ -1057,12 +861,12 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
 
       const createdOrder = await wipApi.createWorkingOrder(payload);
 
-      alert(`✅ ${language === 'en' ? 'Work Order Created!' : 'कार्य आदेश बनाया गया!'}\n\n${language === 'en' ? 'Work Order Number' : 'कार्य आदेश नंबर'}: ${createdOrder.work_order_number}`);
+      alert(`${language === 'en' ? 'Work Order Created!' : 'कार्य आदेश बनाया गया!'}\n\n${language === 'en' ? 'Work Order Number' : 'कार्य आदेश नंबर'}: ${createdOrder.work_order_number}`);
 
       setShowNewWorkOrderModal(false);
       setNewWorkOrderData({
         purchase_order_id: '',
-        operation: '',
+        config_id: 'default',
         shift: 'Morning',
         scheduled_start: '',
         target_qty: '',
@@ -1074,7 +878,7 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
       setPoItems([]);
       fetchWorkOrders(); // Refresh the list
     } catch (err: any) {
-      alert(`❌ ${language === 'en' ? 'Error creating work order' : 'कार्य आदेश बनाने में त्रुटि'}: ${err?.detail || err?.message || 'Unknown error'}`);
+      alert(`${language === 'en' ? 'Error creating work order' : 'कार्य आदेश बनाने में त्रुटि'}: ${err?.detail || err?.message || 'Unknown error'}`);
     } finally {
       setIsCreating(false);
     }
@@ -1407,27 +1211,16 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
 
                         // Load stages for this product
                         if (selectedItem.product_id) {
-                          setLoadingStages(true);
                           try {
-                            const productStagesResponse = await stagesApi.getProductStages(selectedItem.product_id);
-                            if (productStagesResponse && Array.isArray(productStagesResponse.stages)) {
-                              setProductStages(productStagesResponse.stages);
-                            } else {
-                              // Fallback if stages are missing/invalid in response
-                              setProductStages([]);
-                            }
+                            await stagesApi.getProductStages(selectedItem.product_id);
+                            // Stages are loaded but we currently use availableStages for UI
                           } catch (err) {
                             console.error('Failed to load product stages:', err);
-                            // Fallback to default available stages (cast to ProductStageDetail format)
-                            setProductStages(availableStages.map(s => ({
-                              ...s,
-                              is_required: true,
-                              is_active: s.is_active
-                            })));
                           } finally {
-                            setLoadingStages(false);
+                            // Done loading product stages
                           }
                         }
+
                       } else {
                         console.warn("Item not found in poItems for code:", selectedCode);
                       }
@@ -1443,29 +1236,25 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
                 </div>
               )}
 
-              {/* Operation */}
+              {/* WIP Stage Configuration */}
               <div>
                 <label className="block text-sm font-medium text-zinc-700 mb-1">
-                  {t.operation} <span className="text-red-500">*</span>
+                  {language === 'en' ? 'WIP Stage Configuration' : 'WIP स्टेज कॉन्फ़िगरेशन'} <span className="text-red-500">*</span>
                 </label>
                 <select
-                  value={newWorkOrderData.operation}
-                  onChange={(e) => setNewWorkOrderData(prev => ({ ...prev, operation: e.target.value }))}
+                  value={newWorkOrderData.config_id}
+                  onChange={(e) => setNewWorkOrderData(prev => ({ ...prev, config_id: e.target.value }))}
                   className="w-full p-2 border border-zinc-300 rounded-md"
-                  disabled={loadingStages}
                 >
-                  <option value="">{language === 'en' ? 'Select Operation...' : 'ऑपरेशन चुनें...'}</option>
-                  {(productStages.length > 0 ? productStages : availableStages).map((stage) => (
-                    <option key={stage.id} value={stage.name}>
-                      {stage.name}
-                    </option>
-                  ))}
+                  <option value="default">{language === 'en' ? 'Default (Standard production flow)' : 'डिफ़ॉल्ट (मानक उत्पादन प्रवाह)'}</option>
+                  <option value="config_2">{language === 'en' ? 'Type 2 (Secondary flow)' : 'टाइप 2 (द्वितीयक प्रवाह)'}</option>
+                  <option value="config_3">{language === 'en' ? 'Type 3 (Tertiary flow)' : 'टाइप 3 (तृतीयक प्रवाह)'}</option>
                 </select>
-                {loadingStages && (
-                  <p className="text-xs text-zinc-500 mt-1">
-                    {language === 'en' ? 'Loading stages...' : 'स्टेज लोड हो रहे हैं...'}
-                  </p>
-                )}
+                <p className="text-xs text-zinc-500 mt-1">
+                  {language === 'en'
+                    ? 'Select the WIP stage configuration for this work order. This determines the production workflow stages.'
+                    : 'इस कार्य आदेश के लिए WIP स्टेज कॉन्फ़िगरेशन चुनें। यह उत्पादन वर्कफ़्लो स्टेज निर्धारित करता है।'}
+                </p>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
