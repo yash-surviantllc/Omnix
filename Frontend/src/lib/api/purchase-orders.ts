@@ -31,6 +31,8 @@ export interface PurchaseOrder {
   stage_progress?: StageProgress[];
   pending_shortages?: SkuShortageSummary[];
   qr_code?: string;
+  shift_number?: string;
+  bom_id?: string;
 }
 
 export interface POItemResponse {
@@ -74,6 +76,7 @@ export interface CreatePurchaseOrderData {
   production_stage?: string;
   start_date?: string; // Renamed from start_time
   end_date?: string;   // Renamed from end_time
+  shift_number?: string;
 }
 
 export interface UpdatePurchaseOrderData {
@@ -107,6 +110,7 @@ export interface CreateMultiSkuOrderData {
   start_date?: string; // Renamed from start_time
   end_date?: string;   // Renamed from end_time
   items: MultiSkuOrderItem[];
+  shift_number?: string;
 }
 
 export interface MaterialRequirement {

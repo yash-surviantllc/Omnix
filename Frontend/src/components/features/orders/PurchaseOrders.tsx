@@ -799,6 +799,7 @@ export function PurchaseOrders({ language, onNavigate }: PurchaseOrdersProps) {
         notes: newOrderData.notes || undefined,
         start_date: newOrderData.startDate ? newOrderData.startDate : undefined,
         end_date: newOrderData.endDate ? newOrderData.endDate : undefined,
+        shift_number: newOrderData.shift || undefined,
         items: itemsToCreate
       });
 

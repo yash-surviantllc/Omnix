@@ -65,6 +65,9 @@ export interface WorkingOrder {
   notes: string | null;
   created_at: string;
   updated_at: string;
+  created_by?: string;
+  product_id?: string;
+  shift?: string;
   // Enhanced fields
   product_name?: string;
   product_code?: string;
@@ -420,7 +423,7 @@ export const wipApi = {
   },
 
   recordWIPTransfer: async (payload: WIPTransferCreatePayload): Promise<WIPTransferResponse> => {
-    const response = await apiClient.post<WIPTransferResponse>('/wip-board/transfer/', payload);
+    const response = await apiClient.post<WIPTransferResponse>('/material-transfers/wip-stage-transfer', payload);
     apiClient.invalidateCache('/wip-board/board');
     apiClient.invalidateCache('/wip/working-orders');
     return response;

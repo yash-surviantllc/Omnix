@@ -17,6 +17,7 @@ interface NewOrderData {
   dueDate: string;
   priority: string;
   notes: string;
+  shift: string;
   startDate?: string;
   endDate?: string;
 }
@@ -308,6 +309,23 @@ export function NewOrderModal({
                     <option value="Normal">{t.normal}</option>
                     <option value="High">{t.high}</option>
                     <option value="Urgent">{t.urgent}</option>
+                  </select>
+                </div>
+
+                {/* Shift Selection */}
+                <div className="space-y-1.5">
+                  <label className="block text-sm font-medium text-zinc-700">
+                    {t.shiftNumber || 'Shift'}
+                  </label>
+                  <select
+                    value={orderData.shift}
+                    onChange={(e) => updateField('shift', e.target.value)}
+                    className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-sm h-10 bg-white"
+                  >
+                    <option value="">Select Shift...</option>
+                    <option value="Shift 1">{t.shift1 || 'Shift 1 (6 AM - 2 PM)'}</option>
+                    <option value="Shift 2">{t.shift2 || 'Shift 2 (2 PM - 10 PM)'}</option>
+                    <option value="Shift 3">{t.shift3 || 'Shift 3 (10 PM - 6 AM)'}</option>
                   </select>
                 </div>
               </div>
