@@ -603,6 +603,42 @@ class MaterialTransferService:
                         # Remove if quantity reaches 0
                         db.table('order_stage_tracking').delete().eq('id', existing_from.data[0]['id']).execute()
             
+            # --- PO PROGRESS PROPAGATION LOGIC ---
+            # If destination stage is 'DISPATCH', update the parent Purchase Order's completion qty
+            if to_stage_name.upper() == 'DISPATCH':
+                # 1. Fetch parent PO via WO
+                # (Note: we already have wo['purchase_order_id'] from earlier)
+                po_id = wo.get('purchase_order_id')
+                if po_id:
+                    po_res = db.table('purchase_orders').select('id, quantity, quantity_completed').eq('id', po_id).single().execute()
+                    if po_res.data:
+                        po = po_res.data
+                        current_comp = Decimal(str(po.get('quantity_completed') or 0))
+                        target_comp = Decimal(str(po.get('quantity') or 0))
+                        transfer_qty = Decimal(str(wip_transfer.quantity))
+                        
+                        new_comp = current_comp + transfer_qty
+                        
+                        # Update PO quantity_completed
+                        db.table('purchase_orders').update({
+                            'quantity_completed': float(new_comp),
+                            'updated_at': datetime.utcnow().isoformat()
+                        }).eq('id', po_id).execute()
+                        
+                        # Check for PO completion
+                        if new_comp >= target_comp:
+                            from app.services.purchase_order_service import purchase_order_service
+                            from app.schemas.purchase_order import OrderStatusUpdate
+                            
+                            await purchase_order_service.update_order_status(
+                                po_id,
+                                OrderStatusUpdate(
+                                    status='Completed', 
+                                    notes=f"Auto-completed via WIP Transfer to DISPATCH (Transferred {transfer_qty} units)"
+                                ),
+                                user_id
+                            )
+
             # Update main work order operation (for legacy dashboard compatibility)
             # This fixes the dashboard count without using the broken order_stage_tracking table
             try:

@@ -81,16 +81,6 @@ async def get_stage_metrics_detail(
     return await wip_board_service.get_stage_metrics_detail(stage_id, history_days=days)
 
 
-@router.post("/transfer", response_model=WIPTransferResponse, status_code=201)
-async def record_wip_transfer(
-    transfer_data: WIPTransferCreate,
-    current_user: UserResponse = Depends(require_role("Supervisor")),
-):
-    try:
-        return await wip_board_service.record_transfer(transfer_data, current_user.id)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
 
 @router.get("/bottlenecks", response_model=List[BottleneckResponse])
 async def list_bottlenecks(

@@ -378,15 +378,14 @@ class PurchaseOrderService:  # Changed from ProductionOrderService
             'bom_id': bom_id,
             'notes': order_data.notes,
             'customer_name': order_data.customer_name,
-            # 'shift_number': order_data.shift_number, # Column does not exist in DB
+            'shift_number': order_data.shift_number,
+            'start_date': order_data.start_date.isoformat() if order_data.start_date else None,
+            'end_date': order_data.end_date.isoformat() if order_data.end_date else None,
             'created_by': user_id,
             # 'updated_by': user_id,
             'created_at': datetime.utcnow().isoformat(),
             'updated_at': datetime.utcnow().isoformat()
         }
-        
-        # Note: start_date and end_date are accepted by the schema but not stored in DB
-        # (database columns don't exist yet - would need migration to add them)
         
         # Insert order
         order_result = db.table('purchase_orders').insert(order_dict).execute()
@@ -459,31 +458,25 @@ class PurchaseOrderService:  # Changed from ProductionOrderService
             bom_id = bom_result.data[0]['id']
 
 
-            # bom_items = db.table('bom_materials').select('*').eq('bom_id', bom_id).execute()
-            # if not bom_items.data:
-            #    raise ValidationException(detail=f"BOM for product {product_row.get('name')} is empty. Please add materials to the BOM.")
-            
-            # Fetch BOM items to calculate requirements
-            bom_items = db.table('bom_materials').select('*').eq('bom_id', bom_id).execute()
-
-
-            item_quantity = float(item.quantity)
-            
-            # Calculate validation totals
-            for bom_item in bom_items.data:
-                material_id = bom_item['material_id']
-                bom_quantity = float(bom_item['quantity'])
-                scrap_pct = float(bom_item.get('scrap_percentage', 0))
-                required_qty = bom_quantity * item_quantity * (1.0 + scrap_pct / 100.0)
+            # Use BOM Service for accurate calculation (handles batch size, scrap, etc.)
+            # This replaces the manual and potentially incorrect calculation
+            try:
+                mat_reqs = await bom_service.calculate_material_requirements(product_row['id'], Decimal(str(item.quantity)))
                 
-                if material_id not in material_totals:
-                    material_totals[material_id] = {
-                        'required_qty': required_qty,
-                        'unit': bom_item['unit'],
-                        'scrap_percentage': scrap_pct # Keep track of scrap for potential future use or consistency
-                    }
-                else:
-                    material_totals[material_id]['required_qty'] += required_qty
+                for req in mat_reqs:
+                    material_id = req.material_id
+                    required_qty = float(req.required_quantity)
+                    
+                    if material_id not in material_totals:
+                        material_totals[material_id] = {
+                            'required_qty': required_qty,
+                            'unit': req.unit,
+                        }
+                    else:
+                        material_totals[material_id]['required_qty'] += required_qty
+            except Exception as e:
+                print(f"Error calculating material requirements for {product_row.get('code')}: {e}")
+                raise ValidationException(detail=f"Failed to calculate material requirements for {product_row.get('code')}: {e}")
 
             sku_entries.append({
                 'product': product_row,
@@ -528,9 +521,6 @@ class PurchaseOrderService:  # Changed from ProductionOrderService
             'created_at': datetime.utcnow().isoformat(),
             'updated_at': datetime.utcnow().isoformat()
         }
-
-        # Note: start_date and end_date are accepted by the schema but not stored in DB
-        # (database columns don't exist yet - would need migration to add them)
 
         order_result = db.table('purchase_orders').insert(order_dict).execute()
         created_order = order_result.data[0]
@@ -620,38 +610,34 @@ class PurchaseOrderService:  # Changed from ProductionOrderService
         quantity: Decimal,
         bom_id: str
     ) -> None:
-        """Calculate and save material requirements for an order."""
+        """Calculate and save material requirements for an order using BOMService."""
         db = get_db()
         
-        # Get BOM items
-        bom_items = db.table('bom_materials').select('*').eq('bom_id', bom_id).execute()
-        
-        for item in bom_items.data:
-            # Calculate required quantity
-            required_qty = Decimal(str(item['quantity'])) * quantity
+        try:
+            # Use BOM Service for accurate calculation
+            mat_reqs = await bom_service.calculate_material_requirements(product_id, quantity)
             
-            # Get current stock
-            stock = db.table('inventory').select('*').eq('product_id', item['material_id']).execute()
-            available_qty = Decimal('0')
-            
-            if stock.data:
-                available_qty = Decimal(str(stock.data[0].get('quantity', 0)))
-            
-            # Create material requirement
-            material_data = {
-                'purchase_order_id': order_id,
-                'product_id': item['material_id'],
-                'required_qty': float(required_qty),
-                'allocated_qty': 0.0,
-                'issued_qty': 0.0,
-                'unit': item.get('unit', 'pcs'),
-                'availability_status': 'Shortage',
-                'created_at': datetime.utcnow().isoformat(),
-                'updated_at': datetime.utcnow().isoformat()
-            }
-            
-            # Insert material requirement
-            db.table('order_materials').insert(material_data).execute()
+            for req in mat_reqs:
+                # Create material requirement
+                material_data = {
+                    'purchase_order_id': order_id,
+                    'product_id': req.material_id,
+                    'required_qty': float(req.required_quantity),
+                    'allocated_qty': 0.0,
+                    'issued_qty': 0.0,
+                    'unit': req.unit,
+                    'availability_status': 'Shortage',
+                    'created_at': datetime.utcnow().isoformat(),
+                    'updated_at': datetime.utcnow().isoformat()
+                }
+                
+                # Insert material requirement
+                db.table('order_materials').insert(material_data).execute()
+                
+        except Exception as e:
+            print(f"Error checking material requirements: {e}")
+            # Don't fail the order creation, just log it. 
+            # Requirements can be recalculated later or added manually if needed.
     
     @staticmethod
     async def get_order_by_id(order_id: str) -> PurchaseOrderResponse:

@@ -279,42 +279,6 @@ class WIPBoardService:
         self, payload: WIPTransferCreate, user_id: str
     ) -> WIPTransferResponse:
         db = get_db()
-        now = datetime.utcnow()
-
-        transfer_number = self._generate_transfer_number(db, now.year)
-        insert_data = payload.model_dump(mode='json')
-        insert_data.update(
-            {
-                "transfer_number": transfer_number,
-                "transferred_by": user_id,
-                "status": "Completed",
-                "actual_time_minutes": self._calculate_actual_time_minutes(
-                    payload.start_time, payload.end_time
-                ),
-                "created_at": now.isoformat(),
-                "updated_at": now.isoformat(),
-            }
-        )
-
-        # Update tracking tables
-        self._apply_stage_tracking_update(db, insert_data)
-
-        result = db.table("wip_transfers").insert(insert_data).execute()
-        if not result.data:
-            raise ValueError("Failed to record transfer")
-
-        transfer = WIPTransferResponse(**result.data[0])
-
-        # Broadcast to websocket clients
-        await self._broadcast_stage(transfer.to_stage_id)
-        if transfer.from_stage_id:
-            await self._broadcast_stage(transfer.from_stage_id)
-        await self._broadcast_transfer(transfer)
-
-        # ---------------------------------------------------------
-        # UPDATE PARENT PURCHASE ORDER LOGIC
-        # ---------------------------------------------------------
-        # Check if destination stage is 'Final' (e.g. Code='DISPATCH' or by config).
         # For now, we hardcode 'DISPATCH' as the completion stage or any stage updates progress.
         
         # 1. Fetch destination stage details to check code

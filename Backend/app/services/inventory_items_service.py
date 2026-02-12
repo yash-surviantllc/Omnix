@@ -168,17 +168,20 @@ class InventoryItemsService:
         
         # Create item
         item_dict = item_data.model_dump()
-        item_dict['quantity'] = float(item_data.quantity)
+        # FIX: Insert with 0 quantity first. The transaction trigger will update it to the correct value.
+        # This prevents double counting (Insert + Trigger Update).
+        target_quantity = float(item_data.quantity)
+        item_dict['quantity'] = 0.0 
         item_dict['reorder_level'] = float(item_data.reorder_level)
         item_dict['unit_cost'] = float(item_data.unit_cost)
         item_dict['created_by'] = user_id
         
-        # Determine initial status
-        if item_data.quantity == 0:
+        # Determine initial status based on TARGET quantity
+        if target_quantity == 0:
             item_dict['status'] = 'Out of Stock'
-        elif item_data.quantity <= item_data.reorder_level * Decimal('0.5'):
+        elif target_quantity <= float(item_data.reorder_level) * 0.5:
             item_dict['status'] = 'Critical'
-        elif item_data.quantity <= item_data.reorder_level:
+        elif target_quantity <= float(item_data.reorder_level):
             item_dict['status'] = 'Low Stock'
         else:
             item_dict['status'] = 'Sufficient'
@@ -214,20 +217,28 @@ class InventoryItemsService:
             if product_id and item_data.location:
                 # Find or Create Location
                 location_id = None
-                loc_res = db.table('locations').select('id').eq('name', item_data.location).execute()
+                
+                # Try finding by CODE first (more reliable)
+                loc_code = item_data.location.upper().replace(' ', '-').strip()
+                loc_res = db.table('locations').select('id').eq('code', loc_code).execute()
+                
                 if loc_res.data:
                     location_id = loc_res.data[0]['id']
                 else:
-                    # Create Location (Default to Store)
-                    loc_code = item_data.location.upper().replace(' ', '-').strip()
-                    new_loc = db.table('locations').insert({
-                        'name': item_data.location,
-                        'code': loc_code,
-                        'type': 'store',
-                        'is_active': True
-                    }).execute()
-                    if new_loc.data:
-                        location_id = new_loc.data[0]['id']
+                    # Try finding by NAME
+                    loc_res_name = db.table('locations').select('id').ilike('name', item_data.location).execute()
+                    if loc_res_name.data:
+                        location_id = loc_res_name.data[0]['id']
+                    else:
+                        # Create Location
+                        new_loc = db.table('locations').insert({
+                            'name': item_data.location,
+                            'code': loc_code,
+                            'type': 'store',
+                            'is_active': True
+                        }).execute()
+                        if new_loc.data:
+                            location_id = new_loc.data[0]['id']
                 
                 # Update Inventory Table
                 if location_id:
@@ -235,8 +246,9 @@ class InventoryItemsService:
                     if inv_res.data:
                         # Update
                         curr = Decimal(str(inv_res.data[0]['available_qty']))
+                        # We add target_quantity because we are adding stock
                         db.table('inventory').update({
-                            'available_qty': float(curr + item_data.quantity),
+                            'available_qty': float(curr + Decimal(str(target_quantity))),
                             'updated_at': datetime.utcnow().isoformat()
                         }).eq('id', inv_res.data[0]['id']).execute()
                     else:
@@ -244,7 +256,7 @@ class InventoryItemsService:
                         db.table('inventory').insert({
                             'product_id': product_id,
                             'location_id': location_id,
-                            'available_qty': float(item_data.quantity),
+                            'available_qty': float(target_quantity),
                             'allocated_qty': 0
                         }).execute()
         except Exception as e:
@@ -252,36 +264,37 @@ class InventoryItemsService:
             # Continue - do not fail the request just because sync failed (though it's bad)
 
         # Create initial transaction
-        if item_data.quantity > 0:
+        # This will trigger the update to inventory_items.quantity
+        if target_quantity > 0:
             await InventoryItemsService._log_transaction(
                 inventory_item_id=item['id'],
                 transaction_type='IN',
                 quantity_before=Decimal('0'),
-                quantity_change=item_data.quantity,
-                quantity_after=item_data.quantity,
+                quantity_change=Decimal(str(target_quantity)),
+                quantity_after=Decimal(str(target_quantity)),
                 unit=item_data.unit,
                 unit_cost=item_data.unit_cost,
                 reason='Initial stock entry',
                 user_id=user_id
             )
         
-        # Construct Response manually to avoid get_inventory_item lookup failure immediately after create
-        # (Consistency lag might cause get_inventory_item to miss the product link we just made)
+        # Construct Response manually
+        # Use target_quantity for quantity and free_quantity
         return InventoryItemResponse(
             id=item['id'],
             material_code=item['material_code'],
             material_name=item['material_name'],
             category=item.get('category'),
-            quantity=Decimal(str(item['quantity'])),
+            quantity=Decimal(str(target_quantity)), # Return the target quantity (what user expects)
             unit=item['unit'],
             location=item.get('location'),
             reorder_level=Decimal(str(item.get('reorder_level', 0))),
-            status=item['status'],
+            status=item['status'], # Status uses target quantity login
             unit_cost=Decimal(str(item['unit_cost'])),
             description=item.get('description'),
-            free_quantity=Decimal(str(item['quantity'])), # Initially free = total (allocations are 0)
+            free_quantity=Decimal(str(target_quantity)), # Initially free = total
             allocated_quantity=Decimal('0'),
-            total_value=Decimal(str(item['quantity'])) * Decimal(str(item['unit_cost'])),
+            total_value=Decimal(str(target_quantity)) * Decimal(str(item['unit_cost'])),
             created_at=datetime.fromisoformat(item['created_at'].replace('Z', '+00:00')),
             updated_at=datetime.fromisoformat(item['updated_at'].replace('Z', '+00:00')),
             created_by=item.get('created_by'),

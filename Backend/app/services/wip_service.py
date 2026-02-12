@@ -98,45 +98,12 @@ class WIPService:
         # Phase 1: Validation (no DB changes yet)
         # Phase 2: Allocation (with rollback tracking)
         
-        # Get Main Store Location
-        try:
-            loc_res = db.table('locations').select('id').eq('code', 'MAIN-STORE').single().execute()
-            if loc_res.data:
-                main_store_id = loc_res.data['id']
-            else:
-                # Auto-create Main Store if it doesn't exist
-                logger.info("MAIN-STORE location not found. Auto-creating...")
-                new_loc = db.table('locations').insert({
-                    'code': 'MAIN-STORE',
-                    'name': 'Main Warehouse',
-                    'type': 'Internal',
-                    'is_active': True
-                }).execute()
-                if new_loc.data:
-                    main_store_id = new_loc.data[0]['id']
-                else:
-                    raise ValidationException(detail="Failed to auto-create Main Store location.")
-        except Exception as e:
-            logger.error(f"Failed to get/create MAIN-STORE location: {e}")
-            # Try to use any available location as fallback
-            try:
-                fallback = db.table('locations').select('id').limit(1).execute()
-                if fallback.data:
-                    main_store_id = fallback.data[0]['id']
-                    logger.warning(f"Using fallback location ID: {main_store_id}")
-                else:
-                    # Create one if absolutely nothing exists
-                    new_loc = db.table('locations').insert({
-                        'code': 'MAIN-STORE',
-                        'name': 'Main Warehouse',
-                        'type': 'Internal',
-                        'is_active': True
-                    }).execute()
-                    main_store_id = new_loc.data[0]['id']
-            except Exception as inner_e:
-                # Delete WO as last resort
-                db.table('work_orders').delete().eq('id', wo_id).execute()
-                raise ValidationException(detail=f"Cannot allocate materials: No inventory locations configured. {str(e)}")
+        # 4. Inventory Allocation (Real-time) - PRODUCTION-SAFE VERSION
+        # Phase 1: Validation (no DB changes yet)
+        # Phase 2: Allocation (with rollback tracking)
+        
+        # NOTE: We no longer force 'MAIN-STORE'. We will look for stock in ANY valid store location per material.
+        # This fixes the issue where frontend adds to 'RM Store A' but backend only looks in 'MAIN-STORE'.
         
         # Calculate Requirements
         try:
@@ -150,6 +117,25 @@ class WIPService:
             logger.info(f"Inventory: No BOM materials found for product {product_id}")
             # This might be valid for some products, continue without allocation
         else:
+            # Fetch all valid STORE locations
+            try:
+                store_locs = db.table('locations').select('id').eq('type', 'store').eq('is_active', True).execute()
+                store_ids = [loc['id'] for loc in store_locs.data] if store_locs.data else []
+                
+                if not store_ids:
+                    # Fallback: maintain old behavior of creating MAIN-STORE if NO stores exist
+                    logger.warning("No STORE locations found. Auto-creating MAIN-STORE.")
+                    new_loc = db.table('locations').insert({
+                        'code': 'MAIN-STORE',
+                        'name': 'Main Warehouse',
+                        'type': 'store',
+                        'is_active': True
+                    }).execute()
+                    if new_loc.data:
+                        store_ids = [new_loc.data[0]['id']]
+            except Exception as e:
+                logger.error(f"Error fetching store locations: {e}")
+                raise ValidationException(detail="System error: Could not verify storage locations.")
             # PHASE 1: VALIDATION - Check all materials before allocating any
             validation_errors = []
             material_details = []
@@ -162,37 +148,60 @@ class WIPService:
                 except:
                     material_name = f"Material {req.material_id}"
                 
-                # Query inventory
-                inv_query = db.table('inventory').select('id, allocated_qty, available_qty').eq(
+                # Query inventory for this material in ANY valid store
+                inv_query = db.table('inventory').select('id, location_id, allocated_qty, available_qty').eq(
                     'product_id', req.material_id
-                ).eq('location_id', main_store_id)
+                ).in_('location_id', store_ids) # Filter by valid stores
                 
-                inv_res = inv_query.limit(1).execute()
+                inv_res = inv_query.execute()
+                
+                # Logic: Find the BEST location (highest free stock)
+                best_record = None
+                max_free_qty = Decimal('0')
+                total_free_everywhere = Decimal('0')
+                
+                found_match = False
+                
+                if inv_res.data:
+                    for r in inv_res.data:
+                        avail = Decimal(str(r['available_qty']))
+                        alloc = Decimal(str(r['allocated_qty']))
+                        free = avail - alloc
+                        total_free_everywhere += max(free, Decimal('0'))
+                        
+                        if free >= req.required_quantity:
+                            # Found a location with enough stock!
+                            # If we have multiple, maybe pick one? valid strategy: Pick first sufficient.
+                            best_record = r
+                            max_free_qty = free # Not strictly needed if we break, but good for debug
+                            found_match = True
+                            break # Optimization: Stop looking once we find ONE place that satisfies
+                        
+                        # Keep track of "best partial" just in case we want to report it
+                        if free > max_free_qty:
+                            max_free_qty = free
+                            # best_record = r # Don't select it yet if it's not sufficient
                 
                 # Check 1: Material exists in inventory
                 if not inv_res.data:
                     validation_errors.append(
-                        f"{material_name}: Not found in Main Store inventory"
+                        f"{material_name}: Not found in any 'store' location."
                     )
                     continue
-                
-                inv_record = inv_res.data[0]
-                available = Decimal(str(inv_record['available_qty']))
-                current_allocated = Decimal(str(inv_record['allocated_qty']))
-                free_qty = available - current_allocated
                 
                 # Check 2: Sufficient free stock
-                if free_qty < req.required_quantity:
-                    validation_errors.append(
-                        f"{material_name}: Insufficient stock (need {req.required_quantity} {req.unit}, "
-                        f"only {free_qty} {req.unit} free - total: {available}, allocated: {current_allocated})"
+                if not found_match:
+                     validation_errors.append(
+                        f"{material_name}: Insufficient stock (need {req.required_quantity} {req.unit}). "
+                        f"Total free across all stores: {total_free_everywhere}. "
+                        f"(Note: System currently requires full quantity in a single location)"
                     )
-                    continue
+                     continue
                 
-                # Store for allocation phase
+                # Store for allocation phase (using the found best_record)
                 material_details.append({
                     'requirement': req,
-                    'inventory_record': inv_record,
+                    'inventory_record': best_record,
                     'material_name': material_name
                 })
             
@@ -204,7 +213,7 @@ class WIPService:
                 
                 error_msg = f"Cannot create Working Order - Material allocation failed:\n\n"
                 error_msg += "\n".join(f"- {err}" for err in validation_errors)
-                error_msg += f"\n\nPlease ensure sufficient materials are available before creating this Working Order."
+                error_msg += f"\n\nPlease ensure sufficient materials are available."
                 
                 raise ValidationException(detail=error_msg)
             

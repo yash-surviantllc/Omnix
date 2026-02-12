@@ -97,7 +97,9 @@ CREATE TABLE IF NOT EXISTS inventory_item_transactions (
     unit VARCHAR(20) NOT NULL,
     reference_type VARCHAR(50),
     reference_id UUID,
+    reference_number VARCHAR(100),
     reason TEXT,
+    unit_cost DECIMAL(15, 2) DEFAULT 0,
     created_by UUID REFERENCES users(id) ON DELETE SET NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
