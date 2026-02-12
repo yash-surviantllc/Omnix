@@ -229,3 +229,14 @@ class InventorySummary(BaseModel):
     low_stock_count: int
     critical_count: int
     sufficient_count: int
+
+class InventoryItemCreateRequest(BaseModel):
+    material_code: str
+    material_name: str
+    quantity: Decimal
+    unit: str
+    location: str
+    reorder_level: Decimal
+    unit_cost: Decimal
+    category: Optional[str] = None
+    description: Optional[str] = None

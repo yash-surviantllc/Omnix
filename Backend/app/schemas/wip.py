@@ -19,7 +19,7 @@ class WorkingOrderBase(BaseModel):
     assigned_team: Optional[str] = None
     target_qty: Decimal = Field(..., gt=0)
     unit: str
-    priority: str = Field(default="Normal", pattern="^(Low|Normal|Medium|High|Urgent|LOW|MEDIUM|HIGH|URGENT)$")
+    priority: str = Field(default="Medium", pattern="^(Low|Medium|High|Urgent)$")
     scheduled_start: Optional[datetime] = None
     scheduled_end: Optional[datetime] = None
     notes: Optional[str] = None

@@ -190,6 +190,67 @@ class InventoryItemsService:
         
         item = result.data[0]
         
+        # --- SYNC WITH CORE INVENTORY SYSTEM ---
+        try:
+            # 1. Sync Product
+            product_id = None
+            prod_res = db.table('products').select('id').eq('code', item_data.material_code).execute()
+            if prod_res.data:
+                product_id = prod_res.data[0]['id']
+            else:
+                # Create Product
+                new_prod = db.table('products').insert({
+                    'code': item_data.material_code,
+                    'name': item_data.material_name,
+                    'category': item_data.category or 'Raw Materials',
+                    'unit': item_data.unit,
+                    'description': item_data.description,
+                    'unit_cost': float(item_data.unit_cost)
+                }).execute()
+                if new_prod.data:
+                    product_id = new_prod.data[0]['id']
+
+            # 2. Sync Location & Inventory (if product exists/created)
+            if product_id and item_data.location:
+                # Find or Create Location
+                location_id = None
+                loc_res = db.table('locations').select('id').eq('name', item_data.location).execute()
+                if loc_res.data:
+                    location_id = loc_res.data[0]['id']
+                else:
+                    # Create Location (Default to Store)
+                    loc_code = item_data.location.upper().replace(' ', '-').strip()
+                    new_loc = db.table('locations').insert({
+                        'name': item_data.location,
+                        'code': loc_code,
+                        'type': 'store',
+                        'is_active': True
+                    }).execute()
+                    if new_loc.data:
+                        location_id = new_loc.data[0]['id']
+                
+                # Update Inventory Table
+                if location_id:
+                    inv_res = db.table('inventory').select('*').eq('product_id', product_id).eq('location_id', location_id).execute()
+                    if inv_res.data:
+                        # Update
+                        curr = Decimal(str(inv_res.data[0]['available_qty']))
+                        db.table('inventory').update({
+                            'available_qty': float(curr + item_data.quantity),
+                            'updated_at': datetime.utcnow().isoformat()
+                        }).eq('id', inv_res.data[0]['id']).execute()
+                    else:
+                        # Insert
+                        db.table('inventory').insert({
+                            'product_id': product_id,
+                            'location_id': location_id,
+                            'available_qty': float(item_data.quantity),
+                            'allocated_qty': 0
+                        }).execute()
+        except Exception as e:
+            print(f"Sync failed for {item_data.material_code}: {e}")
+            # Continue - do not fail the request just because sync failed (though it's bad)
+
         # Create initial transaction
         if item_data.quantity > 0:
             await InventoryItemsService._log_transaction(
@@ -204,7 +265,28 @@ class InventoryItemsService:
                 user_id=user_id
             )
         
-        return await InventoryItemsService.get_inventory_item(item['id'])
+        # Construct Response manually to avoid get_inventory_item lookup failure immediately after create
+        # (Consistency lag might cause get_inventory_item to miss the product link we just made)
+        return InventoryItemResponse(
+            id=item['id'],
+            material_code=item['material_code'],
+            material_name=item['material_name'],
+            category=item.get('category'),
+            quantity=Decimal(str(item['quantity'])),
+            unit=item['unit'],
+            location=item.get('location'),
+            reorder_level=Decimal(str(item.get('reorder_level', 0))),
+            status=item['status'],
+            unit_cost=Decimal(str(item['unit_cost'])),
+            description=item.get('description'),
+            free_quantity=Decimal(str(item['quantity'])), # Initially free = total (allocations are 0)
+            allocated_quantity=Decimal('0'),
+            total_value=Decimal(str(item['quantity'])) * Decimal(str(item['unit_cost'])),
+            created_at=datetime.fromisoformat(item['created_at'].replace('Z', '+00:00')),
+            updated_at=datetime.fromisoformat(item['updated_at'].replace('Z', '+00:00')),
+            created_by=item.get('created_by'),
+            updated_by=item.get('updated_by')
+        )
     
     @staticmethod
     async def update_inventory_item(

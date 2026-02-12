@@ -6,7 +6,8 @@ from app.schemas.inventory import (
     InventoryCreate, InventoryUpdate, InventoryResponse,
     InventoryListItem, StockByProduct, InventoryTransactionCreate,
     InventoryTransactionResponse, StockAlertCreate, StockAlertUpdate,
-    StockAlertResponse, ShortageAlert, StockAdjustment, LocationResponse, StockMovementSummary
+    StockAlertResponse, ShortageAlert, StockAdjustment, LocationResponse, StockMovementSummary,
+    InventoryItemCreateRequest # Add this
 )
 from app.core.exceptions import NotFoundException, ValidationException
 from app.services.websocket_manager import manager  # Import the global manager
@@ -828,6 +829,117 @@ class InventoryService:
                     ))
         
         return shortages
+
+    @staticmethod
+    async def create_inventory_item(
+        item_data: InventoryItemCreateRequest
+    ) -> InventoryResponse:
+        """Create new inventory item (Product + Inventory record)."""
+        db = get_db()
+        
+        # 1. Get or Create Product
+        # Check if product exists by code
+        product_res = db.table('products').select('id, code').eq('code', item_data.material_code).execute()
+        
+        if product_res.data:
+            product_id = product_res.data[0]['id']
+            # Optional: Check if name matches?
+        else:
+            # Create new product
+            # Use 'Raw Materials' as default category if not provided
+            category = item_data.category or 'Raw Materials'
+            prod_data = {
+                'code': item_data.material_code,
+                'name': item_data.material_name,
+                'category': category,
+                'unit': item_data.unit,
+                'description': item_data.description,
+                'price': float(item_data.unit_cost) if item_data.unit_cost else 0,
+                'cost': float(item_data.unit_cost) if item_data.unit_cost else 0
+            }
+            new_prod = db.table('products').insert(prod_data).execute()
+            if not new_prod.data:
+                raise Exception("Failed to create product")
+            product_id = new_prod.data[0]['id']
+            
+        # 2. Get or Create Location
+        location_id = None
+        if item_data.location:
+             # Try to find location by name
+             loc_res = db.table('locations').select('id').eq('name', item_data.location).execute()
+             if loc_res.data:
+                 location_id = loc_res.data[0]['id']
+             else:
+                 # Create location (Assume 'Store' type)
+                 loc_data = {
+                     'name': item_data.location,
+                     'code': item_data.location.upper().replace(' ', '-'),
+                     'type': 'Store',
+                     'is_active': True
+                 }
+                 new_loc = db.table('locations').insert(loc_data).execute()
+                 if not new_loc.data:
+                     # Fallback to existing if creation fails (though name check passed)
+                     # Or just raise
+                     raise Exception(f"Failed to create location: {item_data.location}")
+                 location_id = new_loc.data[0]['id']
+        else:
+            # Default location?
+            # Require location for now as per frontend
+             raise ValidationException(detail="Location is required")
+             
+        # 3. Create Inventory Record
+        # Check if inventory already exists for this product/location
+        existing_inv = db.table('inventory').select('*').eq('product_id', product_id).eq('location_id', location_id).execute()
+        
+        if existing_inv.data:
+             # Update existing? Or Error?
+             # User is trying to "Add Material". If it exists, maybe they meant to add stock?
+             # But the form includes reorder level etc.
+             # Let's update it.
+             inv_id = existing_inv.data[0]['id']
+             current_qty = Decimal(str(existing_inv.data[0]['available_qty']))
+             new_qty = current_qty + Decimal(str(item_data.quantity))
+             
+             db.table('inventory').update({
+                 'available_qty': float(new_qty),
+                 'updated_at': datetime.utcnow().isoformat()
+             }).eq('id', inv_id).execute()
+             
+             created_inv = db.table('inventory').select('*').eq('id', inv_id).execute().data[0]
+        else:
+             # Create new
+             inv_data = {
+                 'product_id': product_id,
+                 'location_id': location_id,
+                 'available_qty': float(item_data.quantity),
+                 'allocated_qty': 0,
+                 'updated_at': datetime.utcnow().isoformat()
+             }
+             new_inv = db.table('inventory').insert(inv_data).execute()
+             if not new_inv.data:
+                 raise Exception("Failed to create inventory record")
+             created_inv = new_inv.data[0]
+        
+        # 4. Create/Update Stock Alert (Reorder Level)
+        if item_data.reorder_level is not None:
+             # Check for existing alert
+             alert_res = db.table('stock_alerts').select('id').eq('product_id', product_id).eq('location_id', location_id).execute()
+             if alert_res.data:
+                 db.table('stock_alerts').update({
+                     'min_qty': float(item_data.reorder_level),
+                     'is_active': True
+                 }).eq('id', alert_res.data[0]['id']).execute()
+             else:
+                 db.table('stock_alerts').insert({
+                     'product_id': product_id,
+                     'location_id': location_id,
+                     'min_qty': float(item_data.reorder_level),
+                     'is_active': True
+                 }).execute()
+        
+        # 5. Return Response
+        return await InventoryService.get_inventory_by_product_location(product_id, location_id)
 
     @staticmethod
     async def get_inventory_summary() -> dict:

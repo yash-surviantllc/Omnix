@@ -207,37 +207,52 @@ export const bomApi = {
       unitCost: string;
     }>;
   }): Promise<BOM> => {
-    return apiClient.post<BOM>('/boms/with-product', data);
+    const response = await apiClient.post<BOM>('/boms/with-product', data);
+    apiClient.invalidateCache('/boms/');
+    apiClient.invalidateCache('/products/');
+    return response;
   },
 
   // Create new BOM
   createBOM: async (data: BOMCreate): Promise<BOM> => {
-    return apiClient.post<BOM>('/boms', data);
+    const response = await apiClient.post<BOM>('/boms', data);
+    apiClient.invalidateCache('/boms/');
+    return response;
   },
 
   // Update BOM
   updateBOM: async (bomId: string, data: BOMUpdate): Promise<BOM> => {
-    return apiClient.put<BOM>(`/boms/${bomId}`, data);
+    const response = await apiClient.put<BOM>(`/boms/${bomId}`, data);
+    apiClient.invalidateCache('/boms/');
+    return response;
   },
 
   // Delete BOM (soft delete)
   deleteBOM: async (bomId: string): Promise<void> => {
-    return apiClient.delete(`/boms/${bomId}`);
+    const response = await apiClient.delete<void>(`/boms/${bomId}`);
+    apiClient.invalidateCache('/boms/');
+    return response;
   },
 
   // Add material to BOM
   addMaterial: async (bomId: string, material: BOMMaterialCreate): Promise<BOM> => {
-    return apiClient.post<BOM>(`/boms/${bomId}/materials`, material);
+    const response = await apiClient.post<BOM>(`/boms/${bomId}/materials`, material);
+    apiClient.invalidateCache('/boms/');
+    return response;
   },
 
   // Update material in BOM
   updateMaterial: async (bomId: string, materialId: string, material: BOMMaterialCreate): Promise<BOM> => {
-    return apiClient.put<BOM>(`/boms/${bomId}/materials/${materialId}`, material);
+    const response = await apiClient.put<BOM>(`/boms/${bomId}/materials/${materialId}`, material);
+    apiClient.invalidateCache('/boms/');
+    return response;
   },
 
   // Remove material from BOM
   removeMaterial: async (bomId: string, materialId: string): Promise<void> => {
-    return apiClient.delete(`/boms/${bomId}/materials/${materialId}`);
+    const response = await apiClient.delete<void>(`/boms/${bomId}/materials/${materialId}`);
+    apiClient.invalidateCache('/boms/');
+    return response;
   },
 
   // Calculate material requirements
@@ -257,7 +272,9 @@ export const bomApi = {
 
   // Activate BOM
   activateBOM: async (bomId: string): Promise<BOM> => {
-    return apiClient.put<BOM>(`/boms/${bomId}/activate`);
+    const response = await apiClient.put<BOM>(`/boms/${bomId}/activate`);
+    apiClient.invalidateCache('/boms/');
+    return response;
   },
 
   // Get cost breakdown
@@ -267,7 +284,9 @@ export const bomApi = {
 
   // Duplicate BOM
   duplicateBOM: async (bomId: string, data: { product_id: string; is_template?: boolean; template_name?: string }): Promise<BOM> => {
-    return apiClient.post<BOM>(`/boms/${bomId}/duplicate`, data);
+    const response = await apiClient.post<BOM>(`/boms/${bomId}/duplicate`, data);
+    apiClient.invalidateCache('/boms/');
+    return response;
   },
 
   // Validate BOM

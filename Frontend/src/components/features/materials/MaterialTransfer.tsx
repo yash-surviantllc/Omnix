@@ -244,7 +244,10 @@ export function MaterialTransfer({ language, refreshMaterialTransferData }: Mate
     }
   };
 
+  const [isLoadingStages, setIsLoadingStages] = useState(false);
+
   const fetchWorkOrderStages = async (workOrderNumber: string) => {
+    setIsLoadingStages(true);
     try {
       const url = `/wip/working-orders/${workOrderNumber}/stages`;
       console.log('Fetching stages from:', url);
@@ -255,6 +258,8 @@ export function MaterialTransfer({ language, refreshMaterialTransferData }: Mate
     } catch (error) {
       console.error('Failed to fetch work order stages:', error);
       setAvailableStages([]);
+    } finally {
+      setIsLoadingStages(false);
     }
   };
 
@@ -805,9 +810,15 @@ export function MaterialTransfer({ language, refreshMaterialTransferData }: Mate
                       value={stageTransferData.fromStageId}
                       onChange={(e) => setStageTransferData({ ...stageTransferData, fromStageId: e.target.value })}
                       className="w-full p-2.5 border border-zinc-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      disabled={availableStages.length === 0}
+                      disabled={isLoadingStages || availableStages.length === 0}
                     >
-                      <option value="">{availableStages.length === 0 ? 'Loading stages...' : t.selectFromStage}</option>
+                      <option value="">
+                        {isLoadingStages
+                          ? 'Loading stages...'
+                          : availableStages.length === 0
+                            ? 'No stages found'
+                            : t.selectFromStage}
+                      </option>
                       {availableStages.map((stage) => (
                         <option key={stage.id} value={stage.id}>
                           {stage.name}
@@ -824,9 +835,15 @@ export function MaterialTransfer({ language, refreshMaterialTransferData }: Mate
                       value={stageTransferData.toStageId}
                       onChange={(e) => setStageTransferData({ ...stageTransferData, toStageId: e.target.value })}
                       className="w-full p-2.5 border border-zinc-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      disabled={availableStages.length === 0}
+                      disabled={isLoadingStages || availableStages.length === 0}
                     >
-                      <option value="">{availableStages.length === 0 ? 'Loading stages...' : t.selectToStage}</option>
+                      <option value="">
+                        {isLoadingStages
+                          ? 'Loading stages...'
+                          : availableStages.length === 0
+                            ? 'No stages found'
+                            : t.selectToStage}
+                      </option>
                       {availableStages.map((stage) => (
                         <option
                           key={stage.id}

@@ -57,7 +57,7 @@ export interface WorkingOrder {
   rejected_qty: number;
   unit: string;
   status: 'Pending' | 'In Progress' | 'Completed' | 'On Hold' | 'Cancelled';
-  priority: 'Low' | 'Normal' | 'Medium' | 'High' | 'Urgent';
+  priority: 'Low' | 'Medium' | 'High' | 'Urgent';
   scheduled_start: string | null;
   scheduled_end: string | null;
   actual_start: string | null;
@@ -231,7 +231,7 @@ export interface WorkingOrderCreate {
   assigned_team?: string;
   target_qty: number;
   unit: string;
-  priority?: 'Low' | 'Normal' | 'Medium' | 'High' | 'Urgent';
+  priority?: 'Low' | 'Medium' | 'High' | 'Urgent';
   scheduled_start?: string;
   scheduled_end?: string;
   notes?: string;
@@ -247,7 +247,7 @@ export interface WorkingOrderUpdate {
   completed_qty?: number;
   rejected_qty?: number;
   status?: 'Pending' | 'In Progress' | 'Completed' | 'On Hold' | 'Cancelled';
-  priority?: 'Low' | 'Normal' | 'Medium' | 'High' | 'Urgent';
+  priority?: 'Low' | 'Medium' | 'High' | 'Urgent';
   scheduled_start?: string;
   scheduled_end?: string;
   actual_start?: string;
@@ -305,7 +305,7 @@ export const wipApi = {
     operation?: string;
     purchase_order_id?: string;
     search?: string;
-  }): Promise<WorkingOrder[]> => {
+  }, useCache: boolean = true): Promise<WorkingOrder[]> => {
     const queryParams = new URLSearchParams();
     if (params?.page) queryParams.append('page', params.page.toString());
     if (params?.limit) queryParams.append('limit', params.limit.toString());
@@ -316,7 +316,7 @@ export const wipApi = {
 
     const url = `/wip/working-orders?${queryParams.toString()}`;
     return apiClient.get<WorkingOrder[]>(url, {
-      useCache: true,
+      useCache,
       ttl: 60 // 1 minute
     });
   },
@@ -330,19 +330,31 @@ export const wipApi = {
 
 
   createWorkingOrder: async (orderData: WorkingOrderCreate): Promise<WorkingOrder> => {
-    return apiClient.post<WorkingOrder>('/wip/working-orders', orderData);
+    const response = await apiClient.post<WorkingOrder>('/wip/working-orders', orderData);
+    apiClient.invalidateCache('/wip/working-orders');
+    apiClient.invalidateCache('/wip/dashboard');
+    return response;
   },
 
   updateWorkingOrder: async (orderId: string, orderData: WorkingOrderUpdate): Promise<WorkingOrder> => {
-    return apiClient.put<WorkingOrder>(`/wip/working-orders/${orderId}`, orderData);
+    const response = await apiClient.put<WorkingOrder>(`/wip/working-orders/${orderId}`, orderData);
+    apiClient.invalidateCache('/wip/working-orders');
+    apiClient.invalidateCache(`/wip/working-orders/${orderId}`);
+    return response;
   },
 
   startOperation: async (workOrderNumber: string, operationName: string): Promise<WorkingOrder> => {
-    return apiClient.post<WorkingOrder>(`/wip/working-orders/${workOrderNumber}/start?operation=${encodeURIComponent(operationName)}`, {});
+    const response = await apiClient.post<WorkingOrder>(`/wip/working-orders/${workOrderNumber}/start?operation=${encodeURIComponent(operationName)}`, {});
+    apiClient.invalidateCache('/wip/working-orders');
+    apiClient.invalidateCache('/wip-board/board');
+    return response;
   },
 
   pauseOperation: async (workOrderNumber: string, operationName: string): Promise<WorkingOrder> => {
-    return apiClient.post<WorkingOrder>(`/wip/working-orders/${workOrderNumber}/pause?operation=${encodeURIComponent(operationName)}`, {});
+    const response = await apiClient.post<WorkingOrder>(`/wip/working-orders/${workOrderNumber}/pause?operation=${encodeURIComponent(operationName)}`, {});
+    apiClient.invalidateCache('/wip/working-orders');
+    apiClient.invalidateCache('/wip-board/board');
+    return response;
   },
 
   completeOperation: async (workOrderNumber: string, operationName: string, completedQty?: number): Promise<WorkingOrder> => {
@@ -350,11 +362,16 @@ export const wipApi = {
     if (completedQty !== undefined) {
       params.append('completed_qty', completedQty.toString());
     }
-    return apiClient.post<WorkingOrder>(`/wip/working-orders/${workOrderNumber}/complete?${params.toString()}`, {});
+    const response = await apiClient.post<WorkingOrder>(`/wip/working-orders/${workOrderNumber}/complete?${params.toString()}`, {});
+    apiClient.invalidateCache('/wip/working-orders');
+    apiClient.invalidateCache('/wip-board/board');
+    return response;
   },
 
   cancelWorkingOrder: async (orderId: string): Promise<{ message: string }> => {
-    return apiClient.delete<{ message: string }>(`/wip/working-orders/${orderId}`);
+    const response = await apiClient.delete<{ message: string }>(`/wip/working-orders/${orderId}`);
+    apiClient.invalidateCache('/wip/working-orders');
+    return response;
   },
 
   // ============================================
@@ -374,15 +391,21 @@ export const wipApi = {
   },
 
   createWIPStage: async (payload: WIPStageCreatePayload): Promise<WIPStage> => {
-    return apiClient.post<WIPStage>('/wip-board/stages', payload);
+    const response = await apiClient.post<WIPStage>('/wip-board/stages', payload);
+    apiClient.invalidateCache('/wip-board/stages');
+    return response;
   },
 
   updateWIPStage: async (stageId: string, payload: WIPStageUpdatePayload): Promise<WIPStage> => {
-    return apiClient.put<WIPStage>(`/wip-board/stages/${stageId}`, payload);
+    const response = await apiClient.put<WIPStage>(`/wip-board/stages/${stageId}`, payload);
+    apiClient.invalidateCache('/wip-board/stages');
+    return response;
   },
 
   deleteWIPStage: async (stageId: string): Promise<{ message: string }> => {
-    return apiClient.delete<{ message: string }>(`/wip-board/stages/${stageId}`);
+    const response = await apiClient.delete<{ message: string }>(`/wip-board/stages/${stageId}`);
+    apiClient.invalidateCache('/wip-board/stages');
+    return response;
   },
 
   getStageOrders: async (stageId: string): Promise<StageOrdersResponse> => {
@@ -397,7 +420,10 @@ export const wipApi = {
   },
 
   recordWIPTransfer: async (payload: WIPTransferCreatePayload): Promise<WIPTransferResponse> => {
-    return apiClient.post<WIPTransferResponse>('/wip-board/transfer/', payload);
+    const response = await apiClient.post<WIPTransferResponse>('/wip-board/transfer/', payload);
+    apiClient.invalidateCache('/wip-board/board');
+    apiClient.invalidateCache('/wip/working-orders');
+    return response;
   },
 
   listWIPBottlenecks: async (): Promise<BottleneckResponse[]> => {

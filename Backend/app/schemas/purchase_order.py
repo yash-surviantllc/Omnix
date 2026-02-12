@@ -150,7 +150,6 @@ class PurchaseOrderResponse(PurchaseOrderBase):  # Changed from ProductionOrderR
     product_name: Optional[str] = None
     unit: str
     status: str
-    status: str
     materials: List[OrderMaterialResponse] = []
     items: List[POItemResponse] = []
     total_material_cost: Optional[Decimal] = None
@@ -159,7 +158,8 @@ class PurchaseOrderResponse(PurchaseOrderBase):  # Changed from ProductionOrderR
     created_at: datetime
     updated_at: datetime
     created_by: Optional[str] = None
-    created_by: Optional[str] = None
+    qr_code: Optional[str] = None
+    progress_percentage: Decimal = Decimal(0)
     
     class Config:
         from_attributes = True
@@ -180,7 +180,6 @@ class PurchaseOrderListItem(BaseModel):  # Changed from ProductionOrderListItem
     materials_status: str
     days_until_due: int
     is_overdue: bool
-    items: List[POItemResponse] = []
     items: List[POItemResponse] = []
     created_at: datetime
     

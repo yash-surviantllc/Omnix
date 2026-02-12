@@ -233,6 +233,20 @@ export class ApiClient {
   async delete<T>(endpoint: string, options?: RequestOptions): Promise<T> {
     return this.request<T>(endpoint, { ...options, method: 'DELETE' });
   }
+
+  serializeQueryParams(params: Record<string, any>): string {
+    const searchParams = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== null) {
+        searchParams.append(key, value.toString());
+      }
+    });
+    return searchParams.toString();
+  }
+
+  invalidateCache(pattern?: string): void {
+    cacheService.clear(pattern);
+  }
 }
 
 export const apiClient = new ApiClient();

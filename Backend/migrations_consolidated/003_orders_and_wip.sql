@@ -14,13 +14,14 @@ CREATE TABLE IF NOT EXISTS purchase_orders (
     quantity DECIMAL(15, 3) NOT NULL CHECK (quantity > 0),
     unit VARCHAR(20) NOT NULL,
     status VARCHAR(30) NOT NULL DEFAULT 'Draft' CHECK (status IN ('Draft', 'Planned', 'Released', 'In Progress', 'Completed', 'Cancelled')),
-    priority VARCHAR(20) DEFAULT 'Medium' CHECK (priority IN ('Low', 'Normal', 'Medium', 'High', 'Urgent')),
+    priority VARCHAR(20) DEFAULT 'Medium' CHECK (priority IN ('Low', 'Medium', 'High', 'Urgent')),
     due_date TIMESTAMPTZ,
     customer_name VARCHAR(255),
     bom_id UUID REFERENCES boms(id),
     bom_version INTEGER,
     bom_snapshot JSONB,
     quantity_completed DECIMAL(15, 3) DEFAULT 0,
+    rejected_qty DECIMAL(15, 3) DEFAULT 0,
     notes TEXT,
     -- From 006: Additional fields
     shift_number VARCHAR(50),
@@ -28,10 +29,19 @@ CREATE TABLE IF NOT EXISTS purchase_orders (
     end_date TIMESTAMPTZ,
     ocr_document_url TEXT,
     ocr_extracted_data JSONB,
+    qr_code TEXT,
+    progress_percentage DECIMAL(5,2) DEFAULT 0,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    created_by UUID REFERENCES users(id) ON DELETE SET NULL
+    created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+    updated_by UUID REFERENCES users(id) ON DELETE SET NULL
 );
+
+CREATE INDEX IF NOT EXISTS idx_purchase_orders_status ON purchase_orders(status);
+CREATE INDEX IF NOT EXISTS idx_purchase_orders_priority ON purchase_orders(priority);
+CREATE INDEX IF NOT EXISTS idx_purchase_orders_due_date ON purchase_orders(due_date);
+CREATE INDEX IF NOT EXISTS idx_purchase_orders_product ON purchase_orders(product_id);
+CREATE INDEX IF NOT EXISTS idx_purchase_orders_created_by ON purchase_orders(created_by);
 
 CREATE TABLE IF NOT EXISTS purchase_order_items (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -41,6 +51,7 @@ CREATE TABLE IF NOT EXISTS purchase_order_items (
     unit VARCHAR(20) NOT NULL,
     completed_quantity DECIMAL(15, 3) DEFAULT 0,
     status VARCHAR(30) NOT NULL DEFAULT 'Pending' CHECK (status IN ('Pending', 'In Progress', 'Completed', 'Cancelled')),
+    notes TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -51,7 +62,7 @@ CREATE TABLE IF NOT EXISTS workstations (
     code VARCHAR(50) UNIQUE NOT NULL,
     name VARCHAR(100) NOT NULL,
     location_id UUID REFERENCES locations(id),
-    is_active BOOLEAN DEFAULT TRUE,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -66,7 +77,7 @@ CREATE TABLE IF NOT EXISTS work_orders (
     rejected_qty DECIMAL(15, 3) DEFAULT 0,
     unit VARCHAR(20) NOT NULL,
     status VARCHAR(30) NOT NULL DEFAULT 'Planned' CHECK (status IN ('Pending', 'Draft', 'Planned', 'Released', 'In Progress', 'On Hold', 'Completed', 'Cancelled')),
-    priority VARCHAR(20) DEFAULT 'Medium' CHECK (priority IN ('Low', 'Normal', 'Medium', 'High', 'Urgent')),
+    priority VARCHAR(20) DEFAULT 'Medium' CHECK (priority IN ('Low', 'Medium', 'High', 'Urgent')),
     operation VARCHAR(100) NOT NULL,
     workstation_id UUID REFERENCES workstations(id),
     workstation_name VARCHAR(100),
@@ -135,6 +146,7 @@ CREATE TABLE IF NOT EXISTS qc_inspections (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     inspection_number TEXT NOT NULL UNIQUE,
     purchase_order_id UUID REFERENCES purchase_orders(id),
+    work_order_id UUID REFERENCES work_orders(id) ON DELETE CASCADE,
     product_id UUID REFERENCES products(id) NOT NULL,
     quantity_checked NUMERIC NOT NULL DEFAULT 0,
     passed_qty NUMERIC NOT NULL DEFAULT 0,
@@ -144,7 +156,8 @@ CREATE TABLE IF NOT EXISTS qc_inspections (
     inspector_id UUID REFERENCES users(id),
     notes TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    CONSTRAINT chk_qc_order_ref CHECK (purchase_order_id IS NOT NULL OR work_order_id IS NOT NULL)
 );
 
 -- 4. WIP STAGES & CONFIGURATION
@@ -157,7 +170,7 @@ CREATE TABLE IF NOT EXISTS wip_stages (
     color VARCHAR(20) DEFAULT '#3B82F6',
     description TEXT,
     icon VARCHAR(50),
-    is_active BOOLEAN DEFAULT TRUE,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -189,7 +202,7 @@ CREATE TABLE IF NOT EXISTS config_stages (
     config_id VARCHAR(100) NOT NULL,
     stage_id UUID NOT NULL REFERENCES wip_stages(id) ON DELETE CASCADE,
     sequence_number INTEGER NOT NULL,
-    is_required BOOLEAN DEFAULT true,
+    is_required BOOLEAN NOT NULL DEFAULT TRUE,
     estimated_time_minutes DECIMAL(10,2),
     notes TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW(),
@@ -222,7 +235,7 @@ CREATE TABLE IF NOT EXISTS wip_stage_metrics (
     target_time_minutes DECIMAL(10,2) NOT NULL,
     utilization_percentage DECIMAL(5,2) DEFAULT 0,
     health_status VARCHAR(20) DEFAULT 'healthy' CHECK (health_status IN ('healthy', 'warning', 'delayed')),
-    is_active BOOLEAN DEFAULT true,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 

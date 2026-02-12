@@ -284,3 +284,9 @@ INSERT INTO locations (id, code, name, type) VALUES
     ('00000000-0000-0000-0001-000000000003', 'QUALITY', 'Quality Control', 'quality'),
     ('00000000-0000-0000-0001-000000000004', 'SCRAP', 'Scrap Area', 'scrap')
 ON CONFLICT (code) DO NOTHING;
+
+-- 6. DOCUMENTATION
+COMMENT ON TABLE inventory IS 'Aggregated stock levels per product and location. Use this for general stock availability checks.';
+COMMENT ON TABLE inventory_items IS 'Individual item or batch tracking. Use this for specific item history, serial numbers, or batch expiry.';
+COMMENT ON COLUMN inventory_transactions.transaction_type IS 'High-level business transaction types: PURCHASE, CONSUMPTION, TRANSFER, ADJUST, RETURN, SCRAP.';
+COMMENT ON COLUMN inventory_item_transactions.transaction_type IS 'Low-level physical movement types: IN, OUT, ADJUST.';

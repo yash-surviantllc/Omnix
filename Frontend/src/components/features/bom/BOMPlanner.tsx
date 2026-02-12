@@ -727,7 +727,11 @@ export function BOMPlanner({ language }: BOMPlannerProps) {
         <h1>{t.title}</h1>
         <div className="flex gap-2">
           <Button
-            onClick={() => setShowAddBOMModal(true)}
+            onClick={() => {
+              fetchRawMaterials();
+              fetchInventoryItems(); // Also refresh inventory items which are used in datalist
+              setShowAddBOMModal(true);
+            }}
             className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700"
           >
             <Plus className="w-4 h-4 mr-2" />
@@ -1376,10 +1380,11 @@ export function BOMPlanner({ language }: BOMPlannerProps) {
                     </table>
                   </div>
 
-                  {/* Add Material Button */}
                   <div className="mt-4">
                     <Button
                       onClick={() => {
+                        fetchRawMaterials();
+                        fetchInventoryItems();
                         setShowAddMaterialModal(true);
                         setShowProductDetailsModal(false);
                       }}
@@ -1405,6 +1410,8 @@ export function BOMPlanner({ language }: BOMPlannerProps) {
                   <p>No materials found for this product.</p>
                   <Button
                     onClick={() => {
+                      fetchRawMaterials();
+                      fetchInventoryItems();
                       setShowAddMaterialModal(true);
                       setShowProductDetailsModal(false);
                     }}

@@ -89,7 +89,9 @@ export const inventoryItemsApi = {
         unit_cost: number;
         description?: string;
     }): Promise<InventoryItemResponse> => {
-        return apiClient.post<InventoryItemResponse>('/inventory-items/', data);
+        const response = await apiClient.post<InventoryItemResponse>('/inventory-items/', data);
+        apiClient.invalidateCache('/inventory-items/');
+        return response;
     },
 
     // Update item
@@ -103,12 +105,16 @@ export const inventoryItemsApi = {
         unit_cost?: number;
         description?: string;
     }): Promise<InventoryItemResponse> => {
-        return apiClient.put<InventoryItemResponse>(`/inventory-items/${id}`, data);
+        const response = await apiClient.put<InventoryItemResponse>(`/inventory-items/${id}`, data);
+        apiClient.invalidateCache('/inventory-items/');
+        return response;
     },
 
     // Delete item
     delete: async (id: string): Promise<{ message: string }> => {
-        return apiClient.delete<{ message: string }>(`/inventory-items/${id}`);
+        const response = await apiClient.delete<{ message: string }>(`/inventory-items/${id}`);
+        apiClient.invalidateCache('/inventory-items/');
+        return response;
     },
 
     // Adjust inventory
@@ -118,7 +124,9 @@ export const inventoryItemsApi = {
         reason: string;
         notes?: string;
     }): Promise<InventoryItemResponse> => {
-        return apiClient.post<InventoryItemResponse>('/inventory-items/adjust', data);
+        const response = await apiClient.post<InventoryItemResponse>('/inventory-items/adjust', data);
+        apiClient.invalidateCache('/inventory-items/');
+        return response;
     },
 
     // Get transactions
@@ -150,7 +158,9 @@ export const inventoryItemsApi = {
 
     // Bulk import
     bulkImport: async (items: any[]): Promise<{ success: any[]; failed: any[] }> => {
-        return apiClient.post<{ success: any[]; failed: any[] }>('/inventory-items/bulk/import', items);
+        const response = await apiClient.post<{ success: any[]; failed: any[] }>('/inventory-items/bulk/import', items);
+        apiClient.invalidateCache('/inventory-items/');
+        return response;
     },
 };
 

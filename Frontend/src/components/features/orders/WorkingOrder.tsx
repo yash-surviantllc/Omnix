@@ -35,7 +35,7 @@ interface WorkOrder {
   quantity: number;
   completedQty: number;
   status: 'pending' | 'in-progress' | 'completed' | 'on-hold';
-  priority: 'low' | 'normal' | 'high' | 'urgent';
+  priority: 'Low' | 'Medium' | 'High' | 'Urgent';
   startTime: string;
   estimatedEnd: string;
   actualEnd?: string;
@@ -75,7 +75,7 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
     scheduled_start: string;
     target_qty: string;
     unit: string;
-    priority: 'Low' | 'Normal' | 'High' | 'Urgent';
+    priority: 'Low' | 'Medium' | 'High' | 'Urgent';
     notes: string;
   }>({
     purchase_order_id: '',
@@ -84,7 +84,7 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
     scheduled_start: '',
     target_qty: '',
     unit: 'pcs',
-    priority: 'Normal',
+    priority: 'Medium',
     notes: ''
   });
   const [poItems, setPoItems] = useState<any[]>([]); // To store items of selected PO
@@ -181,11 +181,11 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
   }, [newWorkOrderData.product_id, newWorkOrderData.target_qty]);
 
   // Fetch work orders from backend API
-  const fetchWorkOrders = useCallback(async (silent: boolean = false, _explicitStages?: Stage[]) => {
+  const fetchWorkOrders = useCallback(async (silent: boolean = false, forceRefresh: boolean = false) => {
     if (!silent) setLoading(true);
     try {
       // Fetch working orders directly without complex transformation
-      const workingOrdersData = await wipApi.listWorkingOrders({ limit: 100 });
+      const workingOrdersData = await wipApi.listWorkingOrders({ limit: 100 }, !forceRefresh);
 
       // Safety check: Ensure responses are arrays
       if (!Array.isArray(workingOrdersData)) {
@@ -264,7 +264,7 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
           quantity: totalTarget,
           completedQty: totalCompleted,
           status: aggregateStatus,
-          priority: (firstOp.priority?.toLowerCase() as 'low' | 'normal' | 'high' | 'urgent') || 'normal',
+          priority: (firstOp.priority as 'Low' | 'Medium' | 'High' | 'Urgent') || 'Medium',
           startTime: firstOp.scheduled_start || firstOp.created_at || '',
           estimatedEnd: firstOp.scheduled_end || '',
           actualEnd: firstOp.actual_end || undefined
@@ -316,7 +316,7 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
       fetchProductionOrders();
       const sortedStages = await fetchAvailableStages();
       if (sortedStages && sortedStages.length > 0) {
-        fetchWorkOrders(false, sortedStages);
+        fetchWorkOrders(false);
       } else {
         fetchWorkOrders();
       }
@@ -373,7 +373,7 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
     const stagesChanged = stageCountChanged || stagesAddedOrRemoved || sequenceOrNameChanged;
 
     if (stagesChanged && availableStages.length > 0) {
-      fetchWorkOrders(true, availableStages);
+      fetchWorkOrders(true);
       previousStagesRef.current = availableStages;
     }
   }, [availableStages, fetchWorkOrders]);
@@ -428,7 +428,7 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
       completed: 'Completed',
       onHold: 'On Hold',
       low: 'Low',
-      normal: 'Normal',
+      medium: 'Medium',
       high: 'High',
       urgent: 'Urgent',
       start: 'Start',
@@ -772,7 +772,7 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
       }
 
       // Refresh the work orders list
-      await fetchWorkOrders();
+      await fetchWorkOrders(false, true);
     } catch (err: any) {
       console.error('Action failed:', err);
       const errorMessage = err?.detail || err?.message || 'Failed to update work order';
@@ -871,12 +871,12 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
         scheduled_start: '',
         target_qty: '',
         unit: 'pcs',
-        priority: 'Normal',
+        priority: 'Medium',
         notes: ''
       });
       // Clear selected PO items
       setPoItems([]);
-      fetchWorkOrders(); // Refresh the list
+      fetchWorkOrders(false, true); // Force Refresh the list
     } catch (err: any) {
       alert(`${language === 'en' ? 'Error creating work order' : 'कार्य आदेश बनाने में त्रुटि'}: ${err?.detail || err?.message || 'Unknown error'}`);
     } finally {
@@ -967,8 +967,8 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
                         <h3 className="text-lg font-bold text-zinc-900">{order.product}</h3>
                         {getStatusBadge(order.status)}
                         <Badge variant="outline" className={`
-                          ${order.priority === 'high' ? 'text-orange-600 border-orange-200 bg-orange-50' :
-                            order.priority === 'urgent' ? 'text-red-600 border-red-200 bg-red-50' :
+                          ${order.priority === 'High' ? 'text-orange-600 border-orange-200 bg-orange-50' :
+                            order.priority === 'Urgent' ? 'text-red-600 border-red-200 bg-red-50' :
                               'text-zinc-500 border-zinc-200 bg-zinc-50'}
                         `}>
                           {order.priority.charAt(0).toUpperCase() + order.priority.slice(1)} Priority

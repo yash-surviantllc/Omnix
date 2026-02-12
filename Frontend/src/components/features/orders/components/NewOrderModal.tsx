@@ -146,6 +146,64 @@ export function NewOrderModal({
                 <label className="block text-sm font-medium text-zinc-700">
                   {t.selectProduct} & {t.enterQuantity} <span className="text-red-500">*</span>
                 </label>
+
+                {showQuickCreate && (
+                  <div className="bg-emerald-50 rounded-xl p-4 border border-emerald-200 mb-4 animate-in slide-in-from-top-2 fade-in duration-300">
+                    <div className="flex justify-between items-start mb-3">
+                      <h3 className="text-sm font-bold text-emerald-800 flex items-center gap-2">
+                        <Plus className="h-4 w-4" />
+                        New Product (Quick Add)
+                      </h3>
+                      <Button variant="ghost" size="sm" onClick={() => setShowQuickCreate(false)} className="h-6 w-6 p-0 rounded-full hover:bg-emerald-100 text-emerald-600">
+                        <XCircle className="h-4 w-4" />
+                      </Button>
+                    </div>
+                    <div className="grid grid-cols-3 gap-3">
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-emerald-700 uppercase">Code</label>
+                        <Input
+                          value={quickProduct.code}
+                          onChange={e => setQuickProduct(prev => ({ ...prev, code: e.target.value }))}
+                          placeholder="CODE"
+                          className="h-8 bg-white text-xs"
+                          autoFocus
+                        />
+                      </div>
+                      <div className="col-span-2 space-y-1">
+                        <label className="text-[10px] font-bold text-emerald-700 uppercase">Product Name</label>
+                        <Input
+                          value={quickProduct.name}
+                          onChange={e => setQuickProduct(prev => ({ ...prev, name: e.target.value }))}
+                          placeholder="Product Name"
+                          className="h-8 bg-white text-xs"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-emerald-700 uppercase">Unit</label>
+                        <select
+                          value={quickProduct.unit}
+                          onChange={e => setQuickProduct(prev => ({ ...prev, unit: e.target.value }))}
+                          className="w-full h-8 rounded-md border border-input bg-white px-2 py-1 text-xs shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-emerald-500"
+                        >
+                          <option value="pcs">Pcs</option>
+                          <option value="kg">Kg</option>
+                          <option value="mtr">Meter</option>
+                          <option value="box">Box</option>
+                        </select>
+                      </div>
+                      <div className="col-span-2 flex items-end">
+                        <Button
+                          onClick={handleQuickCreate}
+                          disabled={!quickProduct.code || !quickProduct.name || isCreatingProduct}
+                          size="sm"
+                          className="w-full h-8 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold"
+                        >
+                          {isCreatingProduct ? 'Saving...' : 'Create & Select Product'}
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                )}
                 <div className="space-y-3">
                   {orderData.items.map((item) => (
                     <div key={item.id} className="flex gap-3 items-start bg-zinc-50 p-4 rounded-xl border border-zinc-200 transition-all hover:bg-zinc-100/50">
@@ -348,68 +406,8 @@ export function NewOrderModal({
         </div>
       </div>
 
-      {/* Quick Create Product Modal Overlay */}
-      {showQuickCreate && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/20">
-          <Card className="w-full max-w-sm p-6 shadow-2xl animate-in zoom-in-95 duration-200 border-emerald-100 ring-4 ring-black/5">
-            <h3 className="text-lg font-bold text-zinc-900 mb-4 flex items-center gap-2">
-              <Plus className="h-5 w-5 text-emerald-600" />
-              New Product (Quick)
-            </h3>
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <label className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Product Code</label>
-                <Input
-                  value={quickProduct.code}
-                  onChange={e => setQuickProduct(prev => ({ ...prev, code: e.target.value }))}
-                  placeholder="e.g. PRD-001"
-                  className="h-9 hover:border-emerald-400 focus:border-emerald-500 focus:ring-emerald-500/20"
-                  autoFocus
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Product Name</label>
-                <Input
-                  value={quickProduct.name}
-                  onChange={e => setQuickProduct(prev => ({ ...prev, name: e.target.value }))}
-                  placeholder="e.g. Cotton Shirt"
-                  className="h-9 hover:border-emerald-400 focus:border-emerald-500 focus:ring-emerald-500/20"
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Unit</label>
-                <select
-                  value={quickProduct.unit}
-                  onChange={e => setQuickProduct(prev => ({ ...prev, unit: e.target.value }))}
-                  className="w-full h-9 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                >
-                  <option value="pcs">Pieces (pcs)</option>
-                  <option value="kg">Kilograms (kg)</option>
-                  <option value="mtr">Meters (mtr)</option>
-                  <option value="box">Box</option>
-                </select>
-              </div>
-              <div className="flex gap-2 pt-2">
-                <Button
-                  variant="outline"
-                  onClick={() => setShowQuickCreate(false)}
-                  className="flex-1"
-                >
-                  Cancel
-                </Button>
-                <Button
-                  onClick={handleQuickCreate}
-                  disabled={!quickProduct.code || !quickProduct.name || isCreatingProduct}
-                  className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white"
-                >
-                  {isCreatingProduct ? 'Creating...' : 'Create Product'}
-                </Button>
-              </div>
-            </div>
-          </Card>
-        </div>
-      )}
-
+      {/* Quick Create Product Inline Form - Rendered inside the main content if active */}
+      {/* This logic updates the render functionality to be inline rather than an overlay */}
     </>
   );
 }

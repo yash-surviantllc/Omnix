@@ -101,14 +101,42 @@ class WIPService:
         # Get Main Store Location
         try:
             loc_res = db.table('locations').select('id').eq('code', 'MAIN-STORE').single().execute()
-            if not loc_res.data:
-                raise ValidationException(detail="MAIN-STORE location not found. Please configure inventory locations.")
-            main_store_id = loc_res.data['id']
+            if loc_res.data:
+                main_store_id = loc_res.data['id']
+            else:
+                # Auto-create Main Store if it doesn't exist
+                logger.info("MAIN-STORE location not found. Auto-creating...")
+                new_loc = db.table('locations').insert({
+                    'code': 'MAIN-STORE',
+                    'name': 'Main Warehouse',
+                    'type': 'Internal',
+                    'is_active': True
+                }).execute()
+                if new_loc.data:
+                    main_store_id = new_loc.data[0]['id']
+                else:
+                    raise ValidationException(detail="Failed to auto-create Main Store location.")
         except Exception as e:
-            logger.error(f"Failed to get MAIN-STORE location: {e}")
-            # Delete WO since we can't allocate materials
-            db.table('work_orders').delete().eq('id', wo_id).execute()
-            raise ValidationException(detail=f"Cannot allocate materials: Main Store location not configured")
+            logger.error(f"Failed to get/create MAIN-STORE location: {e}")
+            # Try to use any available location as fallback
+            try:
+                fallback = db.table('locations').select('id').limit(1).execute()
+                if fallback.data:
+                    main_store_id = fallback.data[0]['id']
+                    logger.warning(f"Using fallback location ID: {main_store_id}")
+                else:
+                    # Create one if absolutely nothing exists
+                    new_loc = db.table('locations').insert({
+                        'code': 'MAIN-STORE',
+                        'name': 'Main Warehouse',
+                        'type': 'Internal',
+                        'is_active': True
+                    }).execute()
+                    main_store_id = new_loc.data[0]['id']
+            except Exception as inner_e:
+                # Delete WO as last resort
+                db.table('work_orders').delete().eq('id', wo_id).execute()
+                raise ValidationException(detail=f"Cannot allocate materials: No inventory locations configured. {str(e)}")
         
         # Calculate Requirements
         try:
@@ -801,6 +829,11 @@ class WIPService:
             operation_names = list(set([op['operation_name'] for op in ops_result.data]))
             # Get stages that match these operation names
             stages_result = db.table('wip_stages').select('*').in_('name', operation_names).eq('is_active', True).order('sequence_number').execute()
+            
+            # If explicit name match failed (e.g. typos or renames), fallback to ALL active stages
+            # This ensures we never return an empty list if there ARE stages
+            if not stages_result.data:
+                stages_result = db.table('wip_stages').select('*').eq('is_active', True).order('sequence_number').execute()
         
         if not stages_result.data:
             return []

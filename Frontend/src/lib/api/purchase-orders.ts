@@ -221,42 +221,58 @@ export const purchaseOrdersApi = {
 
   // Create purchase order
   async createOrder(data: CreatePurchaseOrderData): Promise<PurchaseOrder> {
-    return await apiClient.post<PurchaseOrder>(`${PURCHASE_ORDER_BASE}`, data);
+    const response = await apiClient.post<PurchaseOrder>(`${PURCHASE_ORDER_BASE}`, data);
+    apiClient.invalidateCache(PURCHASE_ORDER_BASE);
+    return response;
   },
 
   // Duplicate purchase order
   async duplicateOrder(orderId: string): Promise<PurchaseOrder> {
-    return await apiClient.post<PurchaseOrder>(`${PURCHASE_ORDER_BASE}/${orderId}/duplicate`);
+    const response = await apiClient.post<PurchaseOrder>(`${PURCHASE_ORDER_BASE}/${orderId}/duplicate`);
+    apiClient.invalidateCache(PURCHASE_ORDER_BASE);
+    return response;
   },
 
   // Create multi-SKU purchase order
   async createMultiSkuOrder(data: CreateMultiSkuOrderData): Promise<PurchaseOrder> {
-    return await apiClient.post<PurchaseOrder>(`${PURCHASE_ORDER_BASE}/multi-sku`, data);
+    const response = await apiClient.post<PurchaseOrder>(`${PURCHASE_ORDER_BASE}/multi-sku`, data);
+    apiClient.invalidateCache(PURCHASE_ORDER_BASE);
+    return response;
   },
 
   // Update purchase order
   async updateOrder(orderId: string, data: UpdatePurchaseOrderData): Promise<PurchaseOrder> {
-    return await apiClient.put<PurchaseOrder>(`${PURCHASE_ORDER_BASE}/${orderId}`, data);
+    const response = await apiClient.put<PurchaseOrder>(`${PURCHASE_ORDER_BASE}/${orderId}`, data);
+    apiClient.invalidateCache(PURCHASE_ORDER_BASE);
+    return response;
   },
 
   // Update order status
   async updateStatus(orderId: string, data: OrderStatusUpdate): Promise<PurchaseOrder> {
-    return await apiClient.put<PurchaseOrder>(`${PURCHASE_ORDER_BASE}/${orderId}/status`, data);
+    const response = await apiClient.put<PurchaseOrder>(`${PURCHASE_ORDER_BASE}/${orderId}/status`, data);
+    apiClient.invalidateCache(PURCHASE_ORDER_BASE);
+    return response;
   },
 
   // Archive order
   async archiveOrder(orderId: string): Promise<PurchaseOrder> {
-    return await apiClient.post<PurchaseOrder>(`${PURCHASE_ORDER_BASE}/${orderId}/archive`);
+    const response = await apiClient.post<PurchaseOrder>(`${PURCHASE_ORDER_BASE}/${orderId}/archive`);
+    apiClient.invalidateCache(PURCHASE_ORDER_BASE);
+    return response;
   },
 
   // Cancel order (POST backend)
   async cancelOrder(orderId: string): Promise<PurchaseOrder> {
-    return await apiClient.post<PurchaseOrder>(`${PURCHASE_ORDER_BASE}/${orderId}/cancel`);
+    const response = await apiClient.post<PurchaseOrder>(`${PURCHASE_ORDER_BASE}/${orderId}/cancel`);
+    apiClient.invalidateCache(PURCHASE_ORDER_BASE);
+    return response;
   },
 
   // Delete order (DELETE backend)
   async deleteOrder(orderId: string): Promise<{ message: string }> {
-    return await apiClient.delete<{ message: string }>(`${PURCHASE_ORDER_BASE}/${orderId}`);
+    const response = await apiClient.delete<{ message: string }>(`${PURCHASE_ORDER_BASE}/${orderId}`);
+    apiClient.invalidateCache(PURCHASE_ORDER_BASE);
+    return response;
   },
 
   // Get order materials
@@ -271,7 +287,9 @@ export const purchaseOrdersApi = {
 
   // Assign team to order
   async assignTeam(orderId: string, userIds: string[]): Promise<{ message: string }> {
-    return await apiClient.post<{ message: string }>(`${PURCHASE_ORDER_BASE}/${orderId}/assign`, { user_ids: userIds });
+    const response = await apiClient.post<{ message: string }>(`${PURCHASE_ORDER_BASE}/${orderId}/assign`, { user_ids: userIds });
+    apiClient.invalidateCache(PURCHASE_ORDER_BASE);
+    return response;
   },
 
   // Get order team

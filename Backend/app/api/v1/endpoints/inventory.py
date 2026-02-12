@@ -75,6 +75,9 @@ async def list_inventory(
     )
 
 
+
+
+
 @router.get("/by-product/{product_id}", response_model=StockByProduct)
 async def get_stock_by_product(
     product_id: str,

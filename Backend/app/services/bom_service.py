@@ -70,7 +70,7 @@ class BOMService:
         # 3. Create BOM header
         bom_dict = {
             'product_id': product_id,
-            'batch_size': float(bom_data.batch_size),
+            'batch_size': float(bom_data.batch_size) if bom_data.batch_size else 1.0,
             'version': 1,
             'is_active': True,
             # 'is_template': False, - Dropped (Not in DB schema)
@@ -324,7 +324,7 @@ class BOMService:
                 product_code=product['code'],
                 product_name=product['name'],
                 version=bom.get('version', 1),
-                batch_size=Decimal(str(bom.get('batch_size', 100))),
+                batch_size=Decimal(str(bom.get('batch_size', 1))),
                 is_active=bom['is_active'],
                 is_template=False,
                 template_name=None,
@@ -393,7 +393,7 @@ class BOMService:
             product_id=bom['product_id'],
             product_code=product_code,
             product_name=product_name,
-            batch_size=Decimal(str(bom.get('batch_size', 100))),
+            batch_size=Decimal(str(bom.get('batch_size', 1))),
             version=bom.get('version', 1),
             is_active=bom['is_active'],
             is_template=False, # Dropped (Not in DB schema)
@@ -682,7 +682,7 @@ class BOMService:
             raise NotFoundException(detail="No active BOM found for this product")
         
         bom = bom_result.data[0]
-        batch_size = Decimal(str(bom.get('batch_size', 100)))
+        batch_size = Decimal(str(bom.get('batch_size', 1)))
         
         # Get materials
         materials = db.table('bom_materials').select('*').eq('bom_id', bom['id']).execute()
@@ -953,7 +953,7 @@ class BOMService:
             raise NotFoundException(detail="No active BOM found for this product")
         
         bom_data = bom.data[0]
-        batch_size = Decimal(str(bom_data.get('batch_size', 100)))
+        batch_size = Decimal(str(bom_data.get('batch_size', 1)))
         
         # Get product details
         product = db.table('products').select('code', 'name').eq('id', product_id).execute()
