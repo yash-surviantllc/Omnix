@@ -7,6 +7,7 @@ import { Package, AlertTriangle, CheckCircle, XCircle, Send, History, Plus, X, C
 import { MaterialRequestProcessor, type MaterialRequest } from '@/lib/material-request-processor';
 import { apiClient } from '@/lib/api/client';
 import { inventoryItemsApi, type InventoryItemResponse } from '@/lib/api/inventory';
+import { shiftsApi, type Shift } from '@/lib/api/shifts';
 
 type MaterialRequestProps = {
   language: string;
@@ -35,7 +36,6 @@ export function MaterialRequest({ language }: MaterialRequestProps) {
     department: '',
     requestedBy: '',
     reviewedBy: '',
-    // REMOVED: approvedBy field
     shiftNumber: 'Shift 1',
     startTime: '',
     endTime: '',
@@ -58,6 +58,7 @@ export function MaterialRequest({ language }: MaterialRequestProps) {
   const [availableStages, setAvailableStages] = useState<any[]>([]);
   const [inventoryItems, setInventoryItems] = useState<InventoryItemResponse[]>([]);
   const [manualItemEntry, setManualItemEntry] = useState<Record<number, boolean>>({});
+  const [shifts, setShifts] = useState<Shift[]>([]);
 
   const fetchInventoryItems = async () => {
     console.log("Fetching inventory items...");
@@ -94,6 +95,19 @@ export function MaterialRequest({ language }: MaterialRequestProps) {
       setLoadingWorkOrders(false);
     }
   };
+
+  // Fetch shifts on component mount
+  useEffect(() => {
+    const fetchShifts = async () => {
+      try {
+        const data = await shiftsApi.list();
+        setShifts(data.filter(s => s.is_active));
+      } catch (error) {
+        console.error('Failed to fetch shifts:', error);
+      }
+    };
+    fetchShifts();
+  }, []);
 
   // Fetch data when modal opens
   useEffect(() => {
@@ -142,7 +156,6 @@ export function MaterialRequest({ language }: MaterialRequestProps) {
       dateOfRequest: 'Date of Request',
       requestedBy: 'Requested By',
       reviewedBy: 'Reviewed By',
-      // REMOVED: approvedBy
       rmCode: 'RM Code',
       materialDescription: 'Material Description',
       unitOfMeasure: 'Unit of Measure',
@@ -197,7 +210,6 @@ export function MaterialRequest({ language }: MaterialRequestProps) {
       dateOfRequest: 'अनुरोध की तारीख',
       requestedBy: 'अनुरोध किया गया',
       reviewedBy: 'रिव्यू किया गया',
-      // REMOVED: approvedBy
       rmCode: 'आरएम कोड',
       materialDescription: 'सामग्री का विवरण',
       unitOfMeasure: 'मात्रा की इकाई',
@@ -325,36 +337,26 @@ export function MaterialRequest({ language }: MaterialRequestProps) {
         return;
       }
 
-      // Map frontend data to backend schema (MaterialRequestCreate)
+      // Map frontend data to backend schema (MaterialRequisitionCreate)
       const requisitionData = {
+        work_order_number: formData.formNumber || null,
         department: formData.department,
+        requesting_stage: null, // Optional field
+        requested_by: formData.requestedBy || 'Unknown',
+        reviewed_by: formData.reviewedBy || null,
         shift: formData.shiftNumber || null,
-        request_date: formData.dateOfRequest, // Required field
-        required_date: null, // Can be set per item
         start_time: formData.startTime ? new Date(formData.startTime).toISOString() : null,
         end_time: formData.endTime ? new Date(formData.endTime).toISOString() : null,
         delivery_instructions: formData.deliveryInstructions || null,
-        priority: 'Normal', // Default priority
-        reference_order_id: formData.formNumber || null, // Work order reference
-        requested_by_name: formData.requestedBy || null,
-        reviewed_by_name: formData.reviewedBy || null,
-        approved_by_name: null,
         items: validItems.map(item => {
-          // Find id from inventory items by item code
-          const inventoryItem = inventoryItems.find(inv =>
-            inv.material_code === item.itemCode || inv.material_name === item.materialDescription
-          );
-
           return {
-            product_id: inventoryItem?.id || item.itemCode, // Use id if found, fallback to item_code
-            item_code: item.itemCode,
+            rm_code: item.itemCode,
             material_description: item.materialDescription,
-            requested_qty: parseFloat(item.quantity),
-            unit: item.unitOfMeasure || 'pcs',
+            unit_of_measure: item.unitOfMeasure || 'pcs',
+            quantity_requested: parseFloat(item.quantity),
             required_date: item.requiredDate || null,
             location: item.location || null,
-            priority: item.priority || 'Normal',
-            notes: null
+            priority: item.priority || 'Normal'
           };
         })
       };
@@ -366,7 +368,7 @@ export function MaterialRequest({ language }: MaterialRequestProps) {
       console.log("Material Request Created:", result);
 
       // Show success message
-      alert(`${language === 'en' ? 'Material Request Created Successfully!' : 'सामग्री अनुरोध सफलतापूर्वक बनाया गया!'}\n\nRequest Number: ${result.request_number}\nDepartment: ${result.department}\nItems: ${result.items.length}\nShift: ${result.shift || 'N/A'}`);
+      alert(`${language === 'en' ? 'Material Request Created Successfully!' : 'सामग्री अनुरोध सफलतापूर्वक बनाया गया!'}\n\nRequest Number: ${result.requisition_number}\nDepartment: ${result.department}\nItems: ${result.items.length}\nShift: ${result.shift || 'N/A'}`);
 
       // Reset form
       setFormData({
@@ -375,7 +377,7 @@ export function MaterialRequest({ language }: MaterialRequestProps) {
         department: '',
         requestedBy: '',
         reviewedBy: '',
-        shiftNumber: 'Shift 1',
+        shiftNumber: shifts.length > 0 ? shifts[0].name : 'Shift 1',
         startTime: '',
         endTime: '',
         deliveryInstructions: ''
@@ -834,7 +836,7 @@ export function MaterialRequest({ language }: MaterialRequestProps) {
                     </div>
                   </div>
 
-                  {/* Column 3 - REMOVED Approved By field */}
+                  {/* Column 3 */}
                   <div className="space-y-4">
                     <div>
                       <label className="text-sm font-medium text-slate-700 mb-1 block">
@@ -845,25 +847,37 @@ export function MaterialRequest({ language }: MaterialRequestProps) {
                         onChange={(e) => setFormData({ ...formData, shiftNumber: e.target.value })}
                         className="w-full p-2.5 border-2 border-slate-300 rounded-md"
                       >
-                        <option value="Shift 1">🌅 {t.shift1}</option>
-                        <option value="Shift 2">🌤️ {t.shift2}</option>
-                        <option value="Shift 3">🌙 {t.shift3}</option>
+                        {shifts.length > 0 ? (
+                          shifts.map((shift) => (
+                            <option key={shift.id} value={shift.name}>
+                              {shift.name}
+                            </option>
+                          ))
+                        ) : (
+                          <>
+                            <option value="Shift 1">🌅 {t.shift1}</option>
+                            <option value="Shift 2">🌤️ {t.shift2}</option>
+                            <option value="Shift 3">🌙 {t.shift3}</option>
+                          </>
+                        )}
                       </select>
                     </div>
-                    <div className="bg-white p-3 rounded-lg border border-slate-200">
-                      <div className="flex items-center gap-2 text-xs">
-                        <span className="text-lg">
-                          {formData.shiftNumber === 'Shift 1' && '🌅'}
-                          {formData.shiftNumber === 'Shift 2' && '🌤️'}
-                          {formData.shiftNumber === 'Shift 3' && '🌙'}
-                        </span>
-                        <span className="text-slate-600">
-                          {formData.shiftNumber === 'Shift 1' && '6:00 AM - 2:00 PM'}
-                          {formData.shiftNumber === 'Shift 2' && '2:00 PM - 10:00 PM'}
-                          {formData.shiftNumber === 'Shift 3' && '10:00 PM - 6:00 AM'}
-                        </span>
+                    {shifts.length > 0 && formData.shiftNumber && (
+                      <div className="bg-white p-3 rounded-lg border border-slate-200">
+                        <div className="flex items-center gap-2 text-xs">
+                          <Clock className="w-4 h-4 text-slate-600" />
+                          <span className="text-slate-600">
+                            {(() => {
+                              const selectedShift = shifts.find(s => s.name === formData.shiftNumber);
+                              if (selectedShift) {
+                                return `${selectedShift.start_time} - ${selectedShift.end_time}`;
+                              }
+                              return 'Select a shift';
+                            })()}
+                          </span>
+                        </div>
                       </div>
-                    </div>
+                    )}
                   </div>
                 </div>
               </div>

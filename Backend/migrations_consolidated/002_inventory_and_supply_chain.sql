@@ -172,19 +172,44 @@ CREATE TABLE IF NOT EXISTS customers (
 CREATE TABLE IF NOT EXISTS gate_entries (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     entry_number VARCHAR(50) UNIQUE NOT NULL,
-    entry_type VARCHAR(50) NOT NULL CHECK (entry_type IN ('INBOUND', 'OUTBOUND', 'MATERIAL_TRANSFER', 'SCRAP', 'RETURN', 'SAMPLE')),
+    entry_type VARCHAR(50) NOT NULL CHECK (entry_type IN (
+        -- Uppercase variants
+        'INBOUND', 'OUTBOUND', 'MATERIAL_TRANSFER', 'SCRAP', 'RETURN', 'SAMPLE',
+        -- Lowercase variants used by service layer
+        'material', 'courier', 'visitor', 'jobwork_return', 'subcontract_return', 
+        'delivery', 'machine_spare', 'inbound', 'outbound', 'material_transfer', 
+        'scrap', 'return', 'sample'
+    )),
     entry_date TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    vendor VARCHAR(255),
     vehicle_number VARCHAR(50),
     driver_name VARCHAR(100),
     contact_number VARCHAR(20),
-    status VARCHAR(20) NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED')),
+    destination_department VARCHAR(100),
+    status VARCHAR(50) NOT NULL DEFAULT 'pending' CHECK (status IN (
+        -- Uppercase variants
+        'PENDING', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED',
+        -- Mixed case variants used by service layer
+        'Arrived', 'Under Verification', 'Accepted', 'Rejected',
+        -- Lowercase variants
+        'pending', 'in_progress', 'completed', 'cancelled',
+        'arrived', 'under_verification', 'accepted', 'rejected'
+    )),
     reference_document_number VARCHAR(100),
     source_location_id UUID REFERENCES locations(id),
     destination_location_id UUID REFERENCES locations(id),
+    remarks TEXT,
     photos JSONB DEFAULT '[]'::jsonb,
+    created_by UUID REFERENCES users(id) ON DELETE SET NULL,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
+
+COMMENT ON TABLE gate_entries IS 'Gate entry records for inbound materials, deliveries, visitors, etc.';
+COMMENT ON COLUMN gate_entries.vendor IS 'Vendor or supplier name for inbound materials';
+COMMENT ON COLUMN gate_entries.destination_department IS 'Internal department receiving the materials (Store, QA, Maintenance, Production, Admin)';
+COMMENT ON COLUMN gate_entries.remarks IS 'Additional notes or remarks about the entry';
+COMMENT ON COLUMN gate_entries.created_by IS 'User who created this entry';
 
 CREATE TABLE IF NOT EXISTS gate_exits (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -197,9 +222,14 @@ CREATE TABLE IF NOT EXISTS gate_exits (
     materials JSONB DEFAULT '[]'::jsonb,
     status VARCHAR(50) DEFAULT 'ready',
     remarks TEXT,
+    created_by UUID REFERENCES users(id) ON DELETE SET NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+COMMENT ON TABLE gate_exits IS 'Gate exit records for outbound materials, dispatches, etc.';
+COMMENT ON COLUMN gate_exits.materials IS 'JSONB array of materials being dispatched';
+COMMENT ON COLUMN gate_exits.created_by IS 'User who created this exit';
 
 -- Note: gate_entry_materials table moved to 008_missing_tables.sql for consistency with service layer
 

@@ -96,6 +96,9 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
 
   // Track previous stages to detect changes
   const previousStagesRef = useRef<Stage[]>([]);
+  
+  // Track BOM fetch request ID to prevent race conditions
+  const bomFetchIdRef = useRef<number>(0);
 
   // Toggle expanded state for a work order
   const toggleExpanded = (orderId: string) => {
@@ -150,6 +153,10 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
       const qty = parseFloat(newWorkOrderData.target_qty);
       if (isNaN(qty) || qty <= 0) return;
 
+      // Increment request ID to track this specific request
+      bomFetchIdRef.current += 1;
+      const currentRequestId = bomFetchIdRef.current;
+
       setIsLoadingBOM(true);
       try {
         // 1. Get Active BOM for Product
@@ -158,22 +165,31 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
         // 2. Calculate Requirements
         const materials = await bomApi.getMaterialsWithShortages(bom.id, qty);
 
-        // Map to local state
-        const reqs: BOMRequirement[] = materials.map((m) => ({
-          material_name: m.material_name,
-          quantity_per_unit: Number(m.quantity_per_unit) || 0,
-          required_quantity: Number(m.required_qty) || 0,
-          unit: m.unit,
-          available_stock: Number(m.available_qty) || 0,
-          status: m.shortage_status === 'Sufficient' ? 'Sufficient' : 'Low Stock'
-        }));
+        // Only update state if this is still the latest request
+        if (currentRequestId === bomFetchIdRef.current) {
+          // Map to local state
+          const reqs: BOMRequirement[] = materials.map((m) => ({
+            material_name: m.material_name,
+            quantity_per_unit: Number(m.quantity_per_unit) || 0,
+            required_quantity: Number(m.required_qty) || 0,
+            unit: m.unit,
+            available_stock: Number(m.available_qty) || 0,
+            status: m.shortage_status === 'Sufficient' ? 'Sufficient' : 'Low Stock'
+          }));
 
-        setBomRequirements(reqs);
+          setBomRequirements(reqs);
+        }
       } catch (err) {
         console.error('Failed to fetch BOM requirements:', err);
-        setBomRequirements([]);
+        // Only clear if this is still the latest request
+        if (currentRequestId === bomFetchIdRef.current) {
+          setBomRequirements([]);
+        }
       } finally {
-        setIsLoadingBOM(false);
+        // Only update loading state if this is still the latest request
+        if (currentRequestId === bomFetchIdRef.current) {
+          setIsLoadingBOM(false);
+        }
       }
     };
 
@@ -1018,14 +1034,6 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
                     </div>
                   </div>
 
-                  {/* Progress Bar */}
-                  <div className="w-full bg-zinc-100 rounded-full h-2 mb-6 overflow-hidden">
-                    <div
-                      className="bg-emerald-500 h-2 rounded-full transition-all duration-500"
-                      style={{ width: `${Math.min((order.completedQty / order.quantity) * 100, 100)}%` }}
-                    />
-                  </div>
-
                   {/* Expanded Content: Operations */}
                   {expandedOrders.has(order.id) && (
                     <div className="mt-6 space-y-6 border-t border-zinc-100 pt-6 animate-in fade-in slide-in-from-top-2 duration-200">
@@ -1038,7 +1046,17 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
                       <div>
                         <h4 className="text-sm font-semibold text-zinc-700 mb-3">Operation Progress</h4>
                         <div className="flex gap-3">
-                          {order.operations.filter(op => !op.id.toString().startsWith('placeholder-')).map((op) => {
+                          {/* Sort operations by stage sequence from availableStages */}
+                          {order.operations
+                            .filter(op => !op.id.toString().startsWith('placeholder-'))
+                            .sort((a, b) => {
+                              const stageA = availableStages.find(s => s.name === a.name);
+                              const stageB = availableStages.find(s => s.name === b.name);
+                              const seqA = stageA?.sequence_number ?? 9999;
+                              const seqB = stageB?.sequence_number ?? 9999;
+                              return seqA - seqB;
+                            })
+                            .map((op) => {
                             const opProgress = op.targetUnits > 0 ? Math.round((op.completedUnits / op.targetUnits) * 100) : 0;
 
                             return (

@@ -3,7 +3,7 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
-import { Clock, Plus, Trash2 } from 'lucide-react';
+import { Clock, Plus, Trash2, Edit2, Check, X } from 'lucide-react';
 import { shiftsApi, type Shift } from '@/lib/api/shifts';
 
 interface ShiftSettingsProps {
@@ -14,7 +14,9 @@ export function ShiftSettings({ language }: ShiftSettingsProps) {
     const [shifts, setShifts] = useState<Shift[]>([]);
     const [loading, setLoading] = useState(true);
     const [isAdding, setIsAdding] = useState(false);
+    const [editingId, setEditingId] = useState<string | null>(null);
     const [newShift, setNewShift] = useState({ name: '', start_time: '', end_time: '' });
+    const [editShift, setEditShift] = useState({ name: '', start_time: '', end_time: '' });
 
     const fetchShifts = async () => {
         try {
@@ -64,6 +66,32 @@ export function ShiftSettings({ language }: ShiftSettingsProps) {
         }
     };
 
+    const handleStartEdit = (shift: Shift) => {
+        setEditingId(shift.id);
+        setEditShift({
+            name: shift.name,
+            start_time: shift.start_time,
+            end_time: shift.end_time
+        });
+    };
+
+    const handleCancelEdit = () => {
+        setEditingId(null);
+        setEditShift({ name: '', start_time: '', end_time: '' });
+    };
+
+    const handleSaveEdit = async (id: string) => {
+        try {
+            if (!editShift.name || !editShift.start_time || !editShift.end_time) return;
+            await shiftsApi.update(id, editShift);
+            setEditingId(null);
+            setEditShift({ name: '', start_time: '', end_time: '' });
+            fetchShifts();
+        } catch (error) {
+            alert('Failed to update shift');
+        }
+    };
+
     const t = {
         title: language === 'en' ? 'Shift Configuration' : 'Shift Configuration', // TODO: Add translations
         desc: language === 'en' ? 'Configure operation shifts' : 'Configure operation shifts',
@@ -93,23 +121,78 @@ export function ShiftSettings({ language }: ShiftSettingsProps) {
 
             <div className="space-y-3">
                 {shifts.map((shift) => (
-                    <div key={shift.id} className="flex items-center justify-between p-3 border rounded-lg bg-zinc-50">
-                        <div>
-                            <p className="font-medium text-zinc-900">{shift.name}</p>
-                            <p className="text-xs text-zinc-500">{shift.start_time} - {shift.end_time}</p>
-                        </div>
-                        <div className="flex items-center gap-3">
-                            <div className="flex items-center gap-2">
-                                <span className="text-xs text-zinc-500">{t.active}</span>
-                                <Switch
-                                    checked={shift.is_active}
-                                    onCheckedChange={() => handleToggleActive(shift)}
-                                />
+                    <div key={shift.id}>
+                        {editingId === shift.id ? (
+                            // Edit Mode
+                            <div className="p-4 border border-blue-200 bg-blue-50 rounded-lg space-y-3">
+                                <h3 className="text-sm font-medium text-blue-900">Edit Shift</h3>
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                    <div>
+                                        <label className="text-xs text-zinc-500">{t.name}</label>
+                                        <Input
+                                            value={editShift.name}
+                                            onChange={e => setEditShift({ ...editShift, name: e.target.value })}
+                                            placeholder="e.g. Morning Shift"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="text-xs text-zinc-500">{t.start}</label>
+                                        <Input
+                                            type="time"
+                                            value={editShift.start_time}
+                                            onChange={e => setEditShift({ ...editShift, start_time: e.target.value })}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="text-xs text-zinc-500">{t.end}</label>
+                                        <Input
+                                            type="time"
+                                            value={editShift.end_time}
+                                            onChange={e => setEditShift({ ...editShift, end_time: e.target.value })}
+                                        />
+                                    </div>
+                                </div>
+                                <div className="flex justify-end gap-2 mt-2">
+                                    <Button variant="ghost" size="sm" onClick={handleCancelEdit}>
+                                        <X className="h-4 w-4 mr-1" /> Cancel
+                                    </Button>
+                                    <Button size="sm" onClick={() => handleSaveEdit(shift.id)}>
+                                        <Check className="h-4 w-4 mr-1" /> Save Changes
+                                    </Button>
+                                </div>
                             </div>
-                            <button onClick={() => handleDeleteShift(shift.id)} className="text-red-500 hover:text-red-700 p-2">
-                                <Trash2 className="h-4 w-4" />
-                            </button>
-                        </div>
+                        ) : (
+                            // Display Mode
+                            <div className="flex items-center justify-between p-3 border rounded-lg bg-zinc-50">
+                                <div>
+                                    <p className="font-medium text-zinc-900">{shift.name}</p>
+                                    <p className="text-xs text-zinc-500">{shift.start_time} - {shift.end_time}</p>
+                                </div>
+                                <div className="flex items-center gap-3">
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-xs text-zinc-500">{t.active}</span>
+                                        <Switch
+                                            checked={shift.is_active}
+                                            onCheckedChange={() => handleToggleActive(shift)}
+                                        />
+                                    </div>
+                                    <button 
+                                        onClick={() => handleStartEdit(shift)} 
+                                        className="text-blue-500 hover:text-blue-700 p-2"
+                                        title="Edit shift"
+                                    >
+                                        <Edit2 className="h-4 w-4" />
+                                    </button>
+                                    <button 
+                                        onClick={() => handleDeleteShift(shift.id)} 
+                                        className="text-red-500 hover:text-red-700 p-2"
+                                        title="Delete shift"
+                                    >
+                                        <Trash2 className="h-4 w-4" />
+                                    </button>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 ))}
 

@@ -197,7 +197,10 @@ export function NotificationBell({ language = 'en' }: NotificationBellProps) {
         <>
             {/* Bell Icon Button - REFINED */}
             <button
-                onClick={() => setShowPanel(!showPanel)}
+                onClick={(e) => {
+                    e.stopPropagation();
+                    setShowPanel(!showPanel);
+                }}
                 className="relative p-2.5 hover:bg-zinc-100 rounded-lg transition-all duration-200 group"
                 aria-label="Notifications"
             >
