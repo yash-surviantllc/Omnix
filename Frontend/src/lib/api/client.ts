@@ -6,8 +6,9 @@ export const getWsUrl = (path: string): string => {
   if (API_URL.startsWith('http')) {
     try {
       const url = new URL(API_URL);
-      // Remove /api/v1 from host if it exists in the URL object but normally host is just domain:port
-      return `${protocol}//${url.host}${path}`;
+      // Include pathname (e.g., /api/v1) in the WebSocket URL
+      const fullPath = (url.pathname + path).replace(/\/+/g, '/');
+      return `${protocol}//${url.host}${fullPath}`;
     } catch (e) {
       console.error('Invalid API_URL for WebSocket derivation:', e);
     }

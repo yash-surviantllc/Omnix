@@ -249,7 +249,9 @@ export function GateEntry({ language }: GateEntryProps) {
       selectType: 'Select entry type',
       selectDepartment: 'Select department',
       noEntries: 'No gate entries yet',
-      createFirst: 'Create your first gate entry above'
+      createFirst: 'Create your first gate entry above',
+      close: 'Close',
+      photos: 'Photos'
     },
     hi: {
       title: 'गेट एंट्री (इनवर्ड)',
@@ -309,7 +311,9 @@ export function GateEntry({ language }: GateEntryProps) {
       selectType: 'एंट्री प्रकार चुनें',
       selectDepartment: 'विभाग चुनें',
       noEntries: 'अभी तक कोई गेट एंट्री नहीं',
-      createFirst: 'ऊपर अपनी पहली गेट एंट्री बनाएं'
+      createFirst: 'ऊपर अपनी पहली गेट एंट्री बनाएं',
+      close: 'बंद करें',
+      photos: 'तस्वीरें'
     },
     kn: {
       title: 'ಗೇಟ್ ಎಂಟ್ರಿ (ಇನ್‌ವರ್ಡ್)',
@@ -368,8 +372,10 @@ export function GateEntry({ language }: GateEntryProps) {
       enterRemarks: 'ಟಿಪ್ಪಣಿಗಳನ್ನು ಸೇರಿಸಿ',
       selectType: 'ಎಂಟ್ರಿ ಪ್ರಕಾರ ಆಯ್ಕೆಮಾಡಿ',
       selectDepartment: 'ವಿಭಾಗ ಆಯ್ಕೆಮಾಡಿ',
-      noEntries: 'ಇನ್ನೂ ಗೇಟ್ ಎಂಟ್ರಿಗಳಿಲ್ಲ',
-      createFirst: 'ಮೇಲೆ ನಿಮ್ಮ ಮೊದಲ ಗೇಟ್ ಎಂಟ್ರಿ ರಚಿಸಿ'
+      noEntries: 'ಇನ್ನೂ ಗೇಟ್ ಎಂಟ್ರಿಗಳಿಂದಿಲ್ಲ',
+      createFirst: 'ಮೇಲೆ ನಿಮ್ಮ ಮೊದಲ ಗೇಟ್ ಎಂಟ್ರಿ ರಚಿಸಿ',
+      close: 'ಮುಚ್ಚಿ',
+      photos: 'ಫೋಟೋಗಳು'
     },
     ta: {
       title: 'கேட் என்ட்ரி (உள்ளரங்கு)',
@@ -429,7 +435,9 @@ export function GateEntry({ language }: GateEntryProps) {
       selectType: 'என்ட்ரி வகையைத் தேர்ந்தெடுக்கவும்',
       selectDepartment: 'துறையைத் தேர்ந்தெடுக்கவும்',
       noEntries: 'இன்னும் கேட் என்ட்ரிகள் இல்லை',
-      createFirst: 'மேலே உங்கள் முதல் கேட் என்ட்ரியை உருவாக்கவும்'
+      createFirst: 'மேலே உங்கள் ಮೊದಲ கேட் என்ட்ரியை உருவாக்கவும்',
+      close: 'மூடு',
+      photos: 'புகைப்படங்கள்'
     },
     te: {
       title: 'గేట్ ఎంట్రీ (ఇన్‌వార్డ్)',
@@ -489,7 +497,9 @@ export function GateEntry({ language }: GateEntryProps) {
       selectType: 'ఎంట్రీ రకాన్ని ఎంచుకోండి',
       selectDepartment: 'విభాగాన్ని ఎంచుకోండి',
       noEntries: 'ఇంకా గేట్ ఎంట్రీలు లేవు',
-      createFirst: 'పైన మీ మొదటి గేట్ ఎంట్రీని సృష్టించండి'
+      createFirst: 'పైన మీ మొదటి గేట్ ఎంట్రీని సృష్టించండి',
+      close: 'మూసివేయి',
+      photos: 'ఫోటోలు'
     },
     mr: {
       title: 'गेट एंट्री (इनवर्ड)',
@@ -549,7 +559,9 @@ export function GateEntry({ language }: GateEntryProps) {
       selectType: 'एंट्री प्रकार निवडा',
       selectDepartment: 'विभाग निवडा',
       noEntries: 'अद्याप गेट एंट्री नाहीत',
-      createFirst: 'वर आपली पहिली गेट एंट्री तयार करा'
+      createFirst: 'वर अपनी पहिली गेट एंट्री तयार करा',
+      close: 'बंद करा',
+      photos: 'फोटो'
     },
     gu: {
       title: 'ગેટ એન્ટ્રી (ઇનવર્ડ)',
@@ -609,7 +621,9 @@ export function GateEntry({ language }: GateEntryProps) {
       selectType: 'એન્ટ્રી પ્રકાર પસંદ કરો',
       selectDepartment: 'વિભાગ પસંદ કરો',
       noEntries: 'હજી સુધી કોઈ ગેટ એન્ટ્રી નથી',
-      createFirst: 'ઉપર તમારી પ્રથમ ગેટ એન્ટ્રી બનાવો'
+      createFirst: 'ઉપર તમારી પ્રથમ ગેટ એન્ટ્રી બનાવો',
+      close: 'બંધ કરો',
+      photos: 'ફોટા'
     },
     pa: {
       title: 'ਗੇਟ ਐਂਟਰੀ (ਇਨਵਰਡ)',
@@ -669,7 +683,9 @@ export function GateEntry({ language }: GateEntryProps) {
       selectType: 'ਐਂਟਰੀ ਕਿਸਮ ਚੁਣੋ',
       selectDepartment: 'ਵਿਭਾਗ ਚੁਣੋ',
       noEntries: 'ਅਜੇ ਤੱਕ ਕੋਈ ਗੇਟ ਐਂਟਰੀਆਂ ਨਹੀਂ',
-      createFirst: 'ਉੱਪਰ ਆਪਣੀ ਪਹਿਲੀ ਗੇਟ ਐਂਟਰੀ ਬਣਾਓ'
+      createFirst: 'ਉੱਪਰ ਆਪਣੀ ਪਹਿਲੀ ਗੇਟ ਐਂਟਰੀ ਬਣਾਓ',
+      close: 'ਬੰਦ ਕਰੋ',
+      photos: 'ਫੋਟੋਆਂ'
     }
   };
 
@@ -1221,14 +1237,13 @@ export function GateEntry({ language }: GateEntryProps) {
       {/* View Details Modal */}
       {showViewModal && selectedEntry && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-lg shadow-xl max-w-3xl w-full max-h-[90vh] overflow-y-auto">
-            {/* Modal Header */}
-            <div className="sticky top-0 bg-gradient-to-r from-blue-600 to-indigo-600 text-white p-6 flex items-center justify-between">
+          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full">
+            <div className="bg-blue-600 text-white p-6 flex items-center justify-between rounded-t-lg">
               <div className="flex items-center gap-3">
-                <Package className="w-6 h-6" />
+                <FileText className="w-6 h-6 text-blue-100" />
                 <div>
-                  <h2 className="text-2xl font-bold">{selectedEntry.entry_number}</h2>
-                  <p className="text-sm text-blue-100">{t.entryTypes[selectedEntry.entry_type as EntryType]}</p>
+                  <h2 className="text-xl font-bold">{t.viewDetails}</h2>
+                  <p className="text-sm text-blue-100/80">{selectedEntry.entry_number}</p>
                 </div>
               </div>
               <button
@@ -1242,121 +1257,124 @@ export function GateEntry({ language }: GateEntryProps) {
               </button>
             </div>
 
-            {/* Modal Body */}
             <div className="p-6 space-y-6">
-              {/* Status Badge */}
-              <div className="flex items-center justify-between">
-                <Badge className={getStatusColor(selectedEntry.status)}>
-                  {t.statuses[selectedEntry.status as keyof typeof t.statuses]}
-                </Badge>
-                <span className="text-sm text-zinc-500">
-                  {new Date(selectedEntry.created_at).toLocaleString()}
-                </span>
-              </div>
-
-              {/* Vendor & Vehicle Info */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 gap-6">
                 <div>
-                  <label className="text-sm font-medium text-zinc-600">{t.vendor}</label>
-                  <p className="mt-1 text-lg font-semibold">{selectedEntry.vendor}</p>
+                  <label className="text-xs uppercase tracking-wider text-zinc-500 font-bold">{t.entryType}</label>
+                  <div className="mt-1 flex items-center gap-2">
+                    <Badge variant="secondary" className="bg-blue-50 text-blue-700 hover:bg-blue-100 border-blue-200">
+                      {t.entryTypes[selectedEntry.entry_type as EntryType] || selectedEntry.entry_type}
+                    </Badge>
+                  </div>
                 </div>
                 <div>
-                  <label className="text-sm font-medium text-zinc-600">{t.destinationDept}</label>
+                  <label className="text-xs uppercase tracking-wider text-zinc-500 font-bold">{t.status}</label>
+                  <div className="mt-1">
+                    <Badge className={getStatusColor(selectedEntry.status)}>
+                      {t.statuses[selectedEntry.status as keyof typeof t.statuses] || selectedEntry.status}
+                    </Badge>
+                  </div>
+                </div>
+                <div>
+                  <label className="text-xs uppercase tracking-wider text-zinc-500 font-bold">{t.vendor}</label>
+                  <p className="mt-1 text-zinc-900 font-medium">{selectedEntry.vendor}</p>
+                </div>
+                <div>
+                  <label className="text-xs uppercase tracking-wider text-zinc-500 font-bold">{t.destinationDept}</label>
                   <p className="mt-1">
                     <Badge variant="outline" className="border-zinc-300">
                       {selectedEntry.destination_department}
                     </Badge>
                   </p>
                 </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="text-sm font-medium text-zinc-600">{t.vehicleNo}</label>
-                  <p className="mt-1 font-mono">{selectedEntry.vehicle_no || 'N/A'}</p>
+                  <label className="text-xs uppercase tracking-wider text-zinc-500 font-bold">{t.vehicleNo}</label>
+                  <p className="mt-1 font-mono text-zinc-900">{selectedEntry.vehicle_no || 'N/A'}</p>
                 </div>
                 <div>
-                  <label className="text-sm font-medium text-zinc-600">{t.driverName}</label>
-                  <p className="mt-1">{selectedEntry.driver_name || 'N/A'}</p>
+                  <label className="text-xs uppercase tracking-wider text-zinc-500 font-bold">{t.driverName}</label>
+                  <p className="mt-1 text-zinc-900">{selectedEntry.driver_name || 'N/A'}</p>
                 </div>
               </div>
 
               {selectedEntry.linked_document && (
                 <div>
-                  <label className="text-sm font-medium text-zinc-600">{t.linkedDocument}</label>
-                  <p className="mt-1 font-mono text-blue-600">{selectedEntry.linked_document}</p>
+                  <label className="text-xs uppercase tracking-wider text-zinc-500 font-bold">{t.linkedDocument}</label>
+                  <p className="mt-1 font-mono text-blue-600 font-medium">{selectedEntry.linked_document}</p>
                 </div>
               )}
 
-              {/* Materials */}
               <div>
-                <label className="text-sm font-medium text-zinc-600 mb-3 block">{t.materials}</label>
-                <div className="space-y-2">
-                  {selectedEntry.materials.map((material: any, index: number) => (
-                    <div key={index} className="flex items-center justify-between p-4 bg-zinc-50 rounded-lg border border-zinc-200">
-                      <div className="flex-1">
-                        <p className="font-medium">{material.material_name}</p>
-                        {material.material_code && (
-                          <p className="text-sm text-zinc-500 font-mono">{material.material_code}</p>
-                        )}
-                      </div>
-                      <div className="text-right">
-                        <p className="font-semibold text-lg">{material.quantity} {material.uom}</p>
-                      </div>
-                    </div>
-                  ))}
+                <label className="text-xs uppercase tracking-wider text-zinc-500 font-bold mb-3 block">{t.materials}</label>
+                <div className="bg-zinc-50 rounded-lg border border-zinc-200 overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead className="bg-zinc-100 border-b border-zinc-200">
+                      <tr>
+                        <th className="text-left p-3 font-semibold text-zinc-700">{t.materialName}</th>
+                        <th className="text-right p-3 font-semibold text-zinc-700">{t.quantity}</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-zinc-200">
+                      {selectedEntry.materials.map((m: any, idx: number) => (
+                        <tr key={idx}>
+                          <td className="p-3 text-zinc-900">
+                            <div>{m.material_name}</div>
+                            {m.material_code && <div className="text-xs text-zinc-500 font-mono">{m.material_code}</div>}
+                          </td>
+                          <td className="p-3 text-right font-medium text-zinc-900">{m.quantity} {m.uom}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               </div>
 
-              {/* Remarks */}
+              {selectedEntry.photos && selectedEntry.photos.length > 0 && (
+                <div>
+                  <label className="text-xs uppercase tracking-wider text-zinc-500 font-bold mb-3 block">{t.photos}</label>
+                  <div className="flex flex-wrap gap-3">
+                    {selectedEntry.photos.map((photo: string, index: number) => (
+                      <a
+                        key={index}
+                        href={photo}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="group relative block border border-zinc-200 rounded-lg overflow-hidden transition-all hover:border-blue-400"
+                      >
+                        <img
+                          src={photo}
+                          alt={`Entry photo ${index + 1}`}
+                          className="w-20 h-20 object-cover grayscale group-hover:grayscale-0 transition-all duration-300"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).src = 'https://via.placeholder.com/80?text=Error';
+                          }}
+                        />
+                        <div className="absolute inset-0 bg-blue-600/0 group-hover:bg-blue-600/10 transition-colors" />
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {selectedEntry.remarks && (
                 <div>
-                  <label className="text-sm font-medium text-zinc-600">{t.remarks}</label>
-                  <p className="mt-1 p-3 bg-zinc-50 rounded-lg border border-zinc-200">
-                    {selectedEntry.remarks}
+                  <label className="text-xs uppercase tracking-wider text-zinc-500 font-bold">{t.remarks}</label>
+                  <p className="mt-1 p-3 bg-zinc-50 rounded-lg border border-zinc-200 text-zinc-700 italic text-sm">
+                    "{selectedEntry.remarks}"
                   </p>
                 </div>
               )}
             </div>
 
-            {/* Photos Display */}
-            {selectedEntry.photos && selectedEntry.photos.length > 0 && (
-              <div className="px-6 pb-6">
-                <label className="text-sm font-medium text-zinc-600 mb-2 block">Photos</label>
-                <div className="flex flex-wrap gap-3">
-                  {selectedEntry.photos.map((photo: string, index: number) => (
-                    <a
-                      key={index}
-                      href={photo}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="block border border-zinc-200 rounded overflow-hidden hover:opacity-80 transition-opacity"
-                    >
-                      <img
-                        src={photo}
-                        alt={`Entry photo ${index + 1}`}
-                        className="w-24 h-24 object-cover"
-                        onError={(e) => {
-                          (e.target as HTMLImageElement).src = 'https://via.placeholder.com/96?text=Error';
-                        }}
-                      />
-                    </a>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Modal Footer */}
-            <div className="sticky bottom-0 bg-white border-t-2 border-zinc-200 p-6">
+            <div className="p-6 border-t border-zinc-200 bg-zinc-50 rounded-b-lg">
               <Button
                 onClick={() => {
                   setShowViewModal(false);
                   setSelectedEntry(null);
                 }}
-                className="w-full"
-                variant="outline"
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white"
               >
-                Close
+                {t.close}
               </Button>
             </div>
           </div>

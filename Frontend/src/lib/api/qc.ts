@@ -66,7 +66,7 @@ export interface CreateQCInspectionPayload {
 
 export const qcApi = {
     create: async (data: CreateQCInspectionPayload): Promise<QCInspection> => {
-        return apiClient.post<QCInspection>('/qc/', data);
+        return apiClient.post<QCInspection>('/qc', data);
     },
 
     getAll: async (params?: { page?: number; limit?: number; status?: string }): Promise<QCInspection[]> => {
@@ -75,12 +75,12 @@ export const qcApi = {
         if (params?.limit) queryParams.append('limit', params.limit.toString());
         if (params?.status) queryParams.append('status', params.status);
 
-        const url = `/qc/?${queryParams.toString()}`;
+        const url = `/qc?${queryParams.toString()}`;
         return apiClient.get<QCInspection[]>(url);
     },
 
     getStats: async (): Promise<QCStats> => {
-        return apiClient.get<QCStats>('/qc/stats/');
+        return apiClient.get<QCStats>('/qc/stats');
     },
 
     async getById(id: string): Promise<QCInspection> {

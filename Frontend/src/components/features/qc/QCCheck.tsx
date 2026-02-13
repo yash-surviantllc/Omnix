@@ -114,10 +114,10 @@ const DEFECT_LIBRARY: DefectCategory[] = [
 ];
 
 interface QCCheckProps {
-  language: 'en' | 'hi' | 'kn' | 'ta' | 'te' | 'mr' | 'gu' | 'pa';
+  language?: 'en' | 'hi' | 'kn' | 'ta' | 'te' | 'mr' | 'gu' | 'pa';
 }
 
-export function QCCheck({ language }: QCCheckProps) {
+export function QCCheck({ }: QCCheckProps) {
   // --- State ---
   const [openSelect, setOpenSelect] = useState(false);
   const [availableOrders, setAvailableOrders] = useState<LookupResult[]>([]);
@@ -187,7 +187,10 @@ export function QCCheck({ language }: QCCheckProps) {
 
   const handleSelectOrder = (item: LookupResult) => {
     const target = item.full_data.quantity || item.full_data.target_qty || 0;
-    const completed = item.full_data.completed_quantity || item.full_data.completed_qty || 0;
+    // Fix: Use correct backend field names - quantity_completed for PO, completed_qty for WO
+    const completed = item.type === 'PO' 
+      ? (item.full_data.quantity_completed || 0) 
+      : (item.full_data.completed_qty || 0);
     setSelectedOrder({ ...item, target_qty: target, completed_qty: completed });
     setQtyToInspect(target - completed);
     setPassQty(target - completed);
@@ -221,18 +224,26 @@ export function QCCheck({ language }: QCCheckProps) {
   const handleSubmit = async () => {
     if (!selectedOrder) return toast.error("Select an order first");
 
+    // Validation
+    const totalQty = passQty + reworkQty + scrapQty;
+    if (totalQty <= 0) {
+      return toast.error("Total quantity must be greater than 0");
+    }
+
+    if (!selectedOrder.full_data.product_id) {
+      return toast.error("Product ID is missing from the selected order");
+    }
+
     try {
       setIsLoading(true);
-      const payload = {
-        purchase_order_id: selectedOrder.type === 'PO' ? selectedOrder.id : null,
-        work_order_id: selectedOrder.type === 'WO' ? selectedOrder.id : null,
+      // Build payload with only the relevant order ID
+      const payload: any = {
         product_id: selectedOrder.full_data.product_id,
         quantity_checked: passQty + reworkQty + scrapQty,
         passed_qty: passQty,
         rework_qty: reworkQty,
         scrap_qty: scrapQty,
         status: 'Completed' as const,
-        notes,
         defects: selectedDefects.map(d => ({
           defect_type: d.type,
           reason: d.name,
@@ -240,6 +251,19 @@ export function QCCheck({ language }: QCCheckProps) {
         }))
       };
 
+      // Add the appropriate order ID
+      if (selectedOrder.type === 'PO') {
+        payload.purchase_order_id = selectedOrder.id;
+      } else {
+        payload.work_order_id = selectedOrder.id;
+      }
+
+      // Add notes if present
+      if (notes) {
+        payload.notes = notes;
+      }
+
+      console.log('Submitting QC payload:', payload);
       await qcApi.create(payload);
       toast.success("QC Record Submitted");
 
@@ -253,8 +277,10 @@ export function QCCheck({ language }: QCCheckProps) {
       setPhotoEvidence([]);
       setSelectedDefects([]);
       fetchHistory();
-    } catch (e) {
-      toast.error("Submission failed");
+    } catch (e: any) {
+      console.error('QC Submission Error:', e);
+      const errorMessage = e?.response?.data?.detail || e?.message || "Submission failed";
+      toast.error(`Submission failed: ${errorMessage}`);
     } finally {
       setIsLoading(false);
     }

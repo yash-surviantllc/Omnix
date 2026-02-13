@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import {
   Package, AlertTriangle, TrendingUp, Clock, ArrowRight, RefreshCw,
-  CheckCircle, BarChart, FileText, Clipboard, Settings, User, BarChart2
+  CheckCircle, BarChart2, FileText, Clipboard, Settings, User
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -62,7 +62,20 @@ export function Dashboard({ onNavigate, language }: DashboardProps) {
 
   // WebSocket for real-time updates
   useEffect(() => {
-    const token = localStorage.getItem('access_token');
+    const getAccessToken = () => {
+      try {
+        const authStorage = localStorage.getItem('auth-storage');
+        if (authStorage) {
+          const parsed = JSON.parse(authStorage);
+          return parsed.state?.accessToken || null;
+        }
+      } catch (error) {
+        console.error('Error getting access token:', error);
+      }
+      return null;
+    };
+
+    const token = getAccessToken();
     if (!token) return;
 
     const connectWebSocket = () => {
@@ -91,6 +104,14 @@ export function Dashboard({ onNavigate, language }: DashboardProps) {
                   return { ...prev, shortages: data.data };
                 case 'activities':
                   return { ...prev, recent_activities: data.data };
+                case 'qc':
+                case 'wip':
+                case 'inventory':
+                case 'transfers':
+                  // For these updates, trigger a full dashboard refresh
+                  console.log(`Received ${data.update_type} update, refreshing dashboard...`);
+                  fetchDashboard();
+                  return prev;
                 default:
                   return prev;
               }

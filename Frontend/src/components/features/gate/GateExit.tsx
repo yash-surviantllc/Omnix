@@ -34,6 +34,8 @@ type GateExitRecord = {
 
 export function GateExit({ language }: GateExitProps) {
   const [showExitModal, setShowExitModal] = useState(false);
+  const [showViewModal, setShowViewModal] = useState(false);
+  const [selectedExit, setSelectedExit] = useState<GateExitResponse | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState<'new' | 'history'>('new');
 
@@ -170,7 +172,8 @@ export function GateExit({ language }: GateExitProps) {
       enterRemarks: 'Add notes or remarks',
       selectType: 'Select exit type',
       noExits: 'No gate exits yet',
-      createFirst: 'Create your first gate exit above'
+      createFirst: 'Create your first gate exit above',
+      close: 'Close'
     },
     hi: {
       title: 'गेट एग्जिट (आउटवर्ड)',
@@ -223,7 +226,8 @@ export function GateExit({ language }: GateExitProps) {
       enterRemarks: 'नोट्स या टिप्पणी जोड़ें',
       selectType: 'एग्जिट प्रकार चुनें',
       noExits: 'अभी तक कोई गेट एग्जिट नहीं',
-      createFirst: 'ऊपर अपनी पहली गेट एग्जिट बनाएं'
+      createFirst: 'ऊपर अपनी पहली गेट एग्जिट बनाएं',
+      close: 'बंद करें'
     },
     kn: {
       title: 'ಗೇಟ್ ಎಕ್ಸಿಟ್ (ಔಟ್‌ವರ್ಡ್)',
@@ -276,7 +280,8 @@ export function GateExit({ language }: GateExitProps) {
       enterRemarks: 'ಟಿಪ್ಪಣಿಗಳನ್ನು ಸೇರಿಸಿ',
       selectType: 'ಎಕ್ಸಿಟ್ ಪ್ರಕಾರ ಆಯ್ಕೆಮಾಡಿ',
       noExits: 'ಇನ್ನೂ ಗೇಟ್ ಎಕ್ಸಿಟ್‌ಗಳಿಲ್ಲ',
-      createFirst: 'ಮೇಲೆ ನಿಮ್ಮ ಮೊದಲ ಗೇಟ್ ಎಕ್ಸಿಟ್ ರಚಿಸಿ'
+      createFirst: 'ಮೇಲೆ ನಿಮ್ಮ ಮೊದಲ ಗೇಟ್ ಎಕ್ಸಿಟ್ ರಚಿಸಿ',
+      close: 'ಮುಚ್ಚಿ'
     },
     ta: {
       title: 'கேட் எக்ஸிட் (வெளிச்செல்லும்)',
@@ -329,7 +334,8 @@ export function GateExit({ language }: GateExitProps) {
       enterRemarks: 'குறிப்புகளை சேர்க்கவும்',
       selectType: 'எக்ஸிட் வகையைத் தேர்ந்தெடுக்கவும்',
       noExits: 'இன்னும் கேட் எக்ஸிட்கள் இல்லை',
-      createFirst: 'மேலே உங்கள் முதல் கேட் எக்ஸிட்டை உருவாக்கவும்'
+      createFirst: 'மேலே உங்கள் முதல் கேட் எக்ஸிட்டை உருவாக்கவும்',
+      close: 'மூடு'
     },
     te: {
       title: 'గేట్ ఎగ్జిట్ (ఔట్‌వార్డ్)',
@@ -382,7 +388,8 @@ export function GateExit({ language }: GateExitProps) {
       enterRemarks: 'గమనికలు జోడించండి',
       selectType: 'ఎగ్జిట్ రకాన్ని ఎంచుకోండి',
       noExits: 'ఇంకా గేట్ ఎగ్జిట్‌లు లేవు',
-      createFirst: 'పైన మీ మొదటి గేట్ ఎగ్జిట్‌ను సృష్టించండి'
+      createFirst: 'పైన మీ మొదటి గేట్ ఎగ్జిట్‌ను సృష్టించండి',
+      close: 'మూసివేయి'
     },
     mr: {
       title: 'गेट एक्झिट (आउटवर्ड)',
@@ -435,7 +442,8 @@ export function GateExit({ language }: GateExitProps) {
       enterRemarks: 'टिपा जोडा',
       selectType: 'एक्झिट प्रकार निवडा',
       noExits: 'अद्याप गेट एक्झिट नाहीत',
-      createFirst: 'वर आपला पहिला गेट एक्झिट तयार करा'
+      createFirst: 'वर आपला पहिला गेट एक्झिट तयार करा',
+      close: 'बंद करा'
     },
     gu: {
       title: 'ગેટ એક્ઝિટ (આઉટવર્ડ)',
@@ -488,7 +496,8 @@ export function GateExit({ language }: GateExitProps) {
       enterRemarks: 'ટિપ્પણીઓ ઉમેરો',
       selectType: 'એક્ઝિટ પ્રકાર પસંદ કરો',
       noExits: 'હજી સુધી કોઈ ગેટ એક્ઝિટ નથી',
-      createFirst: 'ઉપર તમારી પ્રથમ ગેટ એક્ઝિટ બનાવો'
+      createFirst: 'ઉપર તમારી પ્રથમ ગેટ એક્ઝિટ બનાવો',
+      close: 'બંધ કરો'
     },
     pa: {
       title: 'ਗੇਟ ਐਗਜ਼ਿਟ (ਆਉਟਵਰਡ)',
@@ -541,7 +550,8 @@ export function GateExit({ language }: GateExitProps) {
       enterRemarks: 'ਟਿੱਪਣੀਆਂ ਸ਼ਾਮਲ ਕਰੋ',
       selectType: 'ਐਗਜ਼ਿਟ ਕਿਸਮ ਚੁਣੋ',
       noExits: 'ਅਜੇ ਤੱਕ ਕੋਈ ਗੇਟ ਐਗਜ਼ਿਟਾਂ ਨਹੀਂ',
-      createFirst: 'ਉੱਪਰ ਆਪਣਾ ਪਹਿਲਾ ਗੇਟ ਐਗਜ਼ਿਟ ਬਣਾਓ'
+      createFirst: 'ਉੱਪਰ ਆਪਣਾ ਪਹਿਲਾ ਗੇਟ ਐਗਜ਼ਿਟ ਬਣਾਓ',
+      close: 'ਬੰਦ ਕਰੋ'
     }
   };
 
@@ -744,7 +754,14 @@ export function GateExit({ language }: GateExitProps) {
                             {new Date(exit.created_at).toLocaleDateString()}
                           </td>
                           <td className="p-4">
-                            <Button size="sm" variant="outline">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                setSelectedExit(exit);
+                                setShowViewModal(true);
+                              }}
+                            >
                               {t.viewDetails}
                             </Button>
                           </td>
@@ -999,6 +1016,105 @@ export function GateExit({ language }: GateExitProps) {
               >
                 <CheckCircle className="w-4 h-4 mr-2" />
                 {loading ? 'Creating...' : t.createRecord}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* View Exit Modal */}
+      {showViewModal && selectedExit && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full">
+            <div className="bg-indigo-600 text-white p-6 flex items-center justify-between rounded-t-lg">
+              <div className="flex items-center gap-3">
+                <FileText className="w-6 h-6 text-indigo-100" />
+                <div>
+                  <h2 className="text-xl font-bold">{t.viewDetails}</h2>
+                  <p className="text-sm text-indigo-100/80">{selectedExit.exit_number}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowViewModal(false)}
+                className="p-2 hover:bg-white/10 rounded-full transition-colors"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-6">
+              <div className="grid grid-cols-2 gap-6">
+                <div>
+                  <label className="text-xs uppercase tracking-wider text-zinc-500 font-bold">{t.exitType}</label>
+                  <div className="mt-1 flex items-center gap-2">
+                    <Badge variant="secondary" className="bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border-indigo-200">
+                      {t.exitTypes[selectedExit.exit_type as keyof typeof t.exitTypes] || selectedExit.exit_type}
+                    </Badge>
+                  </div>
+                </div>
+                <div>
+                  <label className="text-xs uppercase tracking-wider text-zinc-500 font-bold">{t.status}</label>
+                  <div className="mt-1">
+                    <Badge className={getStatusColor(selectedExit.status)}>
+                      {t.statuses[selectedExit.status as keyof typeof t.statuses] || selectedExit.status}
+                    </Badge>
+                  </div>
+                </div>
+                <div>
+                  <label className="text-xs uppercase tracking-wider text-zinc-500 font-bold">{t.destination}</label>
+                  <p className="mt-1 text-zinc-900 font-medium">{selectedExit.destination}</p>
+                </div>
+                <div>
+                  <label className="text-xs uppercase tracking-wider text-zinc-500 font-bold">{t.linkedDocument}</label>
+                  <p className="mt-1 text-zinc-900 font-medium">{selectedExit.linked_document || '-'}</p>
+                </div>
+                <div>
+                  <label className="text-xs uppercase tracking-wider text-zinc-500 font-bold">{t.vehicleNo}</label>
+                  <p className="mt-1 font-mono text-zinc-900">{selectedExit.vehicle_no || '-'}</p>
+                </div>
+                <div>
+                  <label className="text-xs uppercase tracking-wider text-zinc-500 font-bold">{t.driverName}</label>
+                  <p className="mt-1 text-zinc-900">{selectedExit.driver_name || '-'}</p>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs uppercase tracking-wider text-zinc-500 font-bold mb-3 block">{t.materials}</label>
+                <div className="bg-zinc-50 rounded-lg border border-zinc-200 overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead className="bg-zinc-100 border-b border-zinc-200">
+                      <tr>
+                        <th className="text-left p-3 font-semibold text-zinc-700">{t.materialName}</th>
+                        <th className="text-right p-3 font-semibold text-zinc-700">{t.quantity}</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-zinc-200">
+                      {selectedExit.materials.map((m: any, idx: number) => (
+                        <tr key={idx}>
+                          <td className="p-3 text-zinc-900">{m.material_name}</td>
+                          <td className="p-3 text-right font-medium text-zinc-900">{m.quantity} {m.uom}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {selectedExit.remarks && (
+                <div>
+                  <label className="text-xs uppercase tracking-wider text-zinc-500 font-bold">{t.remarks}</label>
+                  <p className="mt-1 p-3 bg-zinc-50 rounded-lg border border-zinc-200 text-zinc-700 italic text-sm">
+                    "{selectedExit.remarks}"
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <div className="p-6 border-t border-zinc-200 bg-zinc-50 rounded-b-lg">
+              <Button
+                onClick={() => setShowViewModal(false)}
+                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white"
+              >
+                {t.close}
               </Button>
             </div>
           </div>

@@ -10,6 +10,10 @@ from app.core.exceptions import NotFoundException, ValidationException
 from app.services.websocket_manager import manager
 from app.services.inventory_service import InventoryService
 from app.schemas.inventory import InventoryTransactionCreate
+# Import to avoid circular dependency - will be imported at function call time
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from app.services.dashboard_service import DashboardService
 
 class QCService:
     
@@ -165,15 +169,18 @@ class QCService:
                 import logging
                 logging.error(f"Failed to record scrap inventory: {e}")
 
-        # 7. Broadcast update via WebSocket
-        await manager.broadcast_dashboard_update('qc', {
-            'action': 'created',
-            'inspection_number': inspection_number,
-            'passed': passed_qty,
-            'scrap': scrap_qty,
-            'order_type': target_order_type,
-            'order_id': target_order_id
-        })
+        # 7. Broadcast dashboard updates via WebSocket
+        # Import here to avoid circular dependency
+        from app.services.dashboard_service import DashboardService
+        
+        # Broadcast KPIs update (includes rework/QC stats)
+        await DashboardService.broadcast_kpis_update()
+        
+        # Broadcast activities update (QC inspection is a recent activity)
+        await DashboardService.broadcast_activities_update()
+        
+        # Broadcast orders update (order status may have changed)
+        await DashboardService.broadcast_orders_update()
 
         return await QCService.get_inspection_by_id(inspection_id)
 
