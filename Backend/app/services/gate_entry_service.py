@@ -36,11 +36,32 @@ class GateEntryService:
         """Create a new gate entry with materials"""
         db = get_db()
         
-        # Validate entry type
-        valid_types = ['material', 'courier', 'visitor', 'jobwork_return', 
-                      'subcontract_return', 'delivery', 'machine_spare']
-        if entry_data.entry_type not in valid_types:
-            raise ValidationException(detail=f"Invalid entry type. Must be one of: {', '.join(valid_types)}")
+        # Map frontend entry types to database values
+        # Frontend sends: material, courier, visitor, etc.
+        # Database can accept both, but we'll normalize to lowercase for consistency
+        entry_type_map = {
+            'material': 'material',
+            'courier': 'courier',
+            'visitor': 'visitor',
+            'jobwork_return': 'jobwork_return',
+            'subcontract_return': 'subcontract_return',
+            'delivery': 'delivery',
+            'machine_spare': 'machine_spare',
+            'inbound': 'inbound',
+            'outbound': 'outbound',
+            'material_transfer': 'material_transfer',
+            'scrap': 'scrap',
+            'return': 'return',
+            'sample': 'sample'
+        }
+        
+        entry_type_lower = entry_data.entry_type.lower()
+        if entry_type_lower not in entry_type_map:
+            raise ValidationException(
+                detail=f"Invalid entry type '{entry_data.entry_type}'. Must be one of: {', '.join(entry_type_map.keys())}"
+            )
+        
+        mapped_entry_type = entry_type_map[entry_type_lower]
         
         # Validate status
         # Database does not support destination_department, skipping validation
@@ -52,15 +73,16 @@ class GateEntryService:
         entry_number = GateEntryService._generate_entry_number()
         
         # Create gate entry
+        # Map frontend field names to database column names
         entry_insert = {
             'entry_number': entry_number,
-            'entry_type': entry_data.entry_type,
+            'entry_type': mapped_entry_type,  # Use mapped value
             'vendor': entry_data.vendor,
-            'vehicle_number': entry_data.vehicle_no,
+            'vehicle_number': entry_data.vehicle_no,  # Database column is 'vehicle_number'
             'driver_name': entry_data.driver_name,
             'reference_document_number': entry_data.linked_document,
             'destination_department': entry_data.destination_department,
-            'status': 'Arrived',
+            'status': 'pending',  # Use lowercase for consistency
             'remarks': entry_data.remarks,
             'photos': entry_data.photos,
             'created_at': datetime.now().isoformat()

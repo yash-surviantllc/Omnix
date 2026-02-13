@@ -506,7 +506,10 @@ class WIPBoardService:
             return Decimal("0")
         if avg_time == Decimal("0"):
             return Decimal("0")
-        ratio = (target / avg_time) * Decimal("100")
+        # Utilization = (actual_time / target_time) * 100
+        # If actual > target, utilization > 100% (overutilized/delayed)
+        # If actual < target, utilization < 100% (underutilized/fast)
+        ratio = (avg_time / target) * Decimal("100")
         return ratio
 
     def _determine_health(
@@ -514,13 +517,17 @@ class WIPBoardService:
     ) -> WIPHealthStatus:
         if target == Decimal("0") and avg_time == Decimal("0"):
              return WIPHealthStatus.GREEN # Default/Empty
-             
-        if utilization < Decimal("80"):
-            return WIPHealthStatus.RED # Delayed / Underutilized
-        elif utilization <= Decimal("110"):
-             return WIPHealthStatus.GREEN # Healthy / Ideal
+        
+        # With corrected formula: utilization = (avg_time / target) * 100
+        # < 80%: Too fast (underutilized capacity) - GREEN (good efficiency)
+        # 80-110%: Healthy range - GREEN
+        # > 110%: Delayed (taking longer than target) - YELLOW/RED
+        if utilization <= Decimal("110"):
+             return WIPHealthStatus.GREEN # Healthy / On track
+        elif utilization <= Decimal("130"):
+            return WIPHealthStatus.YELLOW # Warning / Slightly delayed
         else:
-            return WIPHealthStatus.YELLOW # Warning / Overutilized
+            return WIPHealthStatus.RED # Critical / Significantly delayed
 
     def _build_trend_points(
         self, transfer_rows: List[Dict], days: int
