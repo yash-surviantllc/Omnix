@@ -4,6 +4,7 @@ from pydantic import BaseModel
 from app.schemas.qc import (
     QCInspectionCreate, QCInspectionResponse, QCStats
 )
+from app.schemas.user import UserResponse
 from app.services.qc_service import QCService
 from app.api.deps import get_current_user
 
@@ -23,14 +24,14 @@ class OrderLookupResponse(BaseModel):
 @router.post("/", response_model=QCInspectionResponse)
 async def create_inspection(
     inspection: QCInspectionCreate,
-    current_user: dict = Depends(get_current_user)
+    current_user: UserResponse = Depends(get_current_user)
 ):
     """
     Create a new QC inspection.
     """
     try:
-        # Assuming current_user is a dict with 'id' from auth dependency
-        user_id = current_user.get("id")
+        # UserResponse is a Pydantic model, access id as an attribute
+        user_id = current_user.id
         return await QCService.create_inspection(inspection, user_id)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -40,7 +41,7 @@ async def list_inspections(
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
     status: Optional[str] = None,
-    current_user: dict = Depends(get_current_user)
+    current_user: UserResponse = Depends(get_current_user)
 ):
     """
     List QC inspections.
@@ -52,7 +53,7 @@ async def list_inspections(
 
 @router.get("/stats", response_model=QCStats)
 async def get_qc_stats(
-    current_user: dict = Depends(get_current_user)
+    current_user: UserResponse = Depends(get_current_user)
 ):
     """
     Get QC Dashboard statistics.
@@ -64,7 +65,7 @@ async def get_qc_stats(
 
 @router.get("/trends")
 async def get_qc_trends(
-    current_user: dict = Depends(get_current_user)
+    current_user: UserResponse = Depends(get_current_user)
 ):
     """
     Get 7-day QC yield trends.
@@ -87,7 +88,7 @@ async def get_qc_trends(
 @router.get("/lookup/{order_number}", response_model=OrderLookupResponse)
 async def lookup_order(
     order_number: str,
-    current_user: dict = Depends(get_current_user)
+    current_user: UserResponse = Depends(get_current_user)
 ):
     """
     Lookup a Purchase Order or Working Order by number.
@@ -103,7 +104,7 @@ async def lookup_order(
 @router.get("/{inspection_id}", response_model=QCInspectionResponse)
 async def get_inspection(
     inspection_id: str,
-    current_user: dict = Depends(get_current_user)
+    current_user: UserResponse = Depends(get_current_user)
 ):
     """
     Get generic details of a single inspection.
