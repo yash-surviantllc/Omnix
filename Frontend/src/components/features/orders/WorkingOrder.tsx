@@ -1,4 +1,5 @@
 import { Search, Plus, Play, Pause, CheckCircle2, Clock, Calendar, Package, XCircle, ChevronDown, ChevronUp } from 'lucide-react';
+import { useLocation } from 'react-router-dom';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -378,28 +379,26 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
     }
   }, [availableStages, fetchWorkOrders]);
 
-  // Check for pre-selected PO from Purchase Orders screen
-  useEffect(() => {
-    const storedPO = sessionStorage.getItem('createWorkingOrderForPO');
-    if (storedPO) {
-      try {
-        const poData = JSON.parse(storedPO);
-        setNewWorkOrderData(prev => ({
-          ...prev,
-          purchase_order_id: poData.id,
-          target_qty: poData.quantity?.toString() || '',
-          unit: poData.unit || 'pcs'
-        }));
+  const location = useLocation();
+  const navigationState = location.state as any;
 
-        fetchPOItems(poData.id);
-        setShowNewWorkOrderModal(true);
-        sessionStorage.removeItem('createWorkingOrderForPO');
-      } catch (err) {
-        console.error('Failed to parse stored PO data:', err);
-        sessionStorage.removeItem('createWorkingOrderForPO');
-      }
+  // Check for pre-selected PO from Purchase Orders screen via navigation state
+  useEffect(() => {
+    if (navigationState && navigationState.id) {
+      setNewWorkOrderData(prev => ({
+        ...prev,
+        purchase_order_id: navigationState.id,
+        target_qty: navigationState.quantity?.toString() || '',
+        unit: navigationState.unit || 'pcs'
+      }));
+
+      fetchPOItems(navigationState.id);
+      setShowNewWorkOrderModal(true);
+
+      // Clear location state to prevent modal reappearing on refresh if desired
+      // window.history.replaceState({}, document.title); 
     }
-  }, []);
+  }, [navigationState]);
 
   // Get unique purchase order IDs for filter dropdown
   const uniquePOs = [...new Set(workOrders.map(wo => wo.purchaseOrderId))];

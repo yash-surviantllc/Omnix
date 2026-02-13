@@ -27,25 +27,25 @@ logger.info(f"Environment: {settings.ENVIRONMENT}")
 logger.info(f"Debug mode: {settings.DEBUG}")
 logger.info(f"Allowed origins: {settings.allowed_origins_list}")
 
-# Request logging middleware (disabled for testing reload stability)
-# @app.middleware("http")
-# async def log_requests(request: Request, call_next):
-#     start_time = time.time()
-#     
-#     # Log incoming request
-#     logger.info(f"Incoming request: {request.method} {request.url.path}")
-#     
-#     response = await call_next(request)
-#     
-#     # Log response
-#     process_time = time.time() - start_time
-#     logger.info(
-#         f"Completed: {request.method} {request.url.path} "
-#         f"Status: {response.status_code} "
-#         f"Duration: {process_time:.3f}s"
-#     )
-#     
-#     return response
+# Request logging middleware
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    start_time = time.time()
+    
+    # Log incoming request
+    logger.info(f"Incoming request: {request.method} {request.url.path}")
+    
+    response = await call_next(request)
+    
+    # Log response
+    process_time = time.time() - start_time
+    logger.info(
+        f"Completed: {request.method} {request.url.path} "
+        f"Status: {response.status_code} "
+        f"Duration: {process_time:.3f}s"
+    )
+    
+    return response
 
 # Configure CORS
 app.add_middleware(

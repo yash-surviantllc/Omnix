@@ -40,9 +40,9 @@ export default function App() {
     }
   }, [location.pathname, setAppCurrentView]);
 
-  const setCurrentView = (view: View | string) => {
+  const setCurrentView = (view: View | string, state?: any) => {
     const path = viewToPath[view as View] || '/';
-    navigate(path);
+    navigate(path, { state });
     setAppCurrentView(view);
   };
 

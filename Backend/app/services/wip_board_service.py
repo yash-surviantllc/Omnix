@@ -6,6 +6,8 @@ from decimal import Decimal, InvalidOperation
 from typing import Dict, List, Optional
 
 from app.services.websocket_manager import manager as ws_manager
+from app.services.material_transfer_service import material_transfer_service
+from app.schemas.material_transfer import WIPStageTransferCreate
 from app.database import get_db
 from app.schemas.wip import (
     AlertEventPayload,
@@ -138,7 +140,17 @@ class WIPBoardService:
 
     async def get_board(self) -> WIPBoardResponse:
         db = get_db()
-        stages = self._fetch_active_stages(db)
+        
+        # Get all work orders with their config_ids
+        work_orders_result = db.table('work_orders').select('id, config_id').execute()
+        work_orders = work_orders_result.data or []
+        
+        # Get unique configs being used
+        active_configs = set(wo.get('config_id', 'default') for wo in work_orders)
+        
+        # Fetch stages for all active configs
+        all_stages = self._fetch_stages_for_configs(db, list(active_configs))
+        
         tracking = self._fetch_order_tracking(db)
         transfers = self._fetch_recent_transfers(db, days=30)
 
@@ -146,7 +158,7 @@ class WIPBoardService:
         total_orders = 0
         total_units = Decimal("0")
 
-        for stage in stages:
+        for stage in all_stages:
             stage_id = stage["id"]
             metrics = self._build_metrics_for_stage(
                 stage,
@@ -279,59 +291,133 @@ class WIPBoardService:
         self, payload: WIPTransferCreate, user_id: str
     ) -> WIPTransferResponse:
         db = get_db()
-        # For now, we hardcode 'DISPATCH' as the completion stage or any stage updates progress.
         
-        # 1. Fetch destination stage details to check code
-        to_stage = db.table('wip_stages').select('code').eq('id', transfer.to_stage_id).single().execute()
+        # 1. Calculate actual time if start/end provided
+        actual_time_minutes = None
+        if payload.start_time and payload.end_time:
+            actual_time_minutes = self._calculate_actual_time_minutes(
+                payload.start_time, payload.end_time
+            )
         
-        if to_stage.data:
-            stage_code = to_stage.data.get('code')
+        # 2. Generate transfer number
+        year = datetime.utcnow().year
+        transfer_number = self._generate_transfer_number(db, year)
+        
+        # 3. Create transfer record
+        transfer_data = {
+            'order_id': payload.order_id,
+            'from_stage_id': payload.from_stage_id,
+            'to_stage_id': payload.to_stage_id,
+            'quantity': float(payload.quantity),
+            'unit': payload.unit,
+            'actual_time_minutes': float(actual_time_minutes) if actual_time_minutes else None,
+            'notes': payload.notes,
+            'transferred_by': user_id,
+            'created_at': datetime.utcnow().isoformat(),
+            'updated_at': datetime.utcnow().isoformat()
+        }
+        
+        # 4. Insert transfer record
+        result = db.table('wip_stage_transfers').insert(transfer_data).execute()
+        
+        if not result.data:
+            raise ValueError("Failed to create transfer record")
+        
+        transfer_record = result.data[0]
+        
+        # 5. Update order_stage_tracking
+        self._apply_stage_tracking_update(db, transfer_data)
+        
+        # 6. Check if moving to final stage (DISPATCH) and update PO
+        to_stage = db.table('wip_stages').select('code').eq('id', payload.to_stage_id).single().execute()
+        
+        if to_stage.data and to_stage.data.get('code') == 'DISPATCH':
+            # Get work order to find linked purchase order
+            wo_res = db.table('work_orders').select('purchase_order_id').eq('id', payload.order_id).single().execute()
             
-            # 2. Update PO 'quantity_completed' ONLY if moving to DISPATCH (Final Completion)
-            # Or do we update it incrementally? 
-            # Traditional WIP: Quantity Completed usually means "Finished Goods Produced". 
-            # So only when it hits the final stage.
-            
-            if stage_code == 'DISPATCH':
-                # Increment quantity_completed on PO
-                # We need to be careful about concurrency, but for now strict increment.
-                # Ideally: update purchase_orders set quantity_completed = quantity_completed + X
+            if wo_res.data and wo_res.data.get('purchase_order_id'):
+                po_id = wo_res.data['purchase_order_id']
+                po_res = db.table('purchase_orders').select('id', 'quantity', 'quantity_completed').eq('id', po_id).single().execute()
                 
-                # Fetch current PO
-                po_res = db.table('purchase_orders').select('id', 'quantity', 'quantity_completed').eq('id', payload.order_id).single().execute()
                 if po_res.data:
                     po = po_res.data
                     current_completed = Decimal(str(po.get('quantity_completed') or 0))
                     transfer_qty = Decimal(str(payload.quantity))
-                    
                     new_completed = current_completed + transfer_qty
-                    
-                    po_update = {'quantity_completed': float(new_completed)}
-                    
-                    # Check for Order Completion
-                    # If we have completed >= ordered quantity
                     target_qty = Decimal(str(po['quantity']))
+                    
                     if new_completed >= target_qty:
-                         # Update Status to Completed
-                         # logic is handled in PurchaseOrderService.update_order_status
-                         # So we call that service.
-                         from app.services.purchase_order_service import PurchaseOrderService
-                         from app.schemas.purchase_order import OrderStatusUpdate
-                         
-                         await PurchaseOrderService.update_order_status(
-                             po['id'], 
-                             OrderStatusUpdate(status='Completed', notes='Auto-completed via WIP Transfer'), 
-                             user_id
-                         )
+                        from app.services.purchase_order_service import PurchaseOrderService
+                        from app.schemas.purchase_order import OrderStatusUpdate
+                        await PurchaseOrderService.update_order_status(
+                            po['id'], 
+                            OrderStatusUpdate(status='Completed', notes='Auto-completed via WIP Transfer'), 
+                            user_id
+                        )
                     else:
-                        # Just update quantity
-                        db.table('purchase_orders').update(po_update).eq('id', po['id']).execute()
-
-        return transfer
+                        db.table('purchase_orders').update({
+                            'quantity_completed': float(new_completed)
+                        }).eq('id', po['id']).execute()
+        
+        # 7. Broadcast transfer event
+        response = WIPTransferResponse(
+            id=transfer_record['id'],
+            transfer_number=transfer_number,
+            status='Completed',
+            order_id=payload.order_id,
+            from_stage_id=payload.from_stage_id,
+            to_stage_id=payload.to_stage_id,
+            quantity=payload.quantity,
+            unit=payload.unit,
+            start_time=payload.start_time,
+            end_time=payload.end_time,
+            notes=payload.notes,
+            actual_time_minutes=actual_time_minutes,
+            transferred_by=user_id,
+            created_at=datetime.fromisoformat(transfer_record['created_at']),
+            updated_at=datetime.fromisoformat(transfer_record['updated_at'])
+        )
+        
+        await self._broadcast_transfer(response)
+        
+        return response
 
     # ---------- Internal helpers ----------
 
+    def _fetch_stages_for_configs(self, db, config_ids: List[str]) -> List[Dict]:
+        """Fetch stages for specific configs via junction table"""
+        if not config_ids:
+            return []
+        
+        # Get stages from config_stages junction table for all active configs
+        stage_ids_set = set()
+        for config_id in config_ids:
+            result = (
+                db.table("config_stages")
+                .select("stage_id, sequence_number")
+                .eq("config_id", config_id)
+                .order("sequence_number")
+                .execute()
+            )
+            for row in result.data or []:
+                stage_ids_set.add(row["stage_id"])
+        
+        if not stage_ids_set:
+            return []
+        
+        # Fetch full stage details
+        result = (
+            db.table("wip_stages")
+            .select("*")
+            .in_("id", list(stage_ids_set))
+            .eq("is_active", True)
+            .order("sequence_number")
+            .execute()
+        )
+        return result.data or []
+    
     def _fetch_active_stages(self, db) -> List[Dict]:
+        """Legacy method - kept for backward compatibility"""
         result = (
             db.table("wip_stages")
             .select("*")
@@ -358,7 +444,7 @@ class WIPBoardService:
     def _fetch_recent_transfers(self, db, days: int) -> Dict[str, List[Dict]]:
         cutoff = (datetime.utcnow() - timedelta(days=days)).isoformat()
         result = (
-            db.table("wip_transfers")
+            db.table("wip_stage_transfers")
             .select("*")
             .gte("created_at", cutoff)
             .execute()

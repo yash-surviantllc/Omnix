@@ -254,7 +254,7 @@ class InventoryService:
         db = get_db()
         
         # Validate transaction type
-        valid_types = ['RECEIPT', 'ISSUE', 'TRANSFER', 'ADJUSTMENT']
+        valid_types = ['RECEIPT', 'ISSUE', 'TRANSFER', 'ADJUSTMENT', 'SCRAP']
         if transaction_data.transaction_type not in valid_types:
             raise ValidationException(detail=f"Invalid transaction type. Must be one of: {', '.join(valid_types)}")
         
@@ -263,6 +263,15 @@ class InventoryService:
         trans_dict['performed_by'] = user_id
         trans_dict['quantity'] = float(transaction_data.quantity)
         
+        # Mapping service types to DB types if necessary (optional, but good for alignment)
+        db_type = transaction_data.transaction_type
+        if db_type == 'RECEIPT': db_type = 'PURCHASE'
+        if db_type == 'ISSUE': db_type = 'CONSUMPTION'
+        if db_type == 'ADJUSTMENT': db_type = 'ADJUST'
+        # SCRAP remains SCRAP
+        # TRANSFER remains TRANSFER
+        
+        # For now, we use the input type but handle logic
         trans_result = db.table('inventory_transactions').insert(trans_dict).execute()
         
         if not trans_result.data:
@@ -280,7 +289,7 @@ class InventoryService:
                 lot_number=transaction_data.lot_number
             )
         
-        elif transaction_data.transaction_type == 'ISSUE':
+        elif transaction_data.transaction_type in ['ISSUE', 'SCRAP']:
             # Remove stock from location
             await InventoryService._update_stock(
                 product_id=transaction_data.product_id,

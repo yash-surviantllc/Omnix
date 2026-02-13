@@ -6,6 +6,7 @@ import {
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { dashboardApi, type DashboardResponse } from '@/lib/api/dashboard';
+import { getWsUrl } from '@/lib/api/client';
 
 // Icon mapping helper
 const getIcon = (iconName: string) => {
@@ -66,8 +67,7 @@ export function Dashboard({ onNavigate, language }: DashboardProps) {
 
     const connectWebSocket = () => {
       // Use window.location.hostname to work in different environments
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsUrl = `${protocol}//${window.location.hostname}:8000/api/v1/ws/dashboard?token=${token}`;
+      const wsUrl = getWsUrl(`/ws/dashboard?token=${token}`);
 
       wsRef.current = new WebSocket(wsUrl);
 

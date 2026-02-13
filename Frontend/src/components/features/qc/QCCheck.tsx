@@ -113,7 +113,11 @@ const DEFECT_LIBRARY: DefectCategory[] = [
   }
 ];
 
-export function QCCheck() {
+interface QCCheckProps {
+  language: 'en' | 'hi' | 'kn' | 'ta' | 'te' | 'mr' | 'gu' | 'pa';
+}
+
+export function QCCheck({ language }: QCCheckProps) {
   // --- State ---
   const [openSelect, setOpenSelect] = useState(false);
   const [availableOrders, setAvailableOrders] = useState<LookupResult[]>([]);

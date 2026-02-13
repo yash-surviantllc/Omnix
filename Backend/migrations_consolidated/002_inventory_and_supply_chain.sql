@@ -201,18 +201,7 @@ CREATE TABLE IF NOT EXISTS gate_exits (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE TABLE IF NOT EXISTS gate_entry_items (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    gate_entry_id UUID NOT NULL REFERENCES gate_entries(id) ON DELETE CASCADE,
-    product_id UUID NOT NULL REFERENCES products(id),
-    batch_number VARCHAR(100),
-    quantity DECIMAL(15,3) NOT NULL,
-    unit VARCHAR(20) NOT NULL,
-    received_quantity DECIMAL(15,3) DEFAULT 0,
-    status VARCHAR(20) NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'RECEIVED', 'PARTIALLY_RECEIVED', 'REJECTED', 'CANCELLED')),
-    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
-);
+-- Note: gate_entry_materials table moved to 008_missing_tables.sql for consistency with service layer
 
 CREATE TABLE IF NOT EXISTS finished_goods (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

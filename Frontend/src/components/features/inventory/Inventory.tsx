@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { AddInventoryModal } from './AddInventoryModal';
 import { MaterialData, InventoryDisplayItem, Language } from '@/types/inventory';
 import { inventoryItemsApi, convertFromMaterialData } from '@/lib/api/inventory';
+import { getWsUrl } from '@/lib/api/client';
 
 type InventoryProps = {
   language: Language;
@@ -35,7 +36,7 @@ export function Inventory({ language }: InventoryProps) {
     if (!token) return;
 
     // Connect to WebSocket
-    const wsUrl = `ws://localhost:8000/ws/inventory?token=${token}`;
+    const wsUrl = getWsUrl(`/ws/inventory?token=${token}`);
     wsRef.current = new WebSocket(wsUrl);
 
     wsRef.current.onopen = () => {

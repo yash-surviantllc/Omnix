@@ -57,6 +57,8 @@ OMNIX is a comprehensive Manufacturing Operations System designed to streamline 
    - `004_monitoring_and_utilities.sql`
    - `005_material_requisitions.sql`
    - `006_notifications.sql`
+   - `007_qc_enhancements.sql`
+   - `008_missing_tables.sql`
 
 
 ### Backend Installation

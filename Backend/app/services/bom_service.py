@@ -994,36 +994,121 @@ class BOMService:
             material_cost = required_qty * unit_cost
             total_bom_cost += material_cost
             
-            # Check inventory availability from inventory_items table (for raw materials)
-            # First get the product code for this material_id
-            mat_product_for_lookup = db.table('products').select('code').eq('id', material_id).execute()
+            # Check inventory availability from main inventory table
+            # Only count inventory in valid storage locations (exclude scrap and quality)
+            inventory_result = db.table('inventory').select('*').eq('product_id', material_id).execute()
             
-            if not mat_product_for_lookup.data:
-                # No product found, treat as out of stock
-                available_qty = Decimal('0')
-                allocated_qty = Decimal('0')
-                location_breakdown = []
-            else:
-                material_code = mat_product_for_lookup.data[0]['code']
-                inventory_result = db.table('inventory_items').select('*').eq('material_code', material_code).execute()
-                
-                # Get available quantity from inventory_items
-                available_qty = Decimal('0')
-                allocated_qty = Decimal('0')  # inventory_items doesn't track allocation
-                location_breakdown = []
-                
-                if inventory_result.data:
-                    inv_item = inventory_result.data[0]
-                    available_qty = Decimal(str(inv_item.get('quantity', 0)))
+            print(f"[DEBUG] Material ID: {material_id}")
+            print(f"[DEBUG] Inventory table result count: {len(inventory_result.data) if inventory_result.data else 0}")
+            
+            # --- FALLBACK: CHECK inventory_items TABLE ---
+            # The system has TWO inventory tables:
+            # 1. inventory (aggregated by product_id + location_id)
+            # 2. inventory_items (individual items by material_code)
+            # If inventory table is empty, check inventory_items as fallback
+            fallback_qty = Decimal('0')
+            if not inventory_result.data:
+                try:
+                    # Get the material code from products table
+                    p_res = db.table('products').select('code, name').eq('id', material_id).execute()
+                    if p_res.data:
+                        material_code = p_res.data[0]['code']
+                        material_name = p_res.data[0]['name']
+                        print(f"[DEBUG] Material Code from products: '{material_code}', Name: '{material_name}'")
+                        
+                        # DIAGNOSTIC: List ALL inventory_items to find the mismatch
+                        all_items = db.table('inventory_items').select('material_code, material_name, quantity').execute()
+                        if all_items.data:
+                            print(f"[DEBUG] ALL inventory_items in database ({len(all_items.data)} total):")
+                            for idx, item in enumerate(all_items.data[:10]):  # Show first 10
+                                print(f"[DEBUG]   {idx+1}. Code: '{item.get('material_code')}', Name: '{item.get('material_name')}', Qty: {item.get('quantity')}")
+                        
+                        # Try exact match first
+                        items_result = db.table('inventory_items').select('material_code, quantity, status').eq('material_code', material_code).execute()
+                        if items_result.data:
+                            print(f"[DEBUG] Found EXACT match for code '{material_code}'")
+                            for item in items_result.data:
+                                item_qty = Decimal(str(item.get('quantity', 0)))
+                                fallback_qty += item_qty
+                        else:
+                            print(f"[DEBUG] No EXACT match for code '{material_code}'")
+                            
+                            # Try fuzzy match by name
+                            name_result = db.table('inventory_items').select('material_code, material_name, quantity, status').ilike('material_name', f'%{material_name}%').execute()
+                            if name_result.data:
+                                print(f"[DEBUG] Found NAME match for '{material_name}':")
+                                for item in name_result.data:
+                                    print(f"[DEBUG]   - Code: '{item.get('material_code')}', Qty: {item.get('quantity')}")
+                                    item_qty = Decimal(str(item.get('quantity', 0)))
+                                    fallback_qty += item_qty
+                            else:
+                                print(f"[DEBUG] No NAME match for '{material_name}' either")
+                        
+                        if fallback_qty > 0:
+                            print(f"[DEBUG] Using inventory_items fallback: {fallback_qty}")
+                except Exception as e:
+                    print(f"[DEBUG] Error checking inventory_items: {e}")
+                    import traceback
+                    traceback.print_exc()
+            # -------------------------------------------
+
+            if inventory_result.data:
+                print(f"[DEBUG] First Inventory Record: {inventory_result.data[0]}")
+
+            available_qty = Decimal('0')
+            allocated_qty = Decimal('0')
+            location_breakdown = []
+            
+            # Get all location IDs from inventory
+            location_ids = [inv['location_id'] for inv in inventory_result.data] if inventory_result.data else []
+            print(f"[DEBUG] Location IDs: {location_ids}")
+            
+            # Fetch location details separately to ensure we get the type
+            location_map = {}
+            if location_ids:
+                locations_result = db.table('locations').select('id, name, type').in_('id', location_ids).execute()
+                if locations_result.data:
+                    location_map = {loc['id']: loc for loc in locations_result.data}
+            
+            print(f"[DEBUG] Location Map Keys: {list(location_map.keys())}")
+
+            if inventory_result.data:
+                for inv in inventory_result.data:
+                    location_id = inv.get('location_id')
+                    location_info = location_map.get(location_id, {})
                     
-                    # For inventory_items, we don't have location breakdown
+                    # Get location type - if not found, assume it's a valid storage location
+                    loc_type = location_info.get('type', 'warehouse')  # Default to warehouse if type not found
+                    loc_name = location_info.get('name', 'Unknown Location')
+                    
+                    print(f"[DEBUG] Processing Inv: Loc={loc_name}, Type={loc_type}, Qty={inv.get('available_qty')}")
+
+                    # Skip scrap and quality locations
+                    if loc_type in ['scrap', 'quality']:
+                        print(f"[DEBUG] Skipping location {loc_name} (type: {loc_type})")
+                        continue
+                    
+                    loc_available = Decimal(str(inv.get('available_qty', 0)))
+                    loc_allocated = Decimal(str(inv.get('allocated_qty', 0)))
+                    
+                    available_qty += loc_available
+                    allocated_qty += loc_allocated
+                    
                     location_breakdown.append({
-                        'location_id': None,
-                        'location_name': inv_item.get('location', 'Main Warehouse'),
-                        'available_qty': float(available_qty),
-                        'allocated_qty': 0.0,
-                        'free_qty': float(available_qty)
+                        'location_id': location_id,
+                        'location_name': loc_name,
+                        'location_type': loc_type,
+                        'available_qty': float(loc_available),
+                        'allocated_qty': float(loc_allocated),
+                        'free_qty': float(loc_available - loc_allocated)
                     })
+            
+            # If inventory table had no data, use fallback from inventory_items
+            if fallback_qty > 0 and available_qty == 0:
+                available_qty = fallback_qty
+                print(f"[DEBUG] Applied fallback quantity: {available_qty}")
+            
+            print(f"[DEBUG] Final Available Qty: {available_qty}")
             
             # Calculate free quantity
             if include_allocated:

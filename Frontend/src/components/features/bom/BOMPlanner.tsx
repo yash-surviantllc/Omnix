@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { bomApi, productsApi, type Product, type BOM, type BOMMaterialWithShortage } from '@/lib/api/bom';
+import { getWsUrl } from '@/lib/api/client';
 import { AddMaterialModal } from './AddMaterialModal';
 import { EditMaterialModal } from './EditMaterialModal';
 import { inventoryItemsApi, type InventoryItemResponse } from '@/lib/api/inventory';
@@ -383,7 +384,7 @@ export function BOMPlanner({ language }: BOMPlannerProps) {
     const token = localStorage.getItem('access_token');
     if (!token) return;
 
-    const wsUrl = `ws://localhost:8000/ws/boms?token=${token}`;
+    const wsUrl = getWsUrl(`/ws/boms?token=${token}`);
     wsRef.current = new WebSocket(wsUrl);
 
     wsRef.current.onopen = () => {

@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { useState, useEffect, useRef } from 'react';
 import { OrderActionsDropdown } from './components/OrderActionsDropdown';
 import { purchaseOrdersApi, type PurchaseOrder } from '@/lib/api/purchase-orders';
+import { getWsUrl } from '@/lib/api/client';
 import { productsApi } from '@/lib/api/bom';
 import { wipApi } from '@/lib/api/wip';
 import { useAuthStore } from '@/stores/authStore';
@@ -13,7 +14,7 @@ import { NewOrderModal } from './components/NewOrderModal';
 
 type PurchaseOrdersProps = {
   language: 'en' | 'hi' | 'kn' | 'ta' | 'te' | 'mr' | 'gu' | 'pa';
-  onNavigate?: (view: string) => void;
+  onNavigate?: (view: string, state?: any) => void;
 };
 
 export function PurchaseOrders({ language, onNavigate }: PurchaseOrdersProps) {
@@ -670,7 +671,7 @@ export function PurchaseOrders({ language, onNavigate }: PurchaseOrdersProps) {
     if (!token) return;
 
     // Connect to WebSocket
-    const wsUrl = `ws://localhost:8000/ws/purchase-orders?token=${token}`;
+    const wsUrl = getWsUrl(`/ws/purchase-orders?token=${token}`);
     wsRef.current = new WebSocket(wsUrl);
 
     wsRef.current.onopen = () => {
@@ -726,17 +727,14 @@ export function PurchaseOrders({ language, onNavigate }: PurchaseOrdersProps) {
     if (action === 'createWorkingOrder') {
       // Navigate to Working Order screen - the standard form for creating working orders
       if (onNavigate) {
-        // Store the selected PO ID in sessionStorage for the Working Order screen to pick up
-        if (order) {
-          sessionStorage.setItem('createWorkingOrderForPO', JSON.stringify({
-            id: order.id,
-            order_number: order.order_number,
-            product_name: order.product_name,
-            quantity: order.quantity,
-            unit: order.unit
-          }));
-        }
-        onNavigate('working-order');
+        // Pass the selected PO ID in the navigation state for the Working Order screen to pick up
+        onNavigate('working-order', order ? {
+          id: order.id,
+          order_number: order.order_number,
+          product_name: order.product_name,
+          quantity: order.quantity,
+          unit: order.unit
+        } : undefined);
       }
       return;
     } else {
@@ -1931,7 +1929,6 @@ export function PurchaseOrders({ language, onNavigate }: PurchaseOrdersProps) {
           onSubmit={createNewOrder}
           products={products.reduce((acc, p) => ({ ...acc, [p.id]: { name: p.name, code: p.code, unit: p.unit } }), {})}
           translations={t}
-          onProductCreated={fetchProducts}
         />
       )}
     </div>

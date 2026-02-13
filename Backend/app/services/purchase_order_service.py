@@ -372,7 +372,7 @@ class PurchaseOrderService:  # Changed from ProductionOrderService
             'quantity': float(order_data.quantity),
             'unit': product.get('unit', 'pcs'),
             'due_date': order_data.due_date.isoformat(),
-            'priority': order_data.priority.capitalize() if order_data.priority else 'Medium',
+            'priority': order_data.priority.title() if order_data.priority else 'Medium',
             'status': 'Planned',
             # 'qr_code': qr_code,
             'bom_id': bom_id,
@@ -461,6 +461,7 @@ class PurchaseOrderService:  # Changed from ProductionOrderService
             # Use BOM Service for accurate calculation (handles batch size, scrap, etc.)
             # This replaces the manual and potentially incorrect calculation
             try:
+                item_qty_float = float(item.quantity)
                 mat_reqs = await bom_service.calculate_material_requirements(product_row['id'], Decimal(str(item.quantity)))
                 
                 for req in mat_reqs:
@@ -480,12 +481,12 @@ class PurchaseOrderService:  # Changed from ProductionOrderService
 
             sku_entries.append({
                 'product': product_row,
-                'quantity': item_quantity,
+                'quantity': item_qty_float,
                 'unit': product_row.get('unit', 'pcs'),
                 'notes': item.notes
             })
-            total_quantity += item_quantity
-            summary_parts.append(f"{product_row.get('code')} ({item_quantity} {product_row.get('unit', 'pcs')})")
+            total_quantity += item_qty_float
+            summary_parts.append(f"{product_row.get('code')} ({item_qty_float} {product_row.get('unit', 'pcs')})")
 
         primary_product = sku_entries[0]['product']
         product_name = primary_product.get('name', 'Multi-SKU Order')
@@ -507,7 +508,7 @@ class PurchaseOrderService:  # Changed from ProductionOrderService
             'quantity': float(total_quantity),
             'unit': primary_product.get('unit', 'pcs'),
             'due_date': order_data.due_date.isoformat(),
-            'priority': order_data.priority.capitalize() if order_data.priority else 'Medium',
+            'priority': order_data.priority.title() if order_data.priority else 'Medium',
             'status': 'Planned',
             # 'qr_code': qr_code, # Column does not exist in DB
             'bom_id': None,
@@ -587,21 +588,11 @@ class PurchaseOrderService:  # Changed from ProductionOrderService
         quantity = order['quantity']
         unit = order.get('unit', 'pcs')
         
-        # Place order in first stage
-        transfer_payload = {
-            'purchase_order_id': order_id,
-            'from_stage_id': None,  # Starting from nothing
-            'to_stage_id': first_stage.id,
-            'quantity': quantity,
-            'unit': unit,
-            'notes': 'Order initialized in Material Planning stage'
-        }
-        
-        try:
-            await wip_board_service.record_transfer(transfer_payload, user_id)
-        except Exception as e:
-            # Log error but don't fail order creation
-            print(f"Failed to initialize WIP Board tracking for order {order_id}: {str(e)}")
+        # Note: WIP Board tracks work_orders, not purchase_orders directly
+        # This initialization should happen when a work_order is created from the PO
+        # For now, we skip this step as it requires work_order_id
+        # TODO: Initialize tracking when work order is created
+        return
     
     @staticmethod
     async def _calculate_material_requirements(
@@ -888,9 +879,9 @@ class PurchaseOrderService:  # Changed from ProductionOrderService
         update_dict['updated_by'] = user_id
         update_dict['updated_at'] = datetime.utcnow().isoformat()
         
-        # Ensure priority is uppercase if present
+        # Normalize priority to title case
         if 'priority' in update_dict and update_dict['priority']:
-             update_dict['priority'] = update_dict['priority'].capitalize()
+             update_dict['priority'] = update_dict['priority'].title()
 
         db.table('purchase_orders').update(update_dict).eq('id', order_id).execute()
         
@@ -1139,34 +1130,30 @@ class PurchaseOrderService:  # Changed from ProductionOrderService
     @staticmethod
     async def get_team_assignments(order_id: str) -> List[TeamAssignment]:
         """Fetch team members assigned to an order."""
-        # TODO: Table 'order_team_assignments' doesn't exist yet
-        # Returning empty list for now
-        return []
+        db = get_db()
         
-        # db = get_db()
-        #
-        # order = db.table('purchase_orders').select('id').eq('id', order_id).execute()
-        # if not order.data:
-        #     raise NotFoundException(detail="Purchase order not found")
-        #
-        # assignments = db.table('order_team_assignments').select('*').eq('purchase_order_id', order_id).order('assigned_at', desc=False).execute()
-        # team: List[TeamAssignment] = []
-        #
-        # for assignment in assignments.data:
-        #     user = db.table('users').select('first_name', 'last_name', 'role').eq('id', assignment['user_id']).execute()
-        #     first_name = user.data[0].get('first_name') if user.data else ''
-        #     last_name = user.data[0].get('last_name') if user.data else ''
-        #     role = user.data[0].get('role', 'Member') if user.data else 'Member'
-        #     user_name = f"{first_name} {last_name}".strip() or 'Unknown User'
-        #
-        #     team.append(TeamAssignment(
-        #         user_id=assignment['user_id'],
-        #         user_name=user_name,
-        #         role=role,
-        #         assigned_at=PurchaseOrderService._parse_datetime(assignment.get('assigned_at'))
-        #     ))
-        #
-        # return team
+        order = db.table('purchase_orders').select('id').eq('id', order_id).execute()
+        if not order.data:
+            raise NotFoundException(detail="Purchase order not found")
+        
+        assignments = db.table('order_team_assignments').select('*').eq('purchase_order_id', order_id).order('assigned_at', desc=False).execute()
+        team: List[TeamAssignment] = []
+        
+        for assignment in assignments.data:
+            user = db.table('users').select('first_name', 'last_name', 'username').eq('id', assignment['user_id']).execute()
+            first_name = user.data[0].get('first_name') if user.data else ''
+            last_name = user.data[0].get('last_name') if user.data else ''
+            role = assignment.get('role', 'Member')
+            user_name = f"{first_name} {last_name}".strip() or user.data[0].get('username', 'Unknown User') if user.data else 'Unknown User'
+            
+            team.append(TeamAssignment(
+                user_id=assignment['user_id'],
+                user_name=user_name,
+                role=role,
+                assigned_at=PurchaseOrderService._parse_datetime(assignment.get('assigned_at'))
+            ))
+        
+        return team
 
 
 # Singleton instance

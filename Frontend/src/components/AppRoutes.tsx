@@ -26,7 +26,7 @@ const LoadingSpinner = () => (
 
 interface AppRoutesProps {
   language: Language;
-  setCurrentView: (view: View | string) => void;
+  setCurrentView: (view: View | string, state?: any) => void;
 }
 
 export function AppRoutes({ language, setCurrentView }: AppRoutesProps) {

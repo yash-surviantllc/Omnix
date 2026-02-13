@@ -8,6 +8,8 @@ from app.schemas.qc import (
 )
 from app.core.exceptions import NotFoundException, ValidationException
 from app.services.websocket_manager import manager
+from app.services.inventory_service import InventoryService
+from app.schemas.inventory import InventoryTransactionCreate
 
 class QCService:
     
@@ -102,44 +104,68 @@ class QCService:
         passed_qty = float(data.passed_qty)
         scrap_qty = float(data.scrap_qty)
         
-        if target_order_type == 'work_order':
-            # Update Work Order
-            new_completed = float(order_data.get('completed_qty' or 0)) + passed_qty
-            new_rejected = float(order_data.get('rejected_qty' or 0)) + scrap_qty
-            
-            update_data = {
-                'completed_qty': new_completed,
-                'rejected_qty': new_rejected,
-                'updated_at': datetime.utcnow().isoformat()
-            }
-            
-            # Auto-complete if total qty reached
-            if new_completed + new_rejected >= float(order_data['target_qty']):
-                update_data['status'] = 'Completed'
+        # Calculate new totals
+        curr_completed = float(order_data.get('completed_qty') or order_data.get('quantity_completed') or 0)
+        curr_rejected = float(order_data.get('rejected_qty') or 0)
+        
+        new_completed = curr_completed + passed_qty
+        new_rejected = curr_rejected + scrap_qty
+        
+        update_data = {
+            ('completed_qty' if target_order_type == 'work_order' else 'quantity_completed'): new_completed,
+            'rejected_qty': new_rejected,
+            'updated_at': datetime.utcnow().isoformat()
+        }
+        
+        # Auto-complete if total qty reached
+        target_qty = float(order_data.get('target_qty') or order_data.get('quantity') or 0)
+        if new_completed + new_rejected >= target_qty:
+            update_data['status'] = 'Completed'
+            if target_order_type == 'work_order':
                 update_data['actual_end'] = datetime.utcnow().isoformat()
                 
-            db.table('work_orders').update(update_data).eq('id', target_order_id).execute()
-            
-            # Also update the parent Purchase Order indirectly if needed? 
-            # Usually PO tracks total from all WOs. Let's stick to the direct link for now.
-            
-        elif target_order_type == 'purchase_order':
-            # Update Purchase Order
-            new_completed = float(order_data.get('quantity_completed' or 0)) + passed_qty
-            new_rejected = float(order_data.get('rejected_qty' or 0)) + scrap_qty
-            
-            update_data = {
-                'quantity_completed': new_completed,
-                'rejected_qty': new_rejected,
-                'updated_at': datetime.utcnow().isoformat()
-            }
-            
-            if new_completed + new_rejected >= float(order_data['quantity']):
-                update_data['status'] = 'Completed'
-                
-            db.table('purchase_orders').update(update_data).eq('id', target_order_id).execute()
+        db.table('work_orders' if target_order_type == 'work_order' else 'purchase_orders').update(update_data).eq('id', target_order_id).execute()
 
-        # 6. Broadcast update via WebSocket
+        # 6. Record Scrap Transaction (Inventory Sync)
+        if scrap_qty > 0:
+            try:
+                # Determine Source Location
+                source_location_id = None
+                if target_order_type == 'work_order':
+                    # Get workstation location
+                    wo_details = db.table('work_orders').select('workstation_id').eq('id', target_order_id).single().execute()
+                    if wo_details.data and wo_details.data.get('workstation_id'):
+                        ws_res = db.table('workstations').select('location_id').eq('id', wo_details.data['workstation_id']).single().execute()
+                        if ws_res.data:
+                            source_location_id = ws_res.data['location_id']
+                
+                # Fallback / PO logic: Main Store
+                if not source_location_id:
+                    # Find 'MAIN-STORE' or first 'store'
+                    loc_res = db.table('locations').select('id').eq('code', 'MAIN-STORE').execute()
+                    if not loc_res.data:
+                        loc_res = db.table('locations').select('id').eq('type', 'store').limit(1).execute()
+                    if loc_res.data:
+                        source_location_id = loc_res.data[0]['id']
+
+                if source_location_id:
+                    await InventoryService.record_transaction(
+                        transaction_data=InventoryTransactionCreate(
+                            product_id=data.product_id,
+                            transaction_type='SCRAP',
+                            from_location_id=source_location_id,
+                            quantity=Decimal(str(scrap_qty)),
+                            reference_id=inspection_id,
+                            reference_type='QC_INSPECTION',
+                            notes=f"Scrapped during QC {inspection_number}"
+                        ),
+                        user_id=user_id
+                    )
+            except Exception as e:
+                import logging
+                logging.error(f"Failed to record scrap inventory: {e}")
+
+        # 7. Broadcast update via WebSocket
         await manager.broadcast_dashboard_update('qc', {
             'action': 'created',
             'inspection_number': inspection_number,

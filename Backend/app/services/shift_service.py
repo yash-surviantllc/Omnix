@@ -8,7 +8,27 @@ class ShiftService:
     async def list_shifts() -> List[ShiftResponse]:
         db = get_db()
         result = db.table('shifts').select('*').order('start_time').execute()
-        return [ShiftResponse(**shift) for shift in result.data]
+        
+        # Convert TIME type to HH:MM string format
+        shifts = []
+        for shift in result.data:
+            # Handle TIME type conversion
+            if 'start_time' in shift and shift['start_time']:
+                # If it's already a string, keep it; if it's time object, convert
+                if not isinstance(shift['start_time'], str):
+                    shift['start_time'] = str(shift['start_time'])[:5]  # Get HH:MM from HH:MM:SS
+                elif len(shift['start_time']) > 5:
+                    shift['start_time'] = shift['start_time'][:5]  # Trim to HH:MM
+            
+            if 'end_time' in shift and shift['end_time']:
+                if not isinstance(shift['end_time'], str):
+                    shift['end_time'] = str(shift['end_time'])[:5]
+                elif len(shift['end_time']) > 5:
+                    shift['end_time'] = shift['end_time'][:5]
+            
+            shifts.append(ShiftResponse(**shift))
+        
+        return shifts
 
     @staticmethod
     async def create_shift(shift_data: ShiftCreate) -> ShiftResponse:
@@ -24,8 +44,20 @@ class ShiftService:
         
         if not result.data:
             raise Exception("Failed to create shift")
+        
+        # Convert TIME type to HH:MM string format
+        shift = result.data[0]
+        if 'start_time' in shift and shift['start_time'] and not isinstance(shift['start_time'], str):
+            shift['start_time'] = str(shift['start_time'])[:5]
+        elif isinstance(shift.get('start_time'), str) and len(shift['start_time']) > 5:
+            shift['start_time'] = shift['start_time'][:5]
             
-        return ShiftResponse(**result.data[0])
+        if 'end_time' in shift and shift['end_time'] and not isinstance(shift['end_time'], str):
+            shift['end_time'] = str(shift['end_time'])[:5]
+        elif isinstance(shift.get('end_time'), str) and len(shift['end_time']) > 5:
+            shift['end_time'] = shift['end_time'][:5]
+            
+        return ShiftResponse(**shift)
 
     @staticmethod
     async def update_shift(shift_id: str, shift_data: ShiftUpdate) -> ShiftResponse:
@@ -44,8 +76,20 @@ class ShiftService:
         
         if not result.data:
             raise Exception("Shift not found or update failed")
+        
+        # Convert TIME type to HH:MM string format
+        shift = result.data[0]
+        if 'start_time' in shift and shift['start_time'] and not isinstance(shift['start_time'], str):
+            shift['start_time'] = str(shift['start_time'])[:5]
+        elif isinstance(shift.get('start_time'), str) and len(shift['start_time']) > 5:
+            shift['start_time'] = shift['start_time'][:5]
             
-        return ShiftResponse(**result.data[0])
+        if 'end_time' in shift and shift['end_time'] and not isinstance(shift['end_time'], str):
+            shift['end_time'] = str(shift['end_time'])[:5]
+        elif isinstance(shift.get('end_time'), str) and len(shift['end_time']) > 5:
+            shift['end_time'] = shift['end_time'][:5]
+            
+        return ShiftResponse(**shift)
 
     @staticmethod
     async def delete_shift(shift_id: str) -> dict:

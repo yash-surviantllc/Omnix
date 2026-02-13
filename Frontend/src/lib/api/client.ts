@@ -1,5 +1,21 @@
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
 
+export const getWsUrl = (path: string): string => {
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+
+  if (API_URL.startsWith('http')) {
+    try {
+      const url = new URL(API_URL);
+      // Remove /api/v1 from host if it exists in the URL object but normally host is just domain:port
+      return `${protocol}//${url.host}${path}`;
+    } catch (e) {
+      console.error('Invalid API_URL for WebSocket derivation:', e);
+    }
+  }
+
+  return `${protocol}//${window.location.host}${path}`;
+};
+
 import { cacheService } from './cache';
 
 export interface ApiError {

@@ -1,10 +1,9 @@
-import { XCircle, Clock, Package } from 'lucide-react';
+import { XCircle, Clock, Package, ArrowRight } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { useState } from 'react';
-import { productsApi, bomApi } from '@/lib/api/bom';
-import { Plus, ArrowRight } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { shiftsApi, type Shift } from '@/lib/api/shifts';
 
 interface OrderItem {
   id: string; // Internal ID for keys
@@ -69,41 +68,25 @@ export function NewOrderModal({
   onOrderDataChange,
   onSubmit,
   products = {},
-  translations: t,
-  onProductCreated
-}: NewOrderModalProps & { onProductCreated?: () => void }) {
-  const [showQuickCreate, setShowQuickCreate] = useState(false);
-  const [quickProduct, setQuickProduct] = useState({ code: '', name: '', unit: 'pcs' });
-  const [isCreatingProduct, setIsCreatingProduct] = useState(false);
+  translations: t
+}: NewOrderModalProps) {
+  const [shifts, setShifts] = useState<Shift[]>([]);
 
-  const handleQuickCreate = async () => {
-    if (!quickProduct.code || !quickProduct.name) return;
-    try {
-      setIsCreatingProduct(true);
-      // 1. Create Product
-      const product = await productsApi.createProduct({
-        ...quickProduct,
-        category: 'Finished Goods', // Default for POs
-        description: 'Created via Quick Add in PO'
-      });
-
-      // 2. Create Default Empty BOM (Required for PO Creation)
-      await bomApi.createBOM({
-        product_id: product.id,
-        materials: [] // Empty BOM initially
-      });
-
-      setShowQuickCreate(false);
-      setQuickProduct({ code: '', name: '', unit: 'pcs' });
-      if (onProductCreated) onProductCreated();
-    } catch (err) {
-      console.error('Failed to create product/BOM:', err);
-      // Ideally show toast error here
-      alert('Failed to create product or BOM. Please try again.');
-    } finally {
-      setIsCreatingProduct(false);
+  // Load shifts from backend
+  useEffect(() => {
+    const loadShifts = async () => {
+      try {
+        const data = await shiftsApi.list();
+        setShifts(data.filter(s => s.is_active));
+      } catch (err) {
+        console.error('Failed to load shifts:', err);
+        // Fallback to empty array, form will show "No shifts available"
+      }
+    };
+    if (isOpen) {
+      loadShifts();
     }
-  };
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -148,63 +131,6 @@ export function NewOrderModal({
                   {t.selectProduct} & {t.enterQuantity} <span className="text-red-500">*</span>
                 </label>
 
-                {showQuickCreate && (
-                  <div className="bg-emerald-50 rounded-xl p-4 border border-emerald-200 mb-4 animate-in slide-in-from-top-2 fade-in duration-300">
-                    <div className="flex justify-between items-start mb-3">
-                      <h3 className="text-sm font-bold text-emerald-800 flex items-center gap-2">
-                        <Plus className="h-4 w-4" />
-                        New Product (Quick Add)
-                      </h3>
-                      <Button variant="ghost" size="sm" onClick={() => setShowQuickCreate(false)} className="h-6 w-6 p-0 rounded-full hover:bg-emerald-100 text-emerald-600">
-                        <XCircle className="h-4 w-4" />
-                      </Button>
-                    </div>
-                    <div className="grid grid-cols-3 gap-3">
-                      <div className="space-y-1">
-                        <label className="text-[10px] font-bold text-emerald-700 uppercase">Code</label>
-                        <Input
-                          value={quickProduct.code}
-                          onChange={e => setQuickProduct(prev => ({ ...prev, code: e.target.value }))}
-                          placeholder="CODE"
-                          className="h-8 bg-white text-xs"
-                          autoFocus
-                        />
-                      </div>
-                      <div className="col-span-2 space-y-1">
-                        <label className="text-[10px] font-bold text-emerald-700 uppercase">Product Name</label>
-                        <Input
-                          value={quickProduct.name}
-                          onChange={e => setQuickProduct(prev => ({ ...prev, name: e.target.value }))}
-                          placeholder="Product Name"
-                          className="h-8 bg-white text-xs"
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <label className="text-[10px] font-bold text-emerald-700 uppercase">Unit</label>
-                        <select
-                          value={quickProduct.unit}
-                          onChange={e => setQuickProduct(prev => ({ ...prev, unit: e.target.value }))}
-                          className="w-full h-8 rounded-md border border-input bg-white px-2 py-1 text-xs shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-emerald-500"
-                        >
-                          <option value="pcs">Pcs</option>
-                          <option value="kg">Kg</option>
-                          <option value="mtr">Meter</option>
-                          <option value="box">Box</option>
-                        </select>
-                      </div>
-                      <div className="col-span-2 flex items-end">
-                        <Button
-                          onClick={handleQuickCreate}
-                          disabled={!quickProduct.code || !quickProduct.name || isCreatingProduct}
-                          size="sm"
-                          className="w-full h-8 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold"
-                        >
-                          {isCreatingProduct ? 'Saving...' : 'Create & Select Product'}
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                )}
                 <div className="space-y-3">
                   {orderData.items.map((item) => (
                     <div key={item.id} className="flex gap-3 items-start bg-zinc-50 p-4 rounded-xl border border-zinc-200 transition-all hover:bg-zinc-100/50">
@@ -222,16 +148,6 @@ export function NewOrderModal({
                               </option>
                             ))}
                           </select>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="icon"
-                            onClick={() => setShowQuickCreate(true)}
-                            className="shrink-0 border-zinc-300 text-zinc-500 hover:text-emerald-600 hover:border-emerald-500 hover:bg-emerald-50"
-                            title="Quick Create Product"
-                          >
-                            <Plus className="h-4 w-4" />
-                          </Button>
                         </div>
                         <div className="flex justify-between items-center px-1">
                           <p className="text-[10px] text-zinc-400 italic">
@@ -323,9 +239,15 @@ export function NewOrderModal({
                     className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-sm h-10 bg-white"
                   >
                     <option value="">Select Shift...</option>
-                    <option value="Shift 1">{t.shift1 || 'Shift 1 (6 AM - 2 PM)'}</option>
-                    <option value="Shift 2">{t.shift2 || 'Shift 2 (2 PM - 10 PM)'}</option>
-                    <option value="Shift 3">{t.shift3 || 'Shift 3 (10 PM - 6 AM)'}</option>
+                    {shifts.length === 0 ? (
+                      <option value="" disabled>Loading shifts...</option>
+                    ) : (
+                      shifts.map(shift => (
+                        <option key={shift.id} value={shift.name}>
+                          {shift.name} ({shift.start_time} - {shift.end_time})
+                        </option>
+                      ))
+                    )}
                   </select>
                 </div>
               </div>

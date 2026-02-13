@@ -55,15 +55,15 @@ class GateEntryService:
         entry_insert = {
             'entry_number': entry_number,
             'entry_type': entry_data.entry_type,
-            # 'vendor' - DROPPED (No DB Column)
+            'vendor': entry_data.vendor,
             'vehicle_number': entry_data.vehicle_no,
             'driver_name': entry_data.driver_name,
             'reference_document_number': entry_data.linked_document,
-            # 'destination_department' - DROPPED (No DB Column)
+            'destination_department': entry_data.destination_department,
             'status': 'Arrived',
-            # 'remarks' - DROPPED (No DB Column)
+            'remarks': entry_data.remarks,
             'photos': entry_data.photos,
-            # 'created_by' - DROPPED (No DB Column)
+            'created_at': datetime.now().isoformat()
         }
         
         result = db.table('gate_entries').insert(entry_insert).execute()
@@ -123,16 +123,15 @@ class GateEntryService:
             id=entry['id'],
             entry_number=entry['entry_number'],
             entry_type=entry['entry_type'],
-            vendor="N/A", # Dropped
+            vendor=entry.get('vendor', 'N/A'),
             vehicle_no=entry.get('vehicle_number'),
             driver_name=entry['driver_name'],
             linked_document=entry.get('reference_document_number'),
-            destination_department="N/A", # Dropped
+            destination_department=entry.get('destination_department', 'N/A'),
             status=entry['status'],
-            remarks="", # Dropped
+            remarks=entry.get('remarks', ""),
             photos=entry.get('photos', []),
             materials=materials,
-            created_by=None, # Dropped
             created_at=entry['created_at'],
             updated_at=entry['updated_at']
         )
@@ -154,8 +153,8 @@ class GateEntryService:
         
         # Build query
         query = db.table('gate_entries').select(
-            'id, entry_number, entry_type, vehicle_number, driver_name, '
-            'status, reference_document_number, created_at'  # Select available columns
+            'id, entry_number, entry_type, vendor, vehicle_number, driver_name, '
+            'destination_department, status, reference_document_number, created_at'
         )
         
         # Apply filters
@@ -202,10 +201,10 @@ class GateEntryService:
                 id=entry['id'],
                 entry_number=entry['entry_number'],
                 entry_type=entry['entry_type'],
-                vendor="See Remarks",
+                vendor=entry.get('vendor', 'Unknown'),
                 vehicle_no=entry.get('vehicle_number'),
                 driver_name=entry['driver_name'],
-                destination_department="See Remarks",
+                destination_department=entry.get('destination_department', 'General'),
                 status=entry['status'],
                 linked_document=entry.get('reference_document_number'),
                 material_count=material_count,
@@ -237,7 +236,7 @@ class GateEntryService:
         if entry_data.entry_type is not None:
             update_data['entry_type'] = entry_data.entry_type
         if entry_data.vendor is not None:
-             pass
+             update_data['vendor'] = entry_data.vendor
         if entry_data.vehicle_no is not None:
             update_data['vehicle_number'] = entry_data.vehicle_no
         if entry_data.driver_name is not None:
@@ -245,11 +244,11 @@ class GateEntryService:
         if entry_data.linked_document is not None:
             update_data['reference_document_number'] = entry_data.linked_document
         if entry_data.destination_department is not None:
-            pass
+            update_data['destination_department'] = entry_data.destination_department
         if entry_data.status is not None:
             update_data['status'] = entry_data.status
         if entry_data.remarks is not None:
-            pass
+            update_data['remarks'] = entry_data.remarks
         
         if update_data:
             db.table('gate_entries').update(update_data).eq('id', entry_id).execute()

@@ -282,13 +282,10 @@ CREATE TABLE IF NOT EXISTS shifts (
 );
 
 -- 7. VIEWS & FUNCTIONS
-CREATE OR REPLACE VIEW vw_work_order_status AS
-SELECT wo.id, wo.work_order_number, wo.status, wo.priority, wo.target_qty, wo.completed_qty, wo.rejected_qty, wo.operation, wo.scheduled_start, wo.scheduled_end, po.order_number AS purchase_order_number, p.code AS product_code, p.name AS product_name
-FROM work_orders wo 
-LEFT JOIN purchase_orders po ON po.id = wo.purchase_order_id 
-LEFT JOIN products p ON p.id = wo.product_id;
+-- Note: vw_work_order_status is created later after adding config_id column to work_orders table
 
 -- From 006_stage_config_junction: STAGE USAGE VIEWS
+DROP VIEW IF EXISTS vw_stage_usage CASCADE;
 CREATE OR REPLACE VIEW vw_stage_usage AS
 SELECT 
     ws.id as stage_id,
@@ -302,12 +299,12 @@ LEFT JOIN config_stages cs ON ws.id = cs.stage_id
 LEFT JOIN order_stage_tracking ost ON ws.id = ost.current_stage_id
 GROUP BY ws.id, ws.name;
 
+DROP VIEW IF EXISTS vw_stage_config_usage CASCADE;
 CREATE OR REPLACE VIEW vw_stage_config_usage AS
 SELECT 
     config_id,
     COUNT(stage_id) as stages_count,
-    SUM(estimated_time_minutes) as total_estimated_time,
-    MAX(updated_at) as last_updated
+    array_agg(stage_id) as stage_ids
 FROM config_stages
 GROUP BY config_id;
 
@@ -331,6 +328,7 @@ $$ LANGUAGE plpgsql;
 
 -- From 005_configurable_stages: STAGE SELECTORS
 -- Returns stages configured for a specific product, or default stages if none configured
+DROP FUNCTION IF EXISTS get_product_stages(UUID) CASCADE;
 CREATE OR REPLACE FUNCTION get_product_stages(p_product_id UUID)
 RETURNS TABLE (
     id UUID,
@@ -386,6 +384,7 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- From 006_stage_config_junction: CONFIG SELECTORS
+DROP FUNCTION IF EXISTS get_config_stages(VARCHAR) CASCADE;
 CREATE OR REPLACE FUNCTION get_config_stages(p_config_id VARCHAR)
 RETURNS TABLE (
     stage_id UUID,
@@ -411,6 +410,7 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- From 006_stage_config_junction: LIST ALL CONFIGS
+DROP FUNCTION IF EXISTS get_stage_configs() CASCADE;
 CREATE OR REPLACE FUNCTION get_stage_configs()
 RETURNS TABLE (config_id VARCHAR, stages_count BIGINT) AS $$
 BEGIN
@@ -424,6 +424,7 @@ $$ LANGUAGE plpgsql;
 
 -- 7. FUNCTIONS
 -- Improved WIP Stage Metrics Update (includes utilization formula and health status)
+DROP FUNCTION IF EXISTS update_wip_stage_metrics() CASCADE;
 CREATE OR REPLACE FUNCTION update_wip_stage_metrics()
 RETURNS void AS $$
 BEGIN
@@ -571,4 +572,205 @@ BEGIN
 
     -- 3. Initial metrics calculation
     PERFORM update_wip_stage_metrics();
+END $$;
+
+-- =============================================
+-- ADDITIONAL FIXES (009, 010, 011)
+-- =============================================
+
+-- From 009: ADD config_id TO work_orders
+-- First, drop ALL dependent views and functions that reference work_orders
+DROP VIEW IF EXISTS vw_work_order_status CASCADE;
+DROP FUNCTION IF EXISTS update_wip_stage_metrics() CASCADE;
+
+ALTER TABLE work_orders 
+ADD COLUMN IF NOT EXISTS config_id VARCHAR(100) DEFAULT 'default';
+
+COMMENT ON COLUMN work_orders.config_id IS 'Stage configuration ID used for this work order';
+
+-- Update existing work orders
+UPDATE work_orders 
+SET config_id = 'default' 
+WHERE config_id IS NULL;
+
+-- Recreate the view with new column
+CREATE OR REPLACE VIEW vw_work_order_status AS
+SELECT 
+    wo.id, 
+    wo.work_order_number, 
+    wo.status, 
+    wo.priority, 
+    wo.target_qty, 
+    wo.completed_qty, 
+    wo.rejected_qty, 
+    wo.operation, 
+    wo.config_id,
+    wo.scheduled_start, 
+    wo.scheduled_end, 
+    po.order_number AS purchase_order_number, 
+    p.code AS product_code, 
+    p.name AS product_name
+FROM work_orders wo 
+LEFT JOIN purchase_orders po ON po.id = wo.purchase_order_id 
+LEFT JOIN products p ON p.id = wo.product_id;
+
+-- Recreate the function that was dropped
+CREATE OR REPLACE FUNCTION update_wip_stage_metrics()
+RETURNS void AS $$
+BEGIN
+    -- Use CTE to calculate stats for ALL stages (Left Join from wip_stages)
+    WITH stage_stats AS (
+        SELECT 
+            s.name as stage_name,
+            -- Count all orders in the pipe (Planned + In Progress)
+            COUNT(DISTINCT wo.purchase_order_id) FILTER (WHERE wo.id IS NOT NULL) as order_count,
+            
+            -- Sum units
+            COALESCE(SUM(wo.target_qty), 0) as total_units,
+            
+            -- Avg Duration: ONLY for orders that have actually started (In Progress, or Completed)
+            -- We exclude Planned orders (actual_start IS NULL)
+            COALESCE(
+                AVG(
+                    CASE 
+                        WHEN wo.actual_start IS NOT NULL THEN
+                            EXTRACT(EPOCH FROM (COALESCE(wo.actual_end, NOW()) - wo.actual_start)) / 60
+                        ELSE NULL 
+                    END
+                ), 
+                0
+            ) as avg_duration
+        FROM wip_stages s
+        LEFT JOIN work_orders wo ON s.name = wo.operation 
+            AND wo.status IN ('In Progress', 'Planned')
+        GROUP BY s.name
+    )
+    UPDATE wip_stage_metrics sm
+    SET 
+        orders_count = ss.order_count,
+        units_count = ss.total_units,
+        avg_time_minutes = ss.avg_duration,
+        
+        -- Utilization Formula: (Target / Actual) * 100
+        utilization_percentage = CASE 
+            WHEN ss.avg_duration > 0 THEN 
+                (sm.target_time_minutes / ss.avg_duration * 100)
+            ELSE 0 -- No actual work yet
+        END,
+        
+        -- Health Status Logic
+        -- < 80%: Delayed (Underutilization/Slow)
+        -- 80% - 110%: Healthy (Optimal)
+        -- > 110%: Warning (Overutilization/Too Fast)
+        health_status = CASE
+            WHEN ss.avg_duration = 0 THEN 'healthy' -- No activity
+            WHEN (sm.target_time_minutes / ss.avg_duration * 100) < 80 THEN 'delayed'
+            WHEN (sm.target_time_minutes / ss.avg_duration * 100) > 110 THEN 'warning'
+            ELSE 'healthy'
+        END,
+        
+        updated_at = NOW()
+    FROM stage_stats ss
+    WHERE sm.stage_name = ss.stage_name;
+END;
+$$ LANGUAGE plpgsql;
+
+-- From 010: INITIALIZE SYSTEM_CONFIG_RULES STAGE
+INSERT INTO wip_stages (
+    name, 
+    code, 
+    sequence_number, 
+    target_avg_time_minutes, 
+    is_active, 
+    description, 
+    color,
+    icon
+)
+VALUES (
+    'SYSTEM_CONFIG_RULES',
+    'SYSTEM_CONFIG_RULES',
+    9999,
+    0,
+    FALSE,
+    '{"sku_assignments": {}, "wo_assignments": {}}',
+    '#000000',
+    'settings'
+)
+ON CONFLICT (code) DO UPDATE SET
+    description = EXCLUDED.description,
+    updated_at = NOW();
+
+-- From 011: BACKFILL WORK_ORDER_OPERATIONS FOR EXISTING WORK ORDERS
+DO $$
+DECLARE
+    wo_record RECORD;
+    wo_config_id VARCHAR(100);
+    stage_record RECORD;
+    seq_num INT;
+BEGIN
+    -- Loop through all work orders that have NO operations
+    FOR wo_record IN 
+        SELECT wo.id, wo.work_order_number, wo.config_id, wo.target_qty
+        FROM work_orders wo
+        WHERE NOT EXISTS (
+            SELECT 1 FROM work_order_operations woo 
+            WHERE woo.work_order_id = wo.id
+        )
+    LOOP
+        -- Get config_id (default to 'default' if null)
+        wo_config_id := COALESCE(wo_record.config_id, 'default');
+        
+        -- Get stages for this config
+        seq_num := 1;
+        FOR stage_record IN
+            SELECT ws.id, ws.name, cs.sequence_number
+            FROM config_stages cs
+            JOIN wip_stages ws ON ws.id = cs.stage_id
+            WHERE cs.config_id = wo_config_id
+              AND ws.is_active = TRUE
+            ORDER BY cs.sequence_number
+        LOOP
+            -- Insert operation for this stage
+            INSERT INTO work_order_operations (
+                work_order_id,
+                operation_name,
+                sequence_number,
+                status,
+                workstation_id,
+                completed_qty,
+                rejected_qty
+            ) VALUES (
+                wo_record.id,
+                stage_record.name,
+                seq_num,
+                'Pending',
+                NULL,
+                0,
+                0
+            );
+            
+            seq_num := seq_num + 1;
+        END LOOP;
+        
+        -- If no stages found for config, create a single "General" operation
+        IF seq_num = 1 THEN
+            INSERT INTO work_order_operations (
+                work_order_id,
+                operation_name,
+                sequence_number,
+                status,
+                workstation_id,
+                completed_qty,
+                rejected_qty
+            ) VALUES (
+                wo_record.id,
+                'General',
+                1,
+                'Pending',
+                NULL,
+                0,
+                0
+            );
+        END IF;
+    END LOOP;
 END $$;

@@ -9,9 +9,9 @@ from app.schemas.wip import (
     WIPStageMetricsResponse, WIPStageMetricsListItem, WIPDashboardResponse,
     WIPSummaryStats, BottleneckAlert, StagePerformanceHistoryResponse
 )
-from app.services.bom_service import BOMService # Task 3: For Material Allocation
-from app.services.websocket_manager import manager # For Real-time Updates
-from app.services import dashboard_service
+from app.services.bom_service import BOMService
+from app.services.inventory_service import InventoryService
+from app.services.websocket_manager import manager
 from app.services.dashboard_service import dashboard_service
 
 
@@ -58,33 +58,39 @@ class WIPService:
         if not config_id:
             config_id = await StageService.resolve_config_for_entity(sku=sku, wo_no=work_order_number)
         
-        # Get Stages
+        # Get Stages - with fallback to default
         stages = await StageService.list_stages(config_id=config_id)
-        first_op_name = stages[0].name if stages else 'General' # Fallback for operation field
+        
+        # If selected config has no stages, fallback to 'default' config
+        if not stages and config_id != 'default':
+            logger.warning(f"Config '{config_id}' has no stages. Falling back to 'default' config.")
+            config_id = 'default'
+            stages = await StageService.list_stages(config_id='default')
+        
+        # Final validation - even default must have stages
+        if not stages:
+            raise ValidationException(
+                detail=f"No stages configured in 'default' config. Please configure at least one stage in WIP Settings before creating work orders."
+            )
+        
+        first_op_name = stages[0].name
 
         # 3. Insert working order
         insert_data = {
-            **order_data.model_dump(mode="json", exclude={'operation', 'config_id'}),
+            **order_data.model_dump(mode="json", exclude={'operation'}),
             'work_order_number': work_order_number,
             'created_by': created_by,
             'product_id': product_id,
-            'operation': first_op_name # CRITICAL: Satisfy NOT NULL constraint
+            'operation': first_op_name, # CRITICAL: Satisfy NOT NULL constraint
+            'config_id': config_id # Store the resolved config_id
         }
         
-        # Default shift
-        if 'shift' not in insert_data:
-            insert_data['shift'] = 'Morning'
-        
-        # Defensive Mapping (Task 2 Fix)
-        if insert_data.get('shift') == 'Evening':
-            insert_data['shift'] = 'Afternoon'
-            
-        if insert_data.get('priority') == 'Normal':
-            insert_data['priority'] = 'Medium'
-            
-        # Ensure priority is Title Case
+        # Normalize priority to title case
         if 'priority' in insert_data and insert_data['priority']:
-             insert_data['priority'] = insert_data['priority'].title()
+            insert_data['priority'] = insert_data['priority'].title()
+            # Map 'Normal' to 'Medium' for consistency
+            if insert_data['priority'] == 'Normal':
+                insert_data['priority'] = 'Medium'
         
         result = db.table('work_orders').insert(insert_data).execute()
         
@@ -95,208 +101,15 @@ class WIPService:
         logger.info(f"WO Created: {work_order_number} (ID: {wo_id}) | SKU: {sku} | Config: {config_id} | Operation: {first_op_name}")
         
         # 4. Inventory Allocation (Real-time) - PRODUCTION-SAFE VERSION
-        # Phase 1: Validation (no DB changes yet)
-        # Phase 2: Allocation (with rollback tracking)
-        
-        # 4. Inventory Allocation (Real-time) - PRODUCTION-SAFE VERSION
-        # Phase 1: Validation (no DB changes yet)
-        # Phase 2: Allocation (with rollback tracking)
-        
-        # NOTE: We no longer force 'MAIN-STORE'. We will look for stock in ANY valid store location per material.
-        # This fixes the issue where frontend adds to 'RM Store A' but backend only looks in 'MAIN-STORE'.
-        
-        # Calculate Requirements
         try:
-            requirements = await BOMService.calculate_material_requirements(product_id, Decimal(str(order_data.target_qty)))
+            await WIPService._allocate_inventory(wo_id, product_id, order_data.target_qty, work_order_number)
+        except ValidationException as e:
+            # create_working_order will be called from an API where ValidationException is caught
+            raise e
         except Exception as e:
-            logger.error(f"BOM calculation failed: {e}")
+            logger.error(f"Allocation unexpected failure: {e}")
             db.table('work_orders').delete().eq('id', wo_id).execute()
-            raise ValidationException(detail=f"Failed to calculate material requirements: {str(e)}")
-        
-        if not requirements:
-            logger.info(f"Inventory: No BOM materials found for product {product_id}")
-            # This might be valid for some products, continue without allocation
-        else:
-            # Fetch all valid STORE locations
-            try:
-                store_locs = db.table('locations').select('id').eq('type', 'store').eq('is_active', True).execute()
-                store_ids = [loc['id'] for loc in store_locs.data] if store_locs.data else []
-                
-                if not store_ids:
-                    # Fallback: maintain old behavior of creating MAIN-STORE if NO stores exist
-                    logger.warning("No STORE locations found. Auto-creating MAIN-STORE.")
-                    new_loc = db.table('locations').insert({
-                        'code': 'MAIN-STORE',
-                        'name': 'Main Warehouse',
-                        'type': 'store',
-                        'is_active': True
-                    }).execute()
-                    if new_loc.data:
-                        store_ids = [new_loc.data[0]['id']]
-            except Exception as e:
-                logger.error(f"Error fetching store locations: {e}")
-                raise ValidationException(detail="System error: Could not verify storage locations.")
-            # PHASE 1: VALIDATION - Check all materials before allocating any
-            validation_errors = []
-            material_details = []
-            
-            for req in requirements:
-                # Get product name for error messages
-                try:
-                    prod_res = db.table('products').select('name').eq('id', req.material_id).single().execute()
-                    material_name = prod_res.data['name'] if prod_res.data else f"Material {req.material_id}"
-                except:
-                    material_name = f"Material {req.material_id}"
-                
-                # Query inventory for this material in ANY valid store
-                inv_query = db.table('inventory').select('id, location_id, allocated_qty, available_qty').eq(
-                    'product_id', req.material_id
-                ).in_('location_id', store_ids) # Filter by valid stores
-                
-                inv_res = inv_query.execute()
-                
-                # Logic: Find the BEST location (highest free stock)
-                best_record = None
-                max_free_qty = Decimal('0')
-                total_free_everywhere = Decimal('0')
-                
-                found_match = False
-                
-                if inv_res.data:
-                    for r in inv_res.data:
-                        avail = Decimal(str(r['available_qty']))
-                        alloc = Decimal(str(r['allocated_qty']))
-                        free = avail - alloc
-                        total_free_everywhere += max(free, Decimal('0'))
-                        
-                        if free >= req.required_quantity:
-                            # Found a location with enough stock!
-                            # If we have multiple, maybe pick one? valid strategy: Pick first sufficient.
-                            best_record = r
-                            max_free_qty = free # Not strictly needed if we break, but good for debug
-                            found_match = True
-                            break # Optimization: Stop looking once we find ONE place that satisfies
-                        
-                        # Keep track of "best partial" just in case we want to report it
-                        if free > max_free_qty:
-                            max_free_qty = free
-                            # best_record = r # Don't select it yet if it's not sufficient
-                
-                # Check 1: Material exists in inventory
-                if not inv_res.data:
-                    validation_errors.append(
-                        f"{material_name}: Not found in any 'store' location."
-                    )
-                    continue
-                
-                # Check 2: Sufficient free stock
-                if not found_match:
-                     validation_errors.append(
-                        f"{material_name}: Insufficient stock (need {req.required_quantity} {req.unit}). "
-                        f"Total free across all stores: {total_free_everywhere}. "
-                        f"(Note: System currently requires full quantity in a single location)"
-                    )
-                     continue
-                
-                # Store for allocation phase (using the found best_record)
-                material_details.append({
-                    'requirement': req,
-                    'inventory_record': best_record,
-                    'material_name': material_name
-                })
-            
-            # If any validation errors, fail before making any changes
-            if validation_errors:
-                # Delete the WO that was just created
-                db.table('work_orders').delete().eq('id', wo_id).execute()
-                logger.error(f"Material allocation validation failed for WO {work_order_number}: {validation_errors}")
-                
-                error_msg = f"Cannot create Working Order - Material allocation failed:\n\n"
-                error_msg += "\n".join(f"- {err}" for err in validation_errors)
-                error_msg += f"\n\nPlease ensure sufficient materials are available."
-                
-                raise ValidationException(detail=error_msg)
-            
-            # PHASE 2: ALLOCATION - All validations passed, now allocate
-            allocated_inventory_ids = []
-            wo_materials_data = []
-            
-            try:
-                for detail in material_details:
-                    req = detail['requirement']
-                    inv_record = detail['inventory_record']
-                    material_name = detail['material_name']
-                    
-                    # Prepare WO material record
-                    wo_materials_data.append({
-                        'work_order_id': wo_id,
-                        'material_id': req.material_id,
-                        'required_qty': float(req.required_quantity),
-                        'allocated_qty': float(req.required_quantity),
-                        'unit': req.unit,
-                        'status': 'Allocated'
-                    })
-                    
-                    # Update inventory allocation
-                    new_allocated = Decimal(str(inv_record['allocated_qty'])) + req.required_quantity
-                    db.table('inventory').update({
-                        'allocated_qty': float(new_allocated),
-                        'updated_at': datetime.utcnow().isoformat()
-                    }).eq('id', inv_record['id']).execute()
-                    
-                    # Track for potential rollback
-                    allocated_inventory_ids.append({
-                        'id': inv_record['id'],
-                        'quantity': req.required_quantity,
-                        'material_name': material_name
-                    })
-                    
-                    logger.info(f"Allocated {req.required_quantity} {req.unit} of {material_name} for WO {work_order_number}")
-                
-                # Insert all WO materials at once
-                if wo_materials_data:
-                    db.table('work_order_materials').insert(wo_materials_data).execute()
-                    logger.info(f"Created {len(wo_materials_data)} material records for WO {work_order_number}")
-                
-                # Broadcast inventory update
-                await manager.broadcast({"type": "inventory_update"})
-                await dashboard_service.broadcast_shortages_update()
-                await dashboard_service.broadcast_activities_update()
-                await dashboard_service.broadcast_kpis_update()
-                logger.info(f"Material allocation completed successfully for WO {work_order_number}")
-                
-            except Exception as e:
-                # ROLLBACK: Undo all inventory allocations
-                logger.error(f"Allocation failed for WO {work_order_number}, initiating rollback: {e}")
-                
-                for alloc in allocated_inventory_ids:
-                    try:
-                        # Get current allocated_qty
-                        inv = db.table('inventory').select('allocated_qty').eq('id', alloc['id']).single().execute()
-                        if inv.data:
-                            # Subtract the quantity we added
-                            rollback_allocated = Decimal(str(inv.data['allocated_qty'])) - alloc['quantity']
-                            db.table('inventory').update({
-                                'allocated_qty': float(max(rollback_allocated, Decimal('0'))),  # Prevent negative
-                                'updated_at': datetime.utcnow().isoformat()
-                            }).eq('id', alloc['id']).execute()
-                            logger.info(f"Rolled back allocation for {alloc['material_name']}")
-                    except Exception as rollback_err:
-                        logger.error(f"Rollback failed for {alloc['material_name']}: {rollback_err}")
-                
-                # Delete WO and WO materials
-                try:
-                    db.table('work_order_materials').delete().eq('work_order_id', wo_id).execute()
-                except:
-                    pass
-                
-                db.table('work_orders').delete().eq('id', wo_id).execute()
-                logger.error(f"Deleted WO {work_order_number} after allocation failure")
-                
-                # Re-raise with user-friendly message
-                raise ValidationException(
-                    detail=f"Material allocation failed: {str(e)}. All changes have been rolled back."
-                )
+            raise ValidationException(detail=f"Unexpected error during allocation: {str(e)}")
         
         
         # 5. Insert Operations
@@ -320,7 +133,21 @@ class WIPService:
         except Exception as e:
             logger.error(f"Error enforcing stage config: {e}")
         
-        # 6. Update WIP metrics
+        # 6. Initialize order_stage_tracking - place in first stage
+        try:
+            if stages:
+                first_stage = stages[0]
+                db.table('order_stage_tracking').insert({
+                    'order_id': wo_id,
+                    'current_stage_id': first_stage.id,
+                    'quantity_in_stage': float(order_data.target_qty),
+                    'entered_stage_at': datetime.utcnow().isoformat()
+                }).execute()
+                logger.info(f"Initialized order_stage_tracking for WO {work_order_number} in stage {first_stage.name}")
+        except Exception as e:
+            logger.error(f"Error initializing order_stage_tracking: {e}")
+        
+        # 7. Update WIP metrics
         await WIPService._update_stage_metrics()
 
         row = WIPService._map_db_row(result.data[0])
@@ -454,7 +281,7 @@ class WIPService:
     ) -> WorkingOrderResponse:
         """
         Complete an in-progress operation.
-        Uses work order number + operation name for robust identification.
+        Updates status, records end time, consumes materials, and produces FG if final stage.
         """
         db = get_db()
         
@@ -468,16 +295,20 @@ class WIPService:
         # 2. Find the operation in work_order_operations
         op_res = (
             db.table('work_order_operations')
-            .select('id, status')
+            .select('*')
             .eq('work_order_id', parent['id'])
-            .eq('operation_name', operation_name)
+            .order('sequence_number')
             .execute()
         )
         
         if not op_res.data:
-            raise ValidationException(detail=f"Operation '{operation_name}' not found for work order {work_order_number}")
+            raise ValidationException(detail=f"Operations not found for work order {work_order_number}")
         
-        op_record = op_res.data[0]
+        ops = op_res.data
+        op_record = next((op for op in ops if op['operation_name'] == operation_name), None)
+        
+        if not op_record:
+            raise ValidationException(detail=f"Operation '{operation_name}' not found for work order {work_order_number}")
         
         # 3. Validate current status
         current_status = op_record.get('status', '').lower()
@@ -485,29 +316,365 @@ class WIPService:
             raise ValidationException(detail=f"Operation '{operation_name}' is not in progress (current status: {op_record.get('status')})")
         
         # 4. Use provided qty or default to work order's target qty
-        final_qty = completed_qty if completed_qty is not None else parent.get('target_qty', 0)
+        final_qty = Decimal(str(completed_qty if completed_qty is not None else parent.get('target_qty', 0)))
         
-        # 5. Update to Completed
+        # 5. Consume Materials (Proportional to final_qty)
+        try:
+            await WIPService._consume_materials(parent['id'], parent['product_id'], final_qty)
+        except Exception as e:
+            import logging
+            logging.error(f"Material consumption failed for WO {work_order_number}: {e}")
+            
+        # 6. Check if this is the final operation
+        is_final = ops[-1]['operation_name'] == operation_name
+        if is_final:
+            try:
+                await InventoryService.produce_stock(parent['product_id'], final_qty)
+                # Also update main work order status
+                db.table('work_orders').update({
+                    'status': 'Completed',
+                    'completed_qty': float(final_qty),
+                    'actual_end': datetime.utcnow().isoformat()
+                }).eq('id', parent['id']).execute()
+            except Exception as e:
+                import logging
+                logging.error(f"FG production failed for WO {work_order_number}: {e}")
+
+        # 7. Update Operation to Completed
         db.table('work_order_operations').update({
             'status': 'Completed',
             'actual_end': datetime.utcnow().isoformat(),
-            'completed_qty': final_qty
+            'completed_qty': float(final_qty)
         }).eq('id', op_record['id']).execute()
         
-        # 6. Update metrics & Broadcast
+        # 8. Update metrics & Broadcast
         await WIPService._update_stage_metrics()
         await dashboard_service.broadcast_orders_update()
         await dashboard_service.broadcast_kpis_update()
         
-        # 7. Return response
+        # 9. Return response
         row = WIPService._map_db_row(parent)
         row['operation'] = operation_name
         row['status'] = 'Completed'
         row['id'] = op_record['id']
-        row['completed_qty'] = final_qty
+        row['completed_qty'] = float(final_qty)
         
         return WorkingOrderResponse(**row)
 
+    @staticmethod
+    async def update_working_order(
+        order_id: str,
+        order_data: WorkingOrderUpdate,
+        updated_by: str
+    ) -> WorkingOrderResponse:
+        """Update working order"""
+        db = get_db()
+        
+        update_data = {
+            k: v
+            for k, v in order_data.model_dump(exclude_unset=True, mode="json").items()
+            if v is not None
+        }
+        
+        if not update_data:
+            return await WIPService.get_working_order_by_id(order_id)
+            
+        # KEY FIX: Check if this ID belongs to an Operation (work_order_operations)
+        op_check = db.table('work_order_operations').select('work_order_id, operation_name').eq('id', order_id).execute()
+        
+        if op_check.data:
+            # It's an Operation ID
+            op_data = op_check.data[0]
+            op_update = {}
+            if 'status' in update_data:
+                op_update['status'] = update_data['status']
+            if 'actual_start' in update_data:
+                op_update['actual_start'] = update_data['actual_start']
+            if 'actual_end' in update_data:
+                op_update['actual_end'] = update_data['actual_end']
+            if 'completed_qty' in update_data:
+                op_update['completed_qty'] = update_data['completed_qty']
+            
+            if op_update:
+                # If marking as completed via direct update, trigger consumption/production
+                if op_update.get('status') == 'Completed':
+                    # We need the parent wo for context
+                    parent = await WIPService.get_working_order_by_id(op_data['work_order_id'])
+                    # Use provided qty or parent target
+                    c_qty = Decimal(str(op_update.get('completed_qty') or parent.target_qty))
+                    
+                    # 1. Consume Materials
+                    await WIPService._consume_materials(parent.id, parent.product_id, c_qty)
+                    
+                    # 2. Check if final
+                    ops_res = db.table('work_order_operations').select('operation_name').eq('work_order_id', parent.id).order('sequence_number').execute()
+                    if ops_res.data and ops_res.data[-1]['operation_name'] == op_data['operation_name']:
+                         await InventoryService.produce_stock(parent.product_id, c_qty)
+                         # Update header too
+                         db.table('work_orders').update({
+                             'status': 'Completed',
+                             'completed_qty': float(c_qty),
+                             'actual_end': datetime.utcnow().isoformat()
+                         }).eq('id', parent.id).execute()
+
+                op_res = db.table('work_order_operations').update(op_update).eq('id', order_id).execute()
+                if not op_res.data:
+                    raise Exception("Failed to update operation")
+
+            # Return the full WO structure
+            parent_wo = await WIPService.get_working_order_by_id(op_data['work_order_id'])
+            parent_wo.id = order_id 
+            parent_wo.operation = op_data['operation_name']
+            parent_wo.status = update_data.get('status', parent_wo.status)
+            
+            await WIPService._update_stage_metrics()
+            await dashboard_service.broadcast_orders_update()
+            await dashboard_service.broadcast_kpis_update()
+            
+            return parent_wo
+
+        # Fallback: Update main Work Order (Header update)
+        # Handle header-level completion
+        if update_data.get('status') == 'Completed':
+             # Fetch current state
+             curr = db.table('work_orders').select('*').eq('id', order_id).single().execute()
+             if curr.data:
+                 c_qty = Decimal(str(update_data.get('completed_qty') or curr.data.get('completed_qty') or curr.data.get('target_qty', 0)))
+                 # Consume all remaining allocated materials
+                 await WIPService._consume_materials(order_id, curr.data['product_id'], c_qty)
+                 # Produce FG
+                 await InventoryService.produce_stock(curr.data['product_id'], c_qty)
+                 # Mark all operations as completed? 
+                 # Usually if you mark header as completed, it's a shortcut
+                 db.table('work_order_operations').update({
+                     'status': 'Completed',
+                     'actual_end': datetime.utcnow().isoformat(),
+                     'completed_qty': float(c_qty)
+                 }).eq('work_order_id', order_id).neq('status', 'Completed').execute()
+
+        result = db.table('work_orders').update(update_data).eq('id', order_id).execute()
+        
+        if not result.data:
+            raise Exception(f"Working order {order_id} not found")
+        
+        if 'status' in update_data or 'completed_qty' in update_data:
+            await WIPService._update_stage_metrics()
+            await dashboard_service.broadcast_orders_update()
+            await dashboard_service.broadcast_kpis_update()
+        
+        row = WIPService._map_db_row(result.data[0])
+        return WorkingOrderResponse(**row)
+
+    @staticmethod
+    async def _allocate_inventory(wo_id: str, product_id: str, target_qty: Decimal, work_order_number: str):
+        """Internal helper to handle multi-location inventory allocation for a WO"""
+        db = get_db()
+        import logging
+        logger = logging.getLogger('wip_debug')
+
+        # Calculate Requirements
+        try:
+            requirements = await BOMService.calculate_material_requirements(product_id, target_qty)
+        except Exception as e:
+            logger.error(f"BOM calculation failed: {e}")
+            db.table('work_orders').delete().eq('id', wo_id).execute()
+            raise ValidationException(detail=f"Failed to calculate material requirements: {str(e)}")
+        
+        if not requirements:
+            logger.info(f"Inventory: No BOM materials found for product {product_id}")
+            return
+            
+        # Fetch all valid locations (store, warehouse, production_line)
+        # Exclude only 'scrap' and 'quality' locations from material allocation
+        try:
+            valid_locs = db.table('locations').select('id').in_(
+                'type', ['store', 'warehouse', 'production_line']
+            ).eq('is_active', True).execute()
+            store_ids = [loc['id'] for loc in valid_locs.data] if valid_locs.data else []
+            
+            if not store_ids:
+                logger.warning("No valid storage locations found. Auto-creating MAIN-STORE.")
+                new_loc = db.table('locations').insert({
+                    'code': 'MAIN-STORE',
+                    'name': 'Main Warehouse',
+                    'type': 'store',
+                    'is_active': True
+                }).execute()
+                if new_loc.data:
+                    store_ids = [new_loc.data[0]['id']]
+        except Exception as e:
+            logger.error(f"Error fetching storage locations: {e}")
+            raise ValidationException(detail="System error: Could not verify storage locations.")
+
+        # PHASE 1: VALIDATION - Check all materials before allocating any
+        validation_errors = []
+        allocation_plan = []
+        
+        for req in requirements:
+            material_name = f"Material {req.material_id}"
+            try:
+                prod_res = db.table('products').select('name').eq('id', req.material_id).single().execute()
+                if prod_res.data: material_name = prod_res.data['name']
+            except: pass
+            
+            # Query inventory in ANY valid store
+            inv_res = db.table('inventory').select('id, location_id, allocated_qty, available_qty').eq(
+                'product_id', req.material_id
+            ).in_('location_id', store_ids).execute()
+            
+            total_free_everywhere = Decimal('0')
+            potential_sources = []
+            
+            if inv_res.data:
+                for r in inv_res.data:
+                    free = Decimal(str(r['available_qty'])) - Decimal(str(r['allocated_qty']))
+                    if free > 0:
+                        total_free_everywhere += free
+                        potential_sources.append({'record': r, 'free': free})
+            
+            # FALLBACK: Check inventory_items if inventory table is empty
+            if not inv_res.data or total_free_everywhere == 0:
+                try:
+                    prod_res = db.table('products').select('code, name').eq('id', req.material_id).execute()
+                    if prod_res.data:
+                        material_code = prod_res.data[0]['code']
+                        product_name = prod_res.data[0]['name']
+                        
+                        # Try exact code match first
+                        items_res = db.table('inventory_items').select('quantity').eq('material_code', material_code).execute()
+                        if items_res.data:
+                            for item in items_res.data:
+                                item_qty = Decimal(str(item.get('quantity', 0)))
+                                total_free_everywhere += item_qty
+                            logger.info(f"Using inventory_items EXACT match for {material_name}: {total_free_everywhere}")
+                        else:
+                            # Fuzzy match by name if exact code fails
+                            name_res = db.table('inventory_items').select('quantity').ilike('material_name', f'%{product_name}%').execute()
+                            if name_res.data:
+                                for item in name_res.data:
+                                    item_qty = Decimal(str(item.get('quantity', 0)))
+                                    total_free_everywhere += item_qty
+                                logger.info(f"Using inventory_items NAME match for {material_name}: {total_free_everywhere}")
+                except Exception as e:
+                    logger.error(f"Error checking inventory_items fallback: {e}")
+            
+            if total_free_everywhere < req.required_quantity:
+                 validation_errors.append(
+                    f"{material_name}: Insufficient stock (need {req.required_quantity} {req.unit}, found {total_free_everywhere} in stores)."
+                )
+                 continue
+            
+            # Sort: Largest stocks first
+            potential_sources.sort(key=lambda x: x['free'], reverse=True)
+            
+            sources_to_use = []
+            remaining_needed = req.required_quantity
+            for src in potential_sources:
+                if remaining_needed <= 0: break
+                take = min(remaining_needed, src['free'])
+                sources_to_use.append({
+                    'record_id': src['record']['id'],
+                    'amount': take,
+                    'current_allocated': Decimal(str(src['record']['allocated_qty']))
+                })
+                remaining_needed -= take
+            
+            # Note: If inventory came from inventory_items (no potential_sources), 
+            # we skip allocation updates since inventory_items doesn't support allocation tracking
+            allocation_plan.append({
+                'material_id': req.material_id,
+                'material_name': material_name,
+                'unit': req.unit,
+                'sources': sources_to_use,
+                'total_req': req.required_quantity,
+                'from_items_table': len(potential_sources) == 0  # Flag for inventory_items source
+            })
+        
+        if validation_errors:
+            db.table('work_orders').delete().eq('id', wo_id).execute()
+            error_msg = f"Allocation failed:\n" + "\n".join(f"- {err}" for err in validation_errors)
+            raise ValidationException(detail=error_msg)
+        
+        # PHASE 2: ALLOCATION
+        allocated_history = []
+        wo_materials_data = []
+        
+        try:
+            for plan in allocation_plan:
+                total_material_allocated = Decimal('0')
+                
+                # Skip allocation updates if material is from inventory_items (no allocation tracking)
+                if plan.get('from_items_table', False):
+                    logger.info(f"Skipping allocation update for {plan['material_name']} (sourced from inventory_items)")
+                    total_material_allocated = plan['total_req']
+                else:
+                    # Normal allocation from inventory table
+                    for src in plan['sources']:
+                        db.table('inventory').update({
+                            'allocated_qty': float(src['current_allocated'] + src['amount']),
+                            'updated_at': datetime.utcnow().isoformat()
+                        }).eq('id', src['record_id']).execute()
+
+                        allocated_history.append({'id': src['record_id'], 'amount': src['amount']})
+                        total_material_allocated += src['amount']
+                
+                wo_materials_data.append({
+                    'work_order_id': wo_id,
+                    'material_id': plan['material_id'],
+                    'required_qty': float(plan['total_req']),
+                    'allocated_qty': float(total_material_allocated),
+                    'unit': plan['unit'],
+                    'status': 'Allocated'
+                })
+            
+            if wo_materials_data:
+                db.table('work_order_materials').insert(wo_materials_data).execute()
+            
+            await manager.broadcast({"type": "inventory_update"})
+            await dashboard_service.broadcast_shortages_update()
+
+        except Exception as e:
+            # ROLLBACK
+            for alloc in allocated_history:
+                try:
+                    inv = db.table('inventory').select('allocated_qty').eq('id', alloc['id']).single().execute()
+                    if inv.data:
+                        val = float(max(Decimal(str(inv.data['allocated_qty'])) - alloc['amount'], Decimal('0')))
+                        db.table('inventory').update({'allocated_qty': val}).eq('id', alloc['id']).execute()
+                except: pass
+            
+            db.table('work_orders').delete().eq('id', wo_id).execute()
+            raise Exception(f"Allocation committed failure: {e}")
+
+    @staticmethod
+    async def _consume_materials(wo_id: str, product_id: str, quantity: Decimal):
+        """Consume materials proportional to the quantity of product completed"""
+        # 1. Calculate requirements for this partial quantity
+        requirements = await BOMService.calculate_material_requirements(product_id, quantity)
+        
+        if not requirements:
+            return
+            
+        # 2. Consume from allocated stock
+        for req in requirements:
+            try:
+                await InventoryService.consume_allocated_stock(req.material_id, req.required_quantity)
+                
+                # 3. Update work_order_materials tracking (optional but nice)
+                # We need to find the record for this WO and material
+                db = get_db()
+                mat_res = db.table('work_order_materials').select('*').eq('work_order_id', wo_id).eq('material_id', req.material_id).execute()
+                if mat_res.data:
+                    current_consumed = Decimal(str(mat_res.data[0].get('consumed_qty', 0)))
+                    new_consumed = current_consumed + req.required_quantity
+                    db.table('work_order_materials').update({
+                        'consumed_qty': float(new_consumed),
+                        'updated_at': datetime.utcnow().isoformat()
+                    }).eq('id', mat_res.data[0]['id']).execute()
+            except Exception as e:
+                import logging
+                logging.error(f"Error consuming {req.material_id} for WO {wo_id}: {e}")
+    
     @staticmethod
     async def _get_next_work_order_number(db) -> str:
         now = datetime.now()
@@ -817,12 +984,15 @@ class WIPService:
         Returns only stages that have operations defined for this work order.
         """
         from app.schemas.material_transfer import WIPStageResponse
+        import logging
+        logger = logging.getLogger(__name__)
         
         db = get_db()
         
         # Get work order
         wo_result = db.table('work_orders').select('*').eq('work_order_number', work_order_number).limit(1).execute()
         if not wo_result.data:
+            logger.warning(f"Work order {work_order_number} not found for stage fetching")
             return []
         
         wo = wo_result.data[0]
@@ -830,8 +1000,9 @@ class WIPService:
         # Get operations for this work order to find which stages are configured
         ops_result = db.table('work_order_operations').select('operation_name').eq('work_order_id', wo['id']).execute()
         
+        stages_result = None
         if not ops_result.data:
-            # Fallback: return all active stages if no operations defined
+            logger.info(f"No operations found for WO {work_order_number}, falling back to all active stages")
             stages_result = db.table('wip_stages').select('*').eq('is_active', True).order('sequence_number').execute()
         else:
             # Get unique operation names
@@ -840,28 +1011,45 @@ class WIPService:
             stages_result = db.table('wip_stages').select('*').in_('name', operation_names).eq('is_active', True).order('sequence_number').execute()
             
             # If explicit name match failed (e.g. typos or renames), fallback to ALL active stages
-            # This ensures we never return an empty list if there ARE stages
             if not stages_result.data:
+                logger.info(f"No matching stages found for operations {operation_names}, falling back to all active stages")
                 stages_result = db.table('wip_stages').select('*').eq('is_active', True).order('sequence_number').execute()
         
-        if not stages_result.data:
+        if not stages_result or not stages_result.data:
+            logger.warning("No WIP stages found in database")
             return []
         
-        stages = [
-            WIPStageResponse(
-                id=s['id'],
-                name=s['name'],
-                code=s['code'],
-                sequence_number=s['sequence_number'],
-                target_time_minutes=s.get('target_time_minutes'),
-                location_id=s.get('location_id'),
-                description=s.get('description'),
-                is_active=s['is_active'],
-                created_at=datetime.fromisoformat(s['created_at'].replace('Z', '+00:00')),
-                updated_at=datetime.fromisoformat(s['updated_at'].replace('Z', '+00:00'))
-            )
-            for s in stages_result.data
-        ]
+        stages = []
+        for s in stages_result.data:
+            try:
+                # Handle datetime parsing safely
+                created_at = s.get('created_at')
+                if isinstance(created_at, str):
+                    created_at = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
+                else:
+                    created_at = datetime.utcnow()
+                    
+                updated_at = s.get('updated_at')
+                if isinstance(updated_at, str):
+                    updated_at = datetime.fromisoformat(updated_at.replace('Z', '+00:00'))
+                else:
+                    updated_at = datetime.utcnow()
+
+                stages.append(WIPStageResponse(
+                    id=s['id'],
+                    name=s['name'],
+                    code=s['code'],
+                    sequence_number=s['sequence_number'],
+                    target_time_minutes=s.get('target_avg_time_minutes') or s.get('target_time_minutes') or 0,
+                    location_id=s.get('location_id'),
+                    description=s.get('description'),
+                    is_active=s.get('is_active', True),
+                    created_at=created_at,
+                    updated_at=updated_at
+                ))
+            except Exception as e:
+                logger.error(f"Error mapping stage {s.get('name')}: {e}")
+                continue
         
         return stages
     
@@ -879,78 +1067,6 @@ class WIPService:
         row = WIPService._map_db_row(result.data[0])
         return WorkingOrderResponse(**row)
     
-    @staticmethod
-    async def update_working_order(
-        order_id: str,
-        order_data: WorkingOrderUpdate,
-        updated_by: str
-    ) -> WorkingOrderResponse:
-        """Update working order"""
-        db = get_db()
-        
-        update_data = {
-            k: v
-            for k, v in order_data.model_dump(exclude_unset=True, mode="json").items()
-            if v is not None
-        }
-        
-        if not update_data:
-            return await WIPService.get_working_order_by_id(order_id)
-            
-        # Schema 006 Enforcement: Do NOT rename columns.
-        
-        # KEY FIX: Check if this ID belongs to an Operation (work_order_operations)
-        # If so, update that table instead of work_orders.
-        op_check = db.table('work_order_operations').select('work_order_id, operation_name').eq('id', order_id).execute()
-        
-        if op_check.data:
-            # It's an Operation ID
-            op_data = op_check.data[0]
-            # Map update fields to table columns (e.g. status, actual_end)
-            op_update = {}
-            if 'status' in update_data:
-                op_update['status'] = update_data['status']
-            if 'actual_start' in update_data:
-                op_update['actual_start'] = update_data['actual_start']
-            if 'actual_end' in update_data:
-                op_update['actual_end'] = update_data['actual_end']
-            if 'completed_qty' in update_data:
-                # Store completed qty
-                op_update['completed_qty'] = update_data['completed_qty']
-            
-            if op_update:
-                op_res = db.table('work_order_operations').update(op_update).eq('id', order_id).execute()
-                if not op_res.data:
-                    raise Exception("Failed to update operation")
-
-            # Return the full WO structure
-            parent_wo = await WIPService.get_working_order_by_id(op_data['work_order_id'])
-            # Override with op details (hacky but consistent with list view)
-            parent_wo.id = order_id # Return the op ID request
-            parent_wo.operation = op_data['operation_name']
-            parent_wo.status = update_data.get('status', parent_wo.status)
-            
-             # Update metrics & Broadcast (Global WO status usually tracks overall progress, but here we track OPS)
-            await WIPService._update_stage_metrics()
-            await dashboard_service.broadcast_orders_update()
-            await dashboard_service.broadcast_kpis_update()
-            
-            return parent_wo
-
-        # Fallback: Update main Work Order (Legacy or Header update)
-        result = db.table('work_orders').update(update_data).eq('id', order_id).execute()
-        
-        if not result.data:
-            raise Exception(f"Working order {order_id} not found")
-        
-        # Update WIP metrics if status or completion changed
-        if 'status' in update_data or 'completed_qty' in update_data:
-            await WIPService._update_stage_metrics()
-            await dashboard_service.broadcast_orders_update()
-            await dashboard_service.broadcast_kpis_update()
-        
-        row = WIPService._map_db_row(result.data[0])
-        return WorkingOrderResponse(**row)
     
     @staticmethod
     async def delete_working_order(order_id: str) -> dict:
