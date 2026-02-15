@@ -1395,56 +1395,56 @@ class InventoryService:
         return {"message": "Allocation released successfully", "released_qty": float(quantity)}
 
 
-# Broadcast methods for real-time Inventory updates
-@staticmethod
-async def broadcast_stock_updated(product_id: str, location_id: str, available_qty: Decimal, allocated_qty: Decimal):
-    """Broadcast stock level change"""
-    try:
-        message = {
-            "type": "inventory_update",
-            "action": "stock_changed",
-            "product_id": product_id,
-            "location_id": location_id,
-            "available_qty": float(available_qty),
-            "allocated_qty": float(allocated_qty),
-            "free_qty": float(available_qty - allocated_qty),
-            "timestamp": datetime.utcnow().isoformat()
-        }
-        await manager.broadcast(message)
-    except Exception as e:
-        print(f"Failed to broadcast stock update: {e}")
+    # Broadcast methods for real-time Inventory updates
+    @staticmethod
+    async def broadcast_stock_updated(product_id: str, location_id: str, available_qty: Decimal, allocated_qty: Decimal):
+        """Broadcast stock level change"""
+        try:
+            message = {
+                "type": "inventory_update",
+                "action": "stock_changed",
+                "product_id": product_id,
+                "location_id": location_id,
+                "available_qty": float(available_qty),
+                "allocated_qty": float(allocated_qty),
+                "free_qty": float(available_qty - allocated_qty),
+                "timestamp": datetime.utcnow().isoformat()
+            }
+            await manager.broadcast(message)
+        except Exception as e:
+            print(f"Failed to broadcast stock update: {e}")
 
-@staticmethod
-async def broadcast_shortage_alert(product_id: str, location_id: str, shortage_qty: Decimal):
-    """Broadcast critical shortage"""
-    try:
-        message = {
-            "type": "inventory_alert",
-            "action": "shortage_detected",
-            "product_id": product_id,
-            "location_id": location_id,
-            "shortage_quantity": float(shortage_qty),
-            "timestamp": datetime.utcnow().isoformat()
-        }
-        await manager.broadcast(message)
-    except Exception as e:
-        print(f"Failed to broadcast shortage alert: {e}")
+    @staticmethod
+    async def broadcast_shortage_alert(product_id: str, location_id: str, shortage_qty: Decimal):
+        """Broadcast critical shortage"""
+        try:
+            message = {
+                "type": "inventory_alert",
+                "action": "shortage_detected",
+                "product_id": product_id,
+                "location_id": location_id,
+                "shortage_quantity": float(shortage_qty),
+                "timestamp": datetime.utcnow().isoformat()
+            }
+            await manager.broadcast(message)
+        except Exception as e:
+            print(f"Failed to broadcast shortage alert: {e}")
 
-@staticmethod
-async def broadcast_allocation_changed(product_id: str, location_id: str, allocated_qty: Decimal):
-    """Broadcast allocation change"""
-    try:
-        message = {
-            "type": "inventory_update",
-            "action": "allocation_changed",
-            "product_id": product_id,
-            "location_id": location_id,
-            "allocated_qty": float(allocated_qty),
-            "timestamp": datetime.utcnow().isoformat()
-        }
-        await manager.broadcast(message)
-    except Exception as e:
-        print(f"Failed to broadcast allocation change: {e}")
+    @staticmethod
+    async def broadcast_allocation_changed(product_id: str, location_id: str, allocated_qty: Decimal):
+        """Broadcast allocation change"""
+        try:
+            message = {
+                "type": "inventory_update",
+                "action": "allocation_changed",
+                "product_id": product_id,
+                "location_id": location_id,
+                "allocated_qty": float(allocated_qty),
+                "timestamp": datetime.utcnow().isoformat()
+            }
+            await manager.broadcast(message)
+        except Exception as e:
+            print(f"Failed to broadcast allocation change: {e}")
 
 # Singleton instance
 inventory_service = InventoryService()

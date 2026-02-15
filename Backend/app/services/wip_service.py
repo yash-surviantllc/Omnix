@@ -1120,7 +1120,7 @@ class WIPService:
         
         stages = []
         for s in result.data:
-            s['health_status'] = self._map_health_status(s.get('health_status'))
+            s['health_status'] = WIPService._map_health_status(s.get('health_status'))
             stages.append(WIPStageMetricsListItem(**s))
         
         # Calculate summary stats
@@ -1152,7 +1152,7 @@ class WIPService:
         
         metrics = []
         for stage in result.data:
-            stage['health_status'] = self._map_health_status(stage.get('health_status'))
+            stage['health_status'] = WIPService._map_health_status(stage.get('health_status'))
             metrics.append(WIPStageMetricsResponse(**stage))
         return metrics
     
@@ -1165,7 +1165,7 @@ class WIPService:
         
         alerts = []
         for stage in result.data:
-            h_status = self._map_health_status(stage.get('health_status'))
+            h_status = WIPService._map_health_status(stage.get('health_status'))
             severity = 'critical' if h_status == 'red' else 'warning'
             alerts.append(BottleneckAlert(
                 stage_name=stage['stage_name'],
@@ -1191,12 +1191,12 @@ class WIPService:
         total_units = sum(s['units_count'] for s in stages)
         avg_cycle_time = Decimal(sum(s['avg_time_minutes'] for s in stages) / len(stages)) if stages else Decimal('0')
         
-        stages_green = len([s for s in stages if self._map_health_status(s['health_status']) == 'green'])
-        stages_yellow = len([s for s in stages if self._map_health_status(s['health_status']) == 'yellow'])
-        stages_red = len([s for s in stages if self._map_health_status(s['health_status']) == 'red'])
+        stages_green = len([s for s in stages if WIPService._map_health_status(s['health_status']) == 'green'])
+        stages_yellow = len([s for s in stages if WIPService._map_health_status(s['health_status']) == 'yellow'])
+        stages_red = len([s for s in stages if WIPService._map_health_status(s['health_status']) == 'red'])
         
         bottleneck_stage = None
-        delayed_stages = [s for s in stages if self._map_health_status(s['health_status']) == 'red']
+        delayed_stages = [s for s in stages if WIPService._map_health_status(s['health_status']) == 'red']
         if delayed_stages:
             bottleneck_stage = max(delayed_stages, key=lambda s: s['utilization_percentage'])['stage_name']
         
