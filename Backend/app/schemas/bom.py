@@ -87,7 +87,7 @@ class BOMListItem(BaseModel):
     is_active: bool
     is_template: bool
     template_name: Optional[str] = None
-    materials_count: int
+    material_count: int
     total_cost: Optional[Decimal] = None
     effective_date: date
     created_at: datetime

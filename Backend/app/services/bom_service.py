@@ -328,7 +328,7 @@ class BOMService:
                 is_active=bom['is_active'],
                 is_template=False,
                 template_name=None,
-                materials_count=materials_count,
+                material_count=materials_count,
                 total_cost=total_cost,
                 effective_date=bom.get('effective_date') or bom['created_at'],
                 created_at=datetime.fromisoformat(bom['created_at'].replace('Z', '+00:00'))
@@ -1241,7 +1241,7 @@ class BOMService:
                 material_id=material_id,
                 material_code=mat_product.data[0]['code'] if mat_product.data else '',
                 material_name=mat_product.data[0]['name'] if mat_product.data else '',
-                quantity_per_unit=quantity_per_unit,
+                quantity_per_unit=quantity_per_unit / batch_size,
                 required_qty=shortage_detail.required_qty,
                 unit=mat['unit'],
                 scrap_percentage=Decimal(str(mat.get('scrap_percentage', 0))),

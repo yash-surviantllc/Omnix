@@ -949,9 +949,7 @@ export function BOMPlanner({ language }: BOMPlannerProps) {
                         {newBOM.materials.map((material, index) => (
                           <tr key={index} className="border-b border-zinc-200 last:border-b-0">
                             <td className="p-3">
-                              <Input
-                                type="text"
-                                list="item-code-options"
+                              <select
                                 value={material.itemCode || ''}
                                 onChange={(e) => {
                                   const newMaterials = [...newBOM.materials];
@@ -966,9 +964,15 @@ export function BOMPlanner({ language }: BOMPlannerProps) {
                                   }
                                   setNewBOM({ ...newBOM, materials: newMaterials });
                                 }}
-                                placeholder={t.enterItemCode}
-                                className="w-full"
-                              />
+                                className="w-full p-2 border border-zinc-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                              >
+                                <option value="">Select Item Code</option>
+                                {inventoryItems.map((item) => (
+                                  <option key={item.id} value={item.material_code}>
+                                    {item.material_code} - {item.material_name}
+                                  </option>
+                                ))}
+                              </select>
                             </td>
                             <td className="p-3">
                               <Input

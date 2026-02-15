@@ -110,7 +110,7 @@ export interface BOMCalculation {
   material_code: string;
   material_name: string;
   quantity_per_unit: number;
-  total_quantity: number;
+  required_quantity: number;
   unit: string;
   unit_cost: number;
   total_cost: number;

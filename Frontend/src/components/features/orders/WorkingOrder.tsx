@@ -9,6 +9,7 @@ import { wipApi, type WorkingOrderCreate } from '@/lib/api/wip';
 import { purchaseOrdersApi, type PurchaseOrder } from '@/lib/api/purchase-orders';
 import { bomApi } from '@/lib/api/bom';
 import { stagesApi, type Stage } from '@/lib/api/stages';
+import { shiftsApi, type Shift } from '@/lib/api/shifts';
 
 type WorkingOrderProps = {
   language: 'en' | 'hi' | 'kn' | 'ta' | 'te' | 'mr' | 'gu' | 'pa';
@@ -71,7 +72,7 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
   const [newWorkOrderData, setNewWorkOrderData] = useState<{
     purchase_order_id: string;
     product_id?: string;
-    config_id: string;
+    config_id?: string;
     shift: string;
     scheduled_start: string;
     target_qty: string;
@@ -80,7 +81,7 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
     notes: string;
   }>({
     purchase_order_id: '',
-    config_id: 'default', // Default to 'default' configuration
+    config_id: '', // Default to empty string which means 'Auto'
     shift: 'Morning', // Default
     scheduled_start: '',
     target_qty: '',
@@ -94,9 +95,12 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
   // Dynamic Stages State
   const [availableStages, setAvailableStages] = useState<Stage[]>([]);
 
+  // Shifts State
+  const [shifts, setShifts] = useState<Shift[]>([]);
+
   // Track previous stages to detect changes
   const previousStagesRef = useRef<Stage[]>([]);
-  
+
   // Track BOM fetch request ID to prevent race conditions
   const bomFetchIdRef = useRef<number>(0);
 
@@ -331,6 +335,14 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
   useEffect(() => {
     const initializeData = async () => {
       fetchProductionOrders();
+      // Fetch shifts
+      try {
+        const shiftsData = await shiftsApi.list();
+        setShifts(shiftsData.filter(s => s.is_active));
+      } catch (err) {
+        console.error("Failed to fetch shifts:", err);
+      }
+
       const sortedStages = await fetchAvailableStages();
       if (sortedStages && sortedStages.length > 0) {
         fetchWorkOrders(false);
@@ -1057,40 +1069,40 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
                               return seqA - seqB;
                             })
                             .map((op) => {
-                            const opProgress = op.targetUnits > 0 ? Math.round((op.completedUnits / op.targetUnits) * 100) : 0;
+                              const opProgress = op.targetUnits > 0 ? Math.round((op.completedUnits / op.targetUnits) * 100) : 0;
 
-                            return (
-                              <div
-                                key={op.id}
-                                className={`
+                              return (
+                                <div
+                                  key={op.id}
+                                  className={`
                                   flex-1 p-3 rounded-lg border text-center space-y-1.5 transition-all
                                   ${op.status === 'completed' ? 'bg-emerald-50 border-emerald-200' :
-                                    op.status === 'in-progress' ? 'bg-blue-50 border-blue-200' :
-                                      'bg-zinc-50 border-zinc-200'}
+                                      op.status === 'in-progress' ? 'bg-blue-50 border-blue-200' :
+                                        'bg-zinc-50 border-zinc-200'}
                                 `}
-                              >
-                                <div className="font-semibold text-sm text-zinc-900">{op.name}</div>
+                                >
+                                  <div className="font-semibold text-sm text-zinc-900">{op.name}</div>
 
-                                <div className="mt-2 space-y-1">
-                                  <div className="text-xs text-zinc-500 font-medium">Status Completion:</div>
-                                  <div className="text-lg font-bold text-zinc-900">{op.completedUnits} units</div>
-                                  <div className="text-xs text-zinc-500">{opProgress}% of {op.targetUnits}</div>
-                                </div>
+                                  <div className="mt-2 space-y-1">
+                                    <div className="text-xs text-zinc-500 font-medium">Status Completion:</div>
+                                    <div className="text-lg font-bold text-zinc-900">{op.completedUnits} units</div>
+                                    <div className="text-xs text-zinc-500">{opProgress}% of {op.targetUnits}</div>
+                                  </div>
 
-                                <div className="mt-2 pt-2 border-t border-zinc-200 space-y-1">
-                                  <div className="text-xs text-emerald-600 font-medium">Physically Transferred:</div>
-                                  <div className="text-lg font-bold text-emerald-700">{op.transferredUnits || 0} units</div>
-                                  <div className="text-[10px] text-zinc-400 italic">
-                                    {op.transferredUnits > 0 ? 'Via Stage Transfer' : 'No transfers yet'}
+                                  <div className="mt-2 pt-2 border-t border-zinc-200 space-y-1">
+                                    <div className="text-xs text-emerald-600 font-medium">Physically Transferred:</div>
+                                    <div className="text-lg font-bold text-emerald-700">{op.transferredUnits || 0} units</div>
+                                    <div className="text-[10px] text-zinc-400 italic">
+                                      {op.transferredUnits > 0 ? 'Via Stage Transfer' : 'No transfers yet'}
+                                    </div>
+                                  </div>
+
+                                  <div className="text-xs text-zinc-600 mt-2">
+                                    <div>Assigned to: {op.assignedTo}</div>
                                   </div>
                                 </div>
-
-                                <div className="text-xs text-zinc-600 mt-2">
-                                  <div>Assigned to: {op.assignedTo}</div>
-                                </div>
-                              </div>
-                            );
-                          })}
+                              );
+                            })}
                         </div>
                       </div>
 
@@ -1259,18 +1271,19 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
                   {language === 'en' ? 'WIP Stage Configuration' : 'WIP स्टेज कॉन्फ़िगरेशन'} <span className="text-red-500">*</span>
                 </label>
                 <select
-                  value={newWorkOrderData.config_id}
-                  onChange={(e) => setNewWorkOrderData(prev => ({ ...prev, config_id: e.target.value }))}
+                  value={newWorkOrderData.config_id || ''}
+                  onChange={(e) => setNewWorkOrderData(prev => ({ ...prev, config_id: e.target.value || undefined }))}
                   className="w-full p-2 border border-zinc-300 rounded-md"
                 >
+                  <option value="">{language === 'en' ? 'Auto-assign (Based on Product/Rules)' : 'स्वत: असाइन (उत्पाद/नियमों के आधार पर)'}</option>
                   <option value="default">{language === 'en' ? 'Default (Standard production flow)' : 'डिफ़ॉल्ट (मानक उत्पादन प्रवाह)'}</option>
                   <option value="config_2">{language === 'en' ? 'Type 2 (Secondary flow)' : 'टाइप 2 (द्वितीयक प्रवाह)'}</option>
                   <option value="config_3">{language === 'en' ? 'Type 3 (Tertiary flow)' : 'टाइप 3 (तृतीयक प्रवाह)'}</option>
                 </select>
                 <p className="text-xs text-zinc-500 mt-1">
                   {language === 'en'
-                    ? 'Select the WIP stage configuration for this work order. This determines the production workflow stages.'
-                    : 'इस कार्य आदेश के लिए WIP स्टेज कॉन्फ़िगरेशन चुनें। यह उत्पादन वर्कफ़्लो स्टेज निर्धारित करता है।'}
+                    ? 'Leave as Auto-assign to inherit from Product settings.'
+                    : 'उत्पाद सेटिंग्स से इनहेरिट करने के लिए ऑटो-असाइन के रूप में छोड़ दें।'}
                 </p>
               </div>
 
@@ -1285,9 +1298,19 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
                     onChange={(e) => setNewWorkOrderData(prev => ({ ...prev, shift: e.target.value }))}
                     className="w-full p-2 border border-zinc-300 rounded-md"
                   >
-                    <option value="Morning">{language === 'en' ? 'Morning' : 'सुबह'}</option>
-                    <option value="Evening">{language === 'en' ? 'Evening' : 'शाम'}</option>
-                    <option value="Night">{language === 'en' ? 'Night' : 'रात'}</option>
+                    {shifts.length > 0 ? (
+                      shifts.map(shift => (
+                        <option key={shift.id} value={shift.name}>
+                          {shift.name} ({shift.start_time} - {shift.end_time})
+                        </option>
+                      ))
+                    ) : (
+                      <>
+                        <option value="Morning">{language === 'en' ? 'Morning' : 'सुबह'}</option>
+                        <option value="Evening">{language === 'en' ? 'Evening' : 'शाम'}</option>
+                        <option value="Night">{language === 'en' ? 'Night' : 'रात'}</option>
+                      </>
+                    )}
                   </select>
                 </div>
 

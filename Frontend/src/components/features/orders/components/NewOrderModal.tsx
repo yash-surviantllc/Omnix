@@ -28,6 +28,8 @@ interface NewOrderModalProps {
   onOrderDataChange: (data: NewOrderData) => void;
   onSubmit: () => void;
   products?: Record<string, { name: string; code: string; unit?: string }>; // Products from backend API
+  isLoading?: boolean;
+  language?: 'en' | 'hi' | 'kn' | 'ta' | 'te' | 'mr' | 'gu' | 'pa';
   translations: {
     createNewOrder: string;
     selectProduct: string;
@@ -68,6 +70,8 @@ export function NewOrderModal({
   onOrderDataChange,
   onSubmit,
   products = {},
+  isLoading = false,
+  language = 'en',
   translations: t
 }: NewOrderModalProps) {
   const [shifts, setShifts] = useState<Shift[]>([]);
@@ -337,9 +341,14 @@ export function NewOrderModal({
               <Button
                 onClick={onSubmit}
                 className="flex-1 h-11 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg shadow-lg shadow-emerald-600/20 transition-all hover:scale-[1.02] active:scale-[0.98]"
-                disabled={orderData.items.some(item => !item.product || !item.quantity) || !orderData.dueDate}
+                disabled={orderData.items.some(item => !item.product || !item.quantity) || !orderData.dueDate || isLoading}
               >
-                {t.createOrder}
+                {isLoading ? (
+                  <span className="flex items-center gap-2">
+                    <span className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+                    {language === 'en' ? 'Creating...' : 'बना रहा है...'}
+                  </span>
+                ) : t.createOrder}
               </Button>
             </div>
           </Card>

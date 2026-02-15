@@ -79,6 +79,8 @@ const translations = {
       noReason: 'Please select transfer reason',
       sameLocation: 'Source and destination cannot be the same'
     },
+    workOrder: 'Work Order',
+    priority: 'Priority',
     locations: {
       warehouse_a: 'Warehouse A',
       warehouse_b: 'Warehouse B',
@@ -155,6 +157,8 @@ const translations = {
       noReason: 'कृपया स्थानांतरण कारण चुनें',
       sameLocation: 'स्रोत और गंतव्य समान नहीं हो सकते'
     },
+    workOrder: 'वर्क ऑर्डर',
+    priority: 'प्राथमिकता',
     locations: {
       warehouse_a: 'गोदाम A',
       warehouse_b: 'गोदाम B',
@@ -299,7 +303,9 @@ export function MaterialTransfer({ language, refreshMaterialTransferData }: Mate
       quantity: 0,
       toLocation: '',
       transferReason: '',
-      workOrderNumber: ''  // Add work order field
+      workOrderId: '', // Add work order ID
+      workOrderNumber: '', // Add work order number
+      priority: 'Normal' // Add priority
     });
     setShowTransferModal(true);
     setErrors({});
@@ -350,7 +356,9 @@ export function MaterialTransfer({ language, refreshMaterialTransferData }: Mate
         quantity: transferData.quantity,
         unit: transferData.uom,
         reason: transferData.transferReason,
-        work_order_number: transferData.workOrderNumber || null,  // Add work order
+        priority: transferData.priority || 'Normal',
+        work_order_id: transferData.workOrderId || null,
+        work_order_number: transferData.workOrderNumber || null,
       });
 
       setSuccessMessage('Transfer created successfully.');
@@ -566,7 +574,7 @@ export function MaterialTransfer({ language, refreshMaterialTransferData }: Mate
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
             {/* Modal Header */}
-            <div className="sticky top-0 bg-white border-b border-zinc-200 p-6 flex items-center justify-between">
+            <div className="sticky top-0 bg-white border-b border-zinc-200 p-6 flex items-center justify-between z-10">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 bg-emerald-100 rounded-lg flex items-center justify-center">
                   <ArrowLeftRight className="w-5 h-5 text-emerald-700" />
@@ -590,17 +598,51 @@ export function MaterialTransfer({ language, refreshMaterialTransferData }: Mate
 
             {/* Modal Content */}
             <div className="p-6 space-y-6">
+
+              {/* Work Order (Top Level Context) */}
+              <div>
+                <label className="block mb-2 text-zinc-900 font-medium">
+                  {t.workOrder} <span className="text-zinc-400 font-normal">({t.workOrderOptional})</span>
+                </label>
+                <select
+                  value={transferData.workOrderId || ''}
+                  onChange={(e) => {
+                    const selected = workingOrders.find(wo => wo.id === e.target.value);
+                    setTransferData({
+                      ...transferData,
+                      workOrderId: e.target.value,
+                      workOrderNumber: selected?.work_order_number || ''
+                    });
+
+                    // Fetch stages for the selected work order
+                    if (selected?.work_order_number) {
+                      fetchWorkOrderStages(selected.work_order_number);
+                    } else {
+                      setAvailableStages([]);
+                    }
+                  }}
+                  className="w-full p-2.5 border border-zinc-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                >
+                  <option value="">Select Work Order</option>
+                  {workingOrders.map((wo) => (
+                    <option key={wo.id} value={wo.id}>
+                      {wo.work_order_number} - {wo.product_name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
               {/* Available Stock Card */}
               <Card className="p-4 bg-zinc-50 border-zinc-200">
                 <div className="flex items-center justify-between">
                   <div>
                     <div className="text-sm text-zinc-600 mb-1">{t.availableStock}</div>
-                    <div className="text-2xl text-zinc-900">
+                    <div className="text-2xl text-zinc-900 font-semibold">
                       {transferData.availableStock?.toLocaleString()} {transferData.uom}
                     </div>
                     <div className="flex items-center gap-1 text-sm text-zinc-600 mt-1">
                       <MapPin className="w-4 h-4" />
-                      {t.currentLocation}: {transferData.currentLocation}
+                      {t.currentLocation}: <span className="font-medium text-zinc-900">{transferData.currentLocation}</span>
                     </div>
                   </div>
                   <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300">
@@ -609,74 +651,105 @@ export function MaterialTransfer({ language, refreshMaterialTransferData }: Mate
                 </div>
               </Card>
 
-              {/* Transfer Quantity */}
-              <div>
-                <label className="block mb-2 text-zinc-900">
-                  {t.transferQuantity} <span className="text-red-500">*</span>
-                </label>
-                <div className="relative">
-                  <Input
-                    type="number"
-                    value={transferData.quantity || ''}
+              {/* Location / Stage Section */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* From Location/Stage */}
+                <div>
+                  <label className="block mb-2 text-zinc-900 font-medium">{t.fromLocation} / {t.fromStage}</label>
+                  <div className="p-3 bg-zinc-100 border border-zinc-200 rounded-lg text-zinc-700">
+                    {transferData.fromLocation}
+                  </div>
+                </div>
+
+                {/* To Location/Stage */}
+                <div>
+                  <label className="block mb-2 text-zinc-900 font-medium">
+                    {t.toLocation} / {t.toStage} <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    value={transferData.toLocation || ''}
                     onChange={(e) => {
-                      setTransferData({ ...transferData, quantity: parseFloat(e.target.value) || 0 });
-                      setErrors({ ...errors, quantity: '' });
+                      setTransferData({ ...transferData, toLocation: e.target.value });
+                      setErrors({ ...errors, toLocation: '' });
                     }}
-                    placeholder={t.enterQuantity}
-                    className={`pr-20 ${errors.quantity ? 'border-red-500' : ''}`}
-                  />
-                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500">
-                    {transferData.uom}
-                  </span>
+                    className={`w-full p-3 border rounded-lg ${errors.toLocation ? 'border-red-500' : 'border-zinc-200'
+                      } focus:outline-none focus:ring-2 focus:ring-emerald-500`}
+                  >
+                    <option value="">{t.selectDestination}</option>
+                    <optgroup label="Warehouses & Floors">
+                      {Object.entries(t.locations).map(([key, value]) => (
+                        <option key={key} value={value} disabled={value === transferData.fromLocation}>
+                          {value}
+                        </option>
+                      ))}
+                    </optgroup>
+                    <optgroup label="WIP Stages">
+                      {(transferData.workOrderId && availableStages.length > 0 ? availableStages : wipStages).map((stage) => (
+                        <option key={stage.id} value={stage.name} disabled={stage.name === transferData.fromLocation}>
+                          {stage.name}
+                        </option>
+                      ))}
+                    </optgroup>
+                  </select>
+                  {errors.toLocation && (
+                    <div className="flex items-center gap-1 mt-1 text-sm text-red-600">
+                      <AlertCircle className="w-4 h-4" />
+                      {errors.toLocation}
+                    </div>
+                  )}
                 </div>
-                {errors.quantity && (
-                  <div className="flex items-center gap-1 mt-1 text-sm text-red-600">
-                    <AlertCircle className="w-4 h-4" />
-                    {errors.quantity}
-                  </div>
-                )}
               </div>
 
-              {/* From Location */}
-              <div>
-                <label className="block mb-2 text-zinc-900">{t.fromLocation}</label>
-                <div className="p-3 bg-zinc-50 border border-zinc-200 rounded-lg text-zinc-900">
-                  {transferData.fromLocation}
-                </div>
-              </div>
-
-              {/* To Location */}
-              <div>
-                <label className="block mb-2 text-zinc-900">
-                  {t.toLocation} <span className="text-red-500">*</span>
-                </label>
-                <select
-                  value={transferData.toLocation || ''}
-                  onChange={(e) => {
-                    setTransferData({ ...transferData, toLocation: e.target.value });
-                    setErrors({ ...errors, toLocation: '' });
-                  }}
-                  className={`w-full p-3 border rounded-lg ${errors.toLocation ? 'border-red-500' : 'border-zinc-200'
-                    } focus:outline-none focus:ring-2 focus:ring-emerald-500`}
-                >
-                  <option value="">{t.selectDestination}</option>
-                  {Object.entries(t.locations).map(([key, value]) => (
-                    <option key={key} value={value} disabled={value === transferData.fromLocation}>
-                      {value}
-                    </option>
-                  ))}
-                </select>
-                {errors.toLocation && (
-                  <div className="flex items-center gap-1 mt-1 text-sm text-red-600">
-                    <AlertCircle className="w-4 h-4" />
-                    {errors.toLocation}
+              {/* Quantity & Unit */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block mb-2 text-zinc-900 font-medium">
+                    {t.transferQuantity} <span className="text-red-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <Input
+                      type="number"
+                      value={transferData.quantity || ''}
+                      onChange={(e) => {
+                        setTransferData({ ...transferData, quantity: parseFloat(e.target.value) || 0 });
+                        setErrors({ ...errors, quantity: '' });
+                      }}
+                      placeholder={t.enterQuantity}
+                      className={`pr-20 ${errors.quantity ? 'border-red-500' : ''}`}
+                    />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 font-medium">
+                      {transferData.uom}
+                    </span>
                   </div>
-                )}
+                  {errors.quantity && (
+                    <div className="flex items-center gap-1 mt-1 text-sm text-red-600">
+                      <AlertCircle className="w-4 h-4" />
+                      {errors.quantity}
+                    </div>
+                  )}
+                </div>
+
+                {/* Priority */}
+                <div>
+                  <label className="block mb-2 text-zinc-900 font-medium">
+                    {t.priority || 'Priority'}
+                  </label>
+                  <select
+                    value={transferData.priority || 'Normal'}
+                    onChange={(e) => setTransferData({ ...transferData, priority: e.target.value })}
+                    className="w-full p-2.5 border border-zinc-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  >
+                    <option value="Low">Low</option>
+                    <option value="Normal">Normal</option>
+                    <option value="High">High</option>
+                    <option value="Urgent">Urgent</option>
+                  </select>
+                </div>
               </div>
 
               {/* Transfer Reason */}
               <div>
-                <label className="block mb-2 text-zinc-900">
+                <label className="block mb-2 text-zinc-900 font-medium">
                   {t.transferReason} <span className="text-red-500">*</span>
                 </label>
                 <select
@@ -703,23 +776,10 @@ export function MaterialTransfer({ language, refreshMaterialTransferData }: Mate
                 )}
               </div>
 
-              {/* Work Order (Optional) */}
-              <div>
-                <label className="block mb-2 text-zinc-900">
-                  {t.workOrderOptional}
-                </label>
-                <Input
-                  type="text"
-                  value={transferData.workOrderNumber || ''}
-                  onChange={(e) => setTransferData({ ...transferData, workOrderNumber: e.target.value })}
-                  placeholder={t.enterOrderRef}
-                  className="border-zinc-200"
-                />
-              </div>
             </div>
 
             {/* Modal Footer */}
-            <div className="sticky bottom-0 bg-white border-t border-zinc-200 p-6 flex gap-3">
+            <div className="sticky bottom-0 bg-white border-t border-zinc-200 p-6 flex gap-3 z-10">
               <Button
                 variant="outline"
                 onClick={() => {
@@ -734,9 +794,16 @@ export function MaterialTransfer({ language, refreshMaterialTransferData }: Mate
               <Button
                 onClick={handleConfirmTransfer}
                 className="flex-1 bg-emerald-600 hover:bg-emerald-700"
+                disabled={isSubmittingTransfer}
               >
-                <Check className="w-4 h-4 mr-2" />
-                {t.confirmTransfer}
+                {isSubmittingTransfer ? (
+                  'Processing...'
+                ) : (
+                  <>
+                    <Check className="w-4 h-4 mr-2" />
+                    {t.confirmTransfer}
+                  </>
+                )}
               </Button>
             </div>
           </div>

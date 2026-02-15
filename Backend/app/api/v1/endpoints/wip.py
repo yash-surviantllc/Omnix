@@ -58,6 +58,7 @@ async def list_working_orders(
 @router.get("/working-orders/unique", response_model=List[UniqueWorkingOrderItem])
 async def list_unique_working_orders(
     status: Optional[List[str]] = Query(None),
+    purchase_order_id: Optional[str] = None,
     current_user: UserResponse = Depends(get_current_user)
 ):
     """
@@ -65,8 +66,9 @@ async def list_unique_working_orders(
     Used for dropdowns where we need to select a work order, not an operation.
     
     - **status**: Filter by status (Pending/In Progress/Completed/On Hold/Cancelled)
+    - **purchase_order_id**: Filter by linked purchase order
     """
-    return await wip_service.list_unique_working_orders(status)
+    return await wip_service.list_unique_working_orders(status, purchase_order_id)
 
 
 @router.get("/working-orders/{work_order_number}/stages", response_model=List[WIPStageResponse])

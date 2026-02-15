@@ -1190,7 +1190,7 @@ class InventoryService:
     async def adjust_inventory(
         product_id: str,
         location_id: str,
-        adjustment_qty: Decimal,
+        adjustment_quantity: Decimal,
         reason: str,
         user_id: str,
         notes: Optional[str] = None
@@ -1206,18 +1206,18 @@ class InventoryService:
         
         if not inv.data:
             # Create new inventory record if doesn't exist
-            if adjustment_qty < 0:
+            if adjustment_quantity < 0:
                 raise ValidationException(detail="Cannot decrease non-existent inventory")
             
             db.table('inventory').insert({
                 'product_id': product_id,
                 'location_id': location_id,
-                'available_qty': float(adjustment_qty),
+                'available_qty': float(adjustment_quantity),
                 'allocated_qty': 0
             }).execute()
         else:
             current = inv.data[0]
-            new_qty = Decimal(str(current['available_qty'])) + adjustment_qty
+            new_qty = Decimal(str(current['available_qty'])) + adjustment_quantity
             
             if new_qty < 0:
                 raise ValidationException(detail="Adjustment would result in negative inventory")
@@ -1231,10 +1231,10 @@ class InventoryService:
         await InventoryService.log_transaction(
             product_id=product_id,
             transaction_type='ADJUSTMENT',
-            quantity=abs(adjustment_qty),
+            quantity=abs(adjustment_quantity),
             user_id=user_id,
-            from_location_id=location_id if adjustment_qty < 0 else None,
-            to_location_id=location_id if adjustment_qty > 0 else None,
+            from_location_id=location_id if adjustment_quantity < 0 else None,
+            to_location_id=location_id if adjustment_quantity > 0 else None,
             reference_type='stock_adjustment',
             notes=f"{reason}. {notes}" if notes else reason
         )

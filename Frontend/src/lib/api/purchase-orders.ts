@@ -175,8 +175,8 @@ export interface PurchaseOrderValidation {
   can_produce: boolean;
   product_id: string;
   product_name: string;
-  requested_quantity: number;
-  shortages: MaterialRequirement[];
+  quantity: number;
+  materials: MaterialRequirement[];
   total_shortage_value: number;
   message: string;
 }

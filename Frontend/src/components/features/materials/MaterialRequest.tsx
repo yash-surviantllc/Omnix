@@ -32,16 +32,14 @@ export function MaterialRequest({ language }: MaterialRequestProps) {
   // Form data state
   const [formData, setFormData] = useState({
     formNumber: '',
-    dateOfRequest: '',
     department: '',
     requestedBy: '',
     reviewedBy: '',
     shiftNumber: 'Shift 1',
-    startTime: '',
-    endTime: '',
     deliveryInstructions: ''
   });
 
+  // Material items state
   // Material items state
   const [materialItems, setMaterialItems] = useState([
     {
@@ -49,7 +47,6 @@ export function MaterialRequest({ language }: MaterialRequestProps) {
       materialDescription: '',
       unitOfMeasure: '',
       quantity: '',
-      requiredDate: '',
       location: '',
       priority: 'Normal'
     }
@@ -322,11 +319,6 @@ export function MaterialRequest({ language }: MaterialRequestProps) {
         return;
       }
 
-      if (!formData.dateOfRequest) {
-        alert(language === 'en' ? 'Please select request date' : 'कृपया अनुरोध तिथि चुनें');
-        return;
-      }
-
       // Validate material items
       const validItems = materialItems.filter(item =>
         item.itemCode && item.quantity && parseFloat(item.quantity) > 0
@@ -345,8 +337,8 @@ export function MaterialRequest({ language }: MaterialRequestProps) {
         requested_by: formData.requestedBy || 'Unknown',
         reviewed_by: formData.reviewedBy || null,
         shift: formData.shiftNumber || null,
-        start_time: formData.startTime ? new Date(formData.startTime).toISOString() : null,
-        end_time: formData.endTime ? new Date(formData.endTime).toISOString() : null,
+        start_time: new Date().toISOString(), // Use current time as default
+        end_time: null,
         delivery_instructions: formData.deliveryInstructions || null,
         items: validItems.map(item => {
           return {
@@ -354,7 +346,7 @@ export function MaterialRequest({ language }: MaterialRequestProps) {
             material_description: item.materialDescription,
             unit_of_measure: item.unitOfMeasure || 'pcs',
             quantity_requested: parseFloat(item.quantity),
-            required_date: item.requiredDate || null,
+            required_date: null,
             location: item.location || null,
             priority: item.priority || 'Normal'
           };
@@ -373,13 +365,10 @@ export function MaterialRequest({ language }: MaterialRequestProps) {
       // Reset form
       setFormData({
         formNumber: '',
-        dateOfRequest: '',
         department: '',
         requestedBy: '',
         reviewedBy: '',
         shiftNumber: shifts.length > 0 ? shifts[0].name : 'Shift 1',
-        startTime: '',
-        endTime: '',
         deliveryInstructions: ''
       });
       setMaterialItems([{
@@ -387,7 +376,6 @@ export function MaterialRequest({ language }: MaterialRequestProps) {
         materialDescription: '',
         unitOfMeasure: '',
         quantity: '',
-        requiredDate: '',
         location: '',
         priority: 'Normal'
       }]);
@@ -769,17 +757,6 @@ export function MaterialRequest({ language }: MaterialRequestProps) {
                         </select>
                       )}
                     </div>
-                    <div>
-                      <label className="text-sm font-medium text-slate-700 mb-1 block">
-                        {t.dateOfRequest}
-                      </label>
-                      <input
-                        type="date"
-                        value={formData.dateOfRequest}
-                        onChange={(e) => setFormData({ ...formData, dateOfRequest: e.target.value })}
-                        className="w-full p-2.5 border-2 border-slate-300 rounded-md"
-                      />
-                    </div>
                   </div>
 
                   {/* Column 2 */}
@@ -882,57 +859,6 @@ export function MaterialRequest({ language }: MaterialRequestProps) {
                 </div>
               </div>
 
-              {/* Production Timeline Section */}
-              <div className="bg-blue-50 p-6 rounded-lg border-2 border-blue-200">
-                <h3 className="font-medium text-blue-900 mb-4 flex items-center gap-2">
-                  <Clock className="w-5 h-5" />
-                  {t.productionTimeline}
-                </h3>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="text-sm font-medium text-blue-800 mb-1 block">
-                      {t.startTime}
-                    </label>
-                    <input
-                      type="datetime-local"
-                      value={formData.startTime}
-                      onChange={(e) => setFormData({ ...formData, startTime: e.target.value })}
-                      className="w-full p-2.5 border-2 border-blue-300 rounded-md"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium text-blue-800 mb-1 block">
-                      {t.endTime}
-                    </label>
-                    <input
-                      type="datetime-local"
-                      value={formData.endTime}
-                      onChange={(e) => setFormData({ ...formData, endTime: e.target.value })}
-                      className="w-full p-2.5 border-2 border-blue-300 rounded-md"
-                    />
-                  </div>
-                </div>
-                {formData.startTime && formData.endTime && (
-                  <div className="mt-3 p-3 bg-white border border-blue-300 rounded-lg">
-                    <div className="flex items-center gap-2 text-sm">
-                      <Clock className="w-4 h-4 text-blue-600" />
-                      <span className="font-medium text-blue-900">
-                        {language === 'en' ? 'Duration:' : 'अवधि:'}
-                      </span>
-                      <span className="text-blue-700">
-                        {(() => {
-                          const start = new Date(formData.startTime);
-                          const end = new Date(formData.endTime);
-                          const diffMs = end.getTime() - start.getTime();
-                          const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-                          const diffMins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
-                          return diffHours > 0 ? `${diffHours}h ${diffMins}m` : `${diffMins}m`;
-                        })()}
-                      </span>
-                    </div>
-                  </div>
-                )}
-              </div>
 
               {/* Material Items Table */}
               <div className="border-2 border-slate-300 rounded-lg overflow-hidden">
@@ -947,7 +873,6 @@ export function MaterialRequest({ language }: MaterialRequestProps) {
                         <th className="p-2 text-left text-xs font-medium text-slate-700">{t.materialDescription}</th>
                         <th className="p-2 text-left text-xs font-medium text-slate-700">{t.unitOfMeasure}</th>
                         <th className="p-2 text-left text-xs font-medium text-slate-700">{t.quantity}</th>
-                        <th className="p-2 text-left text-xs font-medium text-slate-700">{t.requiredDate}</th>
                         <th className="p-2 text-left text-xs font-medium text-slate-700">{t.location}</th>
                         <th className="p-2 text-left text-xs font-medium text-slate-700">{t.priority}</th>
                         <th className="p-2 text-left text-xs font-medium text-slate-700"></th>
@@ -1052,18 +977,6 @@ export function MaterialRequest({ language }: MaterialRequestProps) {
                           </td>
                           <td className="p-2">
                             <input
-                              type="date"
-                              value={item.requiredDate}
-                              onChange={(e) => {
-                                const newItems = [...materialItems];
-                                newItems[index].requiredDate = e.target.value;
-                                setMaterialItems(newItems);
-                              }}
-                              className="w-full p-1.5 border border-slate-300 rounded text-sm"
-                            />
-                          </td>
-                          <td className="p-2">
-                            <input
                               type="text"
                               value={item.location}
                               onChange={(e) => {
@@ -1116,7 +1029,6 @@ export function MaterialRequest({ language }: MaterialRequestProps) {
                       materialDescription: '',
                       unitOfMeasure: '',
                       quantity: '',
-                      requiredDate: '',
                       location: '',
                       priority: 'Normal'
                     }])}

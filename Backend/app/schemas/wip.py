@@ -6,6 +6,29 @@ from decimal import Decimal
 
 
 # ============================================
+# ENUMS
+# ============================================
+
+class WIPHealthStatus(str, Enum):
+    GREEN = "green"
+    YELLOW = "yellow"
+    RED = "red"
+
+
+class WIPAlertSeverity(str, Enum):
+    INFO = "info"
+    WARNING = "warning"
+    CRITICAL = "critical"
+
+
+class WIPAlertType(str, Enum):
+    UNDER_UTILIZATION = "under_utilization"
+    OVER_UTILIZATION = "over_utilization"
+    BOTTLENECK = "bottleneck"
+    DELAY = "delay"
+
+
+# ============================================
 # WORKING ORDER SCHEMAS
 # ============================================
 
@@ -67,7 +90,8 @@ class WorkingOrderListItem(BaseModel):
     """Simplified working order for list views"""
     id: str
     work_order_number: str
-    purchase_order_id: str
+    purchase_order_id: Optional[str] = None # made optional to be safe
+    product_id: Optional[str] = None # Added for QC/Process linkage
     operation: str
     workstation_id: Optional[str] = None  # Added
     workstation_name: Optional[str] = None  # Renamed from workstation
@@ -104,6 +128,10 @@ class UniqueWorkingOrderItem(BaseModel):
     work_order_number: str
     product_name: str
     status: str
+    target_qty: Decimal
+    completed_qty: Decimal
+    product_id: Optional[str] = None
+    purchase_order_id: Optional[str] = None
     
     class Config:
         from_attributes = True
@@ -135,7 +163,7 @@ class WIPStageMetricsResponse(WIPStageMetricsBase):
     units_count: int
     avg_time_minutes: Decimal
     utilization_percentage: Decimal
-    health_status: str
+    health_status: WIPHealthStatus
     is_active: bool
     updated_at: datetime
     
@@ -153,7 +181,7 @@ class WIPStageMetricsListItem(BaseModel):
     avg_time_minutes: Decimal
     target_avg_time_minutes: Decimal = Field(validation_alias="target_time_minutes", serialization_alias="target_avg_time_minutes")
     utilization_percentage: Decimal
-    health_status: str
+    health_status: WIPHealthStatus
 
     class Config:
         from_attributes = True
@@ -210,9 +238,9 @@ class WIPSummaryStats(BaseModel):
     total_units: int
     avg_cycle_time_minutes: Decimal
     bottleneck_stage: Optional[str] = None
-    stages_healthy: int
-    stages_warning: int
-    stages_delayed: int
+    stages_green: int
+    stages_yellow: int
+    stages_red: int
 
 
 class BottleneckAlert(BaseModel):
@@ -225,28 +253,6 @@ class BottleneckAlert(BaseModel):
     units_count: int
     severity: str  # warning, critical
 
-
-# ============================================
-# WIP BOARD STAGE & TRANSFER SCHEMAS
-# ============================================
-
-class WIPHealthStatus(str, Enum):
-    GREEN = "green"
-    YELLOW = "yellow"
-    RED = "red"
-
-
-class WIPAlertSeverity(str, Enum):
-    INFO = "info"
-    WARNING = "warning"
-    CRITICAL = "critical"
-
-
-class WIPAlertType(str, Enum):
-    UNDER_UTILIZATION = "under_utilization"
-    OVER_UTILIZATION = "over_utilization"
-    BOTTLENECK = "bottleneck"
-    DELAY = "delay"
 
 
 class WIPStageBase(BaseModel):

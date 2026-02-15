@@ -288,10 +288,64 @@ class DashboardService:
     @staticmethod
     async def _get_rework_alerts(db) -> List[ReworkAlert]:
         """
-        Get list of items in rework.
+        Get list of items in rework from QC inspections.
         """
-        # TODO: Implement actual query when qc_inspections table exists
-        return []
+        rework_alerts = []
+        try:
+            # Query qc_inspections for active rework (rework_qty > 0)
+            # We assume 'active' means it hasn't been fully processed yet. 
+            # For now, let's get all inspections with rework_qty > 0 from the last 30 days
+            # Ideally, there should be a 'rework_status' but we'll stick to simple logic for now.
+            
+            thirty_days_ago = (datetime.utcnow() - timedelta(days=30)).isoformat()
+            
+            rework_res = db.table('qc_inspections').select(
+                'id, inspection_number, product_id, rework_qty, created_at, qc_defects(defect_type)'
+            ).gt('rework_qty', 0).gte('created_at', thirty_days_ago).order('created_at', desc=True).limit(20).execute()
+            
+            if rework_res.data:
+                # Get product names
+                product_ids = list(set([r['product_id'] for r in rework_res.data]))
+                products = {}
+                if product_ids:
+                    prod_res = db.table('products').select('id, name').in_('id', product_ids).execute()
+                    for p in prod_res.data:
+                        products[p['id']] = p['name']
+                
+                for r in rework_res.data:
+                    defect_type = "Multiple"
+                    defects = r.get('qc_defects')
+                    if defects and len(defects) > 0:
+                        defect_type = defects[0]['defect_type']
+                        if len(defects) > 1:
+                            defect_type += " +"
+                            
+                    # Handle potential timezone offsets
+                    try:
+                        created_at = datetime.fromisoformat(r['created_at'].replace('Z', '+00:00'))
+                    except ValueError:
+                        # Fallback for naive string
+                        created_at = datetime.fromisoformat(r['created_at'])
+                        
+                    # Make naive for subtraction with utcnow()
+                    created_at = created_at.replace(tzinfo=None)
+                    
+                    days_in_rework = (datetime.utcnow() - created_at).days
+                    
+                    rework_alerts.append(ReworkAlert(
+                        order_number=r['inspection_number'], # Using Inspection Number as reference
+                        product_name=products.get(r['product_id'], 'Unknown Product'),
+                        qty_in_rework=float(r['rework_qty']),
+                        defect_category=defect_type,
+                        stage="QC Rework",
+                        days_in_rework=days_in_rework
+                    ))
+                    
+        except Exception as e:
+            print(f"Error fetching rework alerts: {e}")
+            pass
+            
+        return rework_alerts
     
     @staticmethod
     async def _get_recent_activities(db) -> List[RecentActivity]:

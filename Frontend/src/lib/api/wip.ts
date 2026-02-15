@@ -12,7 +12,7 @@ export interface WIPStageMetrics {
   avgTime: number;
   targetAvgTime: number;
   utilization: number;
-  health: 'Healthy' | 'Warning' | 'Delayed';
+  health: 'green' | 'yellow' | 'red';
 }
 
 export interface WIPDashboard {
@@ -29,9 +29,9 @@ export interface WIPSummaryStats {
   total_units: number;
   avg_cycle_time_minutes: number;
   bottleneck_stage: string | null;
-  stages_healthy: number;
-  stages_warning: number;
-  stages_delayed: number;
+  stages_green: number;
+  stages_yellow: number;
+  stages_red: number;
 }
 
 export interface BottleneckAlert {
@@ -76,7 +76,7 @@ export interface WorkingOrder {
   transferred_qty?: number;
 }
 
-export type WIPHealthStatus = 'Healthy' | 'Warning' | 'Delayed';
+export type WIPHealthStatus = 'green' | 'yellow' | 'red';
 export type WIPAlertSeverity = 'info' | 'warning' | 'critical';
 export type WIPAlertType = 'under_utilization' | 'over_utilization' | 'bottleneck' | 'delay';
 
@@ -461,4 +461,26 @@ export const wipApi = {
   getTransferredQuantities: async (workOrderId: string): Promise<Record<string, number>> => {
     return apiClient.get<Record<string, number>>(`/wip/working-orders/${workOrderId}/transferred-quantities`);
   },
+
+  listUniqueWorkingOrders: async (params?: { status?: string[], purchase_order_id?: string }): Promise<UniqueWorkingOrderItem[]> => {
+    const query = new URLSearchParams();
+    if (params?.status) {
+      params.status.forEach(s => query.append('status', s));
+    }
+    if (params?.purchase_order_id) {
+      query.append('purchase_order_id', params.purchase_order_id);
+    }
+    return apiClient.get<UniqueWorkingOrderItem[]>(`/wip/working-orders/unique?${query.toString()}`);
+  }
 };
+
+export interface UniqueWorkingOrderItem {
+  id: string;
+  work_order_number: string;
+  product_name: string;
+  status: string;
+  target_qty: number;
+  completed_qty: number;
+  product_id?: string;
+  purchase_order_id?: string;
+}

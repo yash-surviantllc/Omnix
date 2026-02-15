@@ -49,6 +49,7 @@ export function PurchaseOrders({ language, onNavigate }: PurchaseOrdersProps) {
   const [orders, setOrders] = useState<PurchaseOrder[]>([]);
   const [products, setProducts] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -772,7 +773,7 @@ export function PurchaseOrders({ language, onNavigate }: PurchaseOrdersProps) {
     }
 
     try {
-      setIsLoading(true);
+      setIsCreating(true);
       const itemsToCreate = newOrderData.items
         .filter((item: any) => item.product && item.quantity)
         .map((item: any) => {
@@ -787,7 +788,7 @@ export function PurchaseOrders({ language, onNavigate }: PurchaseOrdersProps) {
 
       if (itemsToCreate.length === 0) {
         alert(language === 'en' ? 'Please add at least one product with quantity' : 'कृपया कम कम एक उत्पाद मात्रा के साथ जोड़ें');
-        setIsLoading(false);
+        setIsCreating(false);
         return;
       }
 
@@ -812,7 +813,7 @@ export function PurchaseOrders({ language, onNavigate }: PurchaseOrdersProps) {
       const errorMessage = err?.detail || err?.message || (language === 'en' ? 'Failed to create order(s)' : 'ऑर्डर बनाने में विफल');
       alert(errorMessage);
     } finally {
-      setIsLoading(false);
+      setIsCreating(false);
     }
   };
 
@@ -1928,6 +1929,8 @@ export function PurchaseOrders({ language, onNavigate }: PurchaseOrdersProps) {
           onOrderDataChange={setNewOrderData}
           onSubmit={createNewOrder}
           products={products.reduce((acc, p) => ({ ...acc, [p.id]: { name: p.name, code: p.code, unit: p.unit } }), {})}
+          isLoading={isCreating}
+          language={language}
           translations={t}
         />
       )}

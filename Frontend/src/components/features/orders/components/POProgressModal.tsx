@@ -26,7 +26,7 @@ export function POProgressModal({
 
     const translations = {
         en: {
-            title: 'Production Order Progress',
+            title: 'Purchase Order Progress',
             orderNumber: 'Order Number',
             product: 'Product',
             productCode: 'Product Code',

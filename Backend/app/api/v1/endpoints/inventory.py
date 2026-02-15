@@ -4,7 +4,7 @@ from app.schemas.inventory import (
     InventoryResponse, InventoryListItem, StockByProduct,
     InventoryTransactionCreate, InventoryTransactionResponse,
     StockAlertCreate, StockAlertUpdate, StockAlertResponse,
-    ShortageAlert, LocationResponse
+    ShortageAlert, LocationResponse, StockAdjustment
 )
 from app.schemas.user import UserResponse
 from app.services.inventory_service import inventory_service
@@ -12,6 +12,7 @@ from app.services.dashboard_service import dashboard_service
 from app.api.deps import get_current_user, require_role
 from app.schemas.inventory import InventoryTransactionCreate
 from decimal import Decimal
+import asyncio
 
 router = APIRouter()
 
@@ -312,33 +313,6 @@ async def get_shortage_alerts(
 # INVENTORY ADJUSTMENTS ENDPOINT
 # =============================================
 
-@router.post("/adjust")
-async def adjust_inventory(
-    product_id: str = Query(...),
-    location_id: str = Query(...),
-    adjustment_qty: float = Query(..., description="Positive to add, negative to reduce"),
-    reason: str = Query(..., description="Reason for adjustment"),
-    lot_number: Optional[str] = None,
-    current_user: UserResponse = Depends(require_role("Store Manager"))
-):
-    """
-    Adjust inventory quantity (for physical count corrections).
-    
-    Creates an ADJUSTMENT transaction.
-    """
-    
-    
-    transaction = InventoryTransactionCreate(
-        transaction_type="ADJUSTMENT",
-        product_id=product_id,
-        quantity=Decimal(str(adjustment_qty)),
-        to_location_id=location_id if adjustment_qty > 0 else None,
-        from_location_id=location_id if adjustment_qty < 0 else None,
-        lot_number=lot_number,
-        notes=f"Inventory Adjustment: {reason}"
-    )
-    
-    return await inventory_service.record_transaction(transaction, current_user.id)
 
 @router.get("/summary")
 async def get_inventory_summary(
@@ -413,19 +387,19 @@ async def get_product_transactions(
 
 @router.post("/adjust", response_model=InventoryResponse)
 async def adjust_inventory(
-    adjustment: InventoryAdjustmentRequest,
+    adjustment: StockAdjustment,
     current_user: UserResponse = Depends(require_role("Store Manager"))
 ):
     """
     Adjust inventory (stock count corrections, damaged goods, etc.)
-    - Positive adjustment_qty: Increase stock
-    - Negative adjustment_qty: Decrease stock
+    - Positive adjustment_quantity: Increase stock
+    - Negative adjustment_quantity: Decrease stock
     - Requires Store Manager role
     """
     result = await inventory_service.adjust_inventory(
         product_id=adjustment.product_id,
         location_id=adjustment.location_id,
-        adjustment_qty=adjustment.adjustment_qty,
+        adjustment_quantity=adjustment.adjustment_quantity,
         reason=adjustment.reason,
         user_id=current_user.id,
         notes=adjustment.notes

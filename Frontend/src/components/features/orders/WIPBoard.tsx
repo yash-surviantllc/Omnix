@@ -7,6 +7,7 @@ import {
   WIPAlertResponse,
   WIPBoardResponse,
   WIPBoardStageMetrics,
+  WIPHealthStatus,
 } from '@/lib/api/wip';
 import { stagesApi, Stage } from '@/lib/api/stages';
 import { wipBoardWebsocket, WIPBoardEvent } from '@/lib/websocket/wipBoard';
@@ -168,7 +169,7 @@ export function WIPBoard({ language }: WIPBoardProps) {
         : 0;
 
     const bottleneckCandidates = updatedStages.filter(
-      (stage) => stage.health_status !== 'Healthy',
+      (stage) => stage.health_status !== 'green',
     );
 
     const bottleneck_stage =
@@ -383,11 +384,11 @@ export function WIPBoard({ language }: WIPBoardProps) {
 
   const getHealthBadge = (health: string) => {
     switch (health) {
-      case 'Healthy':
+      case 'green':
         return <Badge className="bg-emerald-500">{t.healthy}</Badge>;
-      case 'Warning':
+      case 'yellow':
         return <Badge className="bg-yellow-500">{t.warning}</Badge>;
-      case 'Delayed':
+      case 'red':
         return <Badge className="bg-red-500">{t.delayed}</Badge>;
       default:
         return <Badge>{health}</Badge>;
@@ -590,16 +591,16 @@ export function WIPBoard({ language }: WIPBoardProps) {
                     // < 80%: Delayed (Underutilization)
                     // > 110%: Warning (Overutilization)
                     // Else: Healthy
-                    let healthStatus = 'Healthy';
+                    let healthStatus: WIPHealthStatus = 'green';
 
                     if (metrics.count === 0) {
-                      healthStatus = 'Healthy';
+                      healthStatus = 'green';
                     } else if (metrics.delayedCount > 0) {
-                      healthStatus = 'Delayed'; // Keep explicit delay count focus
+                      healthStatus = 'red'; // Keep explicit delay count focus
                     } else if (utilization < 80) {
-                      healthStatus = 'Delayed';
+                      healthStatus = 'red'; // Slower than target
                     } else if (utilization > 110) {
-                      healthStatus = 'Warning';
+                      healthStatus = 'yellow'; // Faster than target
                     }
 
                     return (
@@ -630,8 +631,8 @@ export function WIPBoard({ language }: WIPBoardProps) {
                           <div className="flex items-center gap-2">
                             <div className="flex-1 h-2 bg-zinc-200 rounded-full overflow-hidden w-24">
                               <div
-                                className={`h-full rounded-full ${utilization < 80 ? 'bg-red-500' : utilization > 110 ? 'bg-yellow-500' : 'bg-green-500'}`}
-                                style={{ width: `${Math.min(utilization, 100)}%` }}
+                                className={`h-full rounded-full ${utilization < 80 ? 'bg-red-500' : utilization > 110 ? 'bg-yellow-500' : 'bg-emerald-500'}`}
+                                style={{ width: `${Math.min(utilization, 150)}%` }}
                               />
                             </div>
                             <span className="text-xs text-zinc-500">{Math.round(utilization)}%</span>
@@ -725,9 +726,9 @@ export function WIPBoard({ language }: WIPBoardProps) {
                   </div>
                   <div className="h-2 bg-zinc-200 rounded-full overflow-hidden">
                     <div
-                      className={`h-full transition-all ${stage.health_status === 'Delayed'
+                      className={`h-full transition-all ${stage.health_status === 'red'
                         ? 'bg-red-500'
-                        : stage.health_status === 'Warning'
+                        : stage.health_status === 'yellow'
                           ? 'bg-yellow-500'
                           : 'bg-emerald-500'
                         }`}
@@ -795,9 +796,9 @@ export function WIPBoard({ language }: WIPBoardProps) {
                             <div className="flex items-center gap-2">
                               <div className="flex-1 h-2 bg-zinc-200 rounded-full overflow-hidden max-w-[100px]">
                                 <div
-                                  className={`h-full transition-all ${stage.health_status === 'Delayed'
+                                  className={`h-full transition-all ${stage.health_status === 'red'
                                     ? 'bg-red-500'
-                                    : stage.health_status === 'Warning'
+                                    : stage.health_status === 'yellow'
                                       ? 'bg-yellow-500'
                                       : 'bg-emerald-500'
                                     }`}

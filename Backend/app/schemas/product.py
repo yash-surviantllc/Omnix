@@ -9,6 +9,7 @@ class ProductBase(BaseModel):
     description: Optional[str] = None
     category: Optional[str] = Field(None, description="Raw Material, Finished Goods, etc.")
     unit: str = Field(..., min_length=1, max_length=20, description="kg, meter, pcs, liter, etc.")
+    wip_config_id: Optional[str] = Field(None, description="Preferred WIP Stage Configuration ID")
 
 
 class ProductCreate(ProductBase):
@@ -20,6 +21,7 @@ class ProductUpdate(BaseModel):
     description: Optional[str] = None
     category: Optional[str] = None
     unit: Optional[str] = None
+    wip_config_id: Optional[str] = None
     is_active: Optional[bool] = None
 
 

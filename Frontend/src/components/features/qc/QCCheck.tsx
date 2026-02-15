@@ -119,8 +119,10 @@ interface QCCheckProps {
 
 export function QCCheck({ }: QCCheckProps) {
   // --- State ---
-  const [openSelect, setOpenSelect] = useState(false);
-  const [availableOrders, setAvailableOrders] = useState<LookupResult[]>([]);
+  const [openPOSelect, setOpenPOSelect] = useState(false);
+  const [openWOSelect, setOpenWOSelect] = useState(false);
+  const [purchaseOrders, setPurchaseOrders] = useState<LookupResult[]>([]);
+  const [workingOrders, setWorkingOrders] = useState<LookupResult[]>([]);
   const [selectedOrder, setSelectedOrder] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -141,6 +143,14 @@ export function QCCheck({ }: QCCheckProps) {
   const [recentInspections, setRecentInspections] = useState<QCInspection[]>([]);
   const [yieldTrend, setYieldTrend] = useState<any[]>([]);
 
+  // Filter Working Orders based on selected PO
+  const filteredWorkingOrders = React.useMemo(() => {
+    if (selectedOrder && selectedOrder.type === 'PO') {
+      return workingOrders.filter(wo => wo.full_data.purchase_order_id === selectedOrder.id);
+    }
+    return workingOrders;
+  }, [selectedOrder, workingOrders]);
+
   // --- Effects ---
   useEffect(() => {
     fetchOrders();
@@ -149,22 +159,32 @@ export function QCCheck({ }: QCCheckProps) {
 
   const fetchOrders = async () => {
     try {
-      // Fetch all orders without status filter to ensure we get data
       const [pos, wos] = await Promise.all([
-        purchaseOrdersApi.listOrders({}), // Remove status filter to get all POs
-        wipApi.listWorkingOrders({ status: 'In Progress' })
+        purchaseOrdersApi.listOrders({}),
+        wipApi.listUniqueWorkingOrders({})
       ]);
 
       console.log('Fetched Purchase Orders:', pos);
-      console.log('Fetched Working Orders:', wos);
+      console.log('Fetched Unique Working Orders:', wos);
 
-      const combined: LookupResult[] = [
-        ...pos.map((p: any) => ({ id: p.id, number: p.order_number, product_name: p.product_name, type: 'PO', full_data: p })),
-        ...wos.map((w: any) => ({ id: w.id, number: w.work_order_number, product_name: w.product_name || 'Unspecified', type: 'WO', full_data: w }))
-      ] as LookupResult[];
+      const formattedPOs = pos.map((p: any) => ({
+        id: p.id,
+        number: p.order_number,
+        product_name: p.product_name,
+        type: 'PO',
+        full_data: p
+      })) as LookupResult[];
 
-      console.log('Combined orders:', combined);
-      setAvailableOrders(combined);
+      const formattedWOs = wos.map((w: any) => ({
+        id: w.id,
+        number: w.work_order_number,
+        product_name: w.product_name || 'Unspecified',
+        type: 'WO',
+        full_data: w
+      })) as LookupResult[];
+
+      setPurchaseOrders(formattedPOs);
+      setWorkingOrders(formattedWOs);
     } catch (e) {
       console.error('Error fetching orders:', e);
       toast.error("Failed to load Orders. Please check connection.");
@@ -187,16 +207,21 @@ export function QCCheck({ }: QCCheckProps) {
 
   const handleSelectOrder = (item: LookupResult) => {
     const target = item.full_data.quantity || item.full_data.target_qty || 0;
-    // Fix: Use correct backend field names - quantity_completed for PO, completed_qty for WO
-    const completed = item.type === 'PO' 
-      ? (item.full_data.quantity_completed || 0) 
+    // Use correct backend field names
+    const completed = item.type === 'PO'
+      ? (item.full_data.quantity_completed || 0)
       : (item.full_data.completed_qty || 0);
+
     setSelectedOrder({ ...item, target_qty: target, completed_qty: completed });
     setQtyToInspect(target - completed);
     setPassQty(target - completed);
     setReworkQty(0);
     setScrapQty(0);
-    setOpenSelect(false);
+
+    // Close both to be safe
+    setOpenPOSelect(false);
+    setOpenWOSelect(false);
+
     toast.success(`Selected ${item.number}`);
   };
 
@@ -316,35 +341,35 @@ export function QCCheck({ }: QCCheckProps) {
             />
           </div>
 
-          {/* 2. Select Order Dropdown */}
+          {/* 2. Purchase Order Dropdown */}
           <div className="w-[200px]">
-            <Popover open={openSelect} onOpenChange={setOpenSelect}>
+            <Popover open={openPOSelect} onOpenChange={setOpenPOSelect}>
               <PopoverTrigger asChild>
                 <Button variant="outline" role="combobox" className="w-full justify-between h-12 rounded-full border-slate-200 bg-white text-slate-600 font-medium px-5 hover:bg-slate-50 hover:border-slate-300 transition-all">
-                  {selectedOrder ? (
+                  {selectedOrder && selectedOrder.type === 'PO' ? (
                     <div className="flex items-center gap-2 truncate">
-                      <span className={cn("text-[10px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider", selectedOrder.type === 'PO' ? "bg-blue-100 text-blue-700" : "bg-purple-100 text-purple-700")}>
-                        {selectedOrder.type}
+                      <span className="text-[10px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider bg-blue-100 text-blue-700">
+                        PO
                       </span>
                       <span className="font-bold text-slate-900 truncate">{selectedOrder.number}</span>
                     </div>
                   ) : (
-                    <span className="text-slate-400">Select Purchase / Work Order</span>
+                    <span className="text-slate-400">Select Purchase Order</span>
                   )}
                   <ChevronRight className="w-4 h-4 text-slate-300 rotate-90" />
                 </Button>
               </PopoverTrigger>
-              <PopoverContent className="w-[340px] p-0 rounded-xl shadow-xl border-slate-100 mt-2" align="start">
+              <PopoverContent className="w-[340px] p-0 rounded-xl shadow-xl border-slate-100 mt-2 bg-white z-50" align="start">
                 <Command>
-                  <CommandInput placeholder="Search orders..." className="h-10 border-0 focus:ring-0" />
+                  <CommandInput placeholder="Search POs..." className="h-10 border-0 focus:ring-0" />
                   <CommandList>
                     <CommandEmpty>No results.</CommandEmpty>
                     <CommandGroup>
-                      {availableOrders.map((order) => (
+                      {purchaseOrders.map((order) => (
                         <CommandItem key={order.id} onSelect={() => handleSelectOrder(order)} className="py-3 px-4 cursor-pointer aria-selected:bg-emerald-50">
                           <div className="flex items-center gap-3 w-full">
-                            <span className={cn("text-[10px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider min-w-[32px] text-center", order.type === 'PO' ? "bg-blue-100 text-blue-700" : "bg-purple-100 text-purple-700")}>
-                              {order.type}
+                            <span className="text-[10px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider min-w-[32px] text-center bg-blue-100 text-blue-700">
+                              PO
                             </span>
                             <div className="flex flex-col flex-1 min-w-0">
                               <span className="font-bold text-slate-700 truncate">{order.number}</span>
@@ -361,14 +386,49 @@ export function QCCheck({ }: QCCheckProps) {
             </Popover>
           </div>
 
-          {/* 3. Work Order (Readonly) */}
-          <div className="w-[120px] h-12 rounded-full border border-slate-100 bg-slate-50 px-3 flex items-center gap-1 text-xs">
-            <span className="text-slate-400">WO:</span>
-            {selectedOrder?.type === 'WO' ? (
-              <span className="font-bold text-slate-700 truncate">{selectedOrder.number.slice(-4)}</span>
-            ) : (
-              <span className="text-slate-300">-</span>
-            )}
+          {/* 3. Work Order Dropdown */}
+          <div className="w-[200px]">
+            <Popover open={openWOSelect} onOpenChange={setOpenWOSelect}>
+              <PopoverTrigger asChild>
+                <Button variant="outline" role="combobox" className="w-full justify-between h-12 rounded-full border-slate-200 bg-white text-slate-600 font-medium px-5 hover:bg-slate-50 hover:border-slate-300 transition-all">
+                  {selectedOrder && selectedOrder.type === 'WO' ? (
+                    <div className="flex items-center gap-2 truncate">
+                      <span className="text-[10px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider bg-purple-100 text-purple-700">
+                        WO
+                      </span>
+                      <span className="font-bold text-slate-900 truncate">{selectedOrder.number}</span>
+                    </div>
+                  ) : (
+                    <span className="text-slate-400">Select Work Order</span>
+                  )}
+                  <ChevronRight className="w-4 h-4 text-slate-300 rotate-90" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-[340px] p-0 rounded-xl shadow-xl border-slate-100 mt-2 bg-white z-50" align="start">
+                <Command>
+                  <CommandInput placeholder="Search WOs..." className="h-10 border-0 focus:ring-0" />
+                  <CommandList>
+                    <CommandEmpty>No results.</CommandEmpty>
+                    <CommandGroup>
+                      {filteredWorkingOrders.map((order) => (
+                        <CommandItem key={order.id} onSelect={() => handleSelectOrder(order)} className="py-3 px-4 cursor-pointer aria-selected:bg-emerald-50">
+                          <div className="flex items-center gap-3 w-full">
+                            <span className="text-[10px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider min-w-[32px] text-center bg-purple-100 text-purple-700">
+                              WO
+                            </span>
+                            <div className="flex flex-col flex-1 min-w-0">
+                              <span className="font-bold text-slate-700 truncate">{order.number}</span>
+                              <span className="text-xs text-slate-400 truncate">{order.product_name}</span>
+                            </div>
+                            <ChevronRight className="w-4 h-4 text-slate-300" />
+                          </div>
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
           </div>
 
           {/* 4. Product (Readonly) */}

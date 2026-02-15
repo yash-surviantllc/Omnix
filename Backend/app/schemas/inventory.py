@@ -149,7 +149,7 @@ class InventoryTransactionResponse(BaseModel):
 class InventoryAdjustmentRequest(BaseModel):
     product_id: str
     location_id: str
-    adjustment_qty: Decimal = Field(..., description="Positive for increase, negative for decrease")
+    adjustment_quantity: Decimal = Field(..., description="Positive for increase, negative for decrease")
     reason: str
     notes: Optional[str] = None
 
@@ -215,7 +215,7 @@ class StockAdjustment(BaseModel):
     """Stock adjustment request"""
     product_id: str
     location_id: str
-    adjustment_qty: Decimal  # Positive to add, negative to reduce
+    adjustment_quantity: Decimal  # Positive to add, negative to reduce
     lot_number: Optional[str] = None
     reason: str
     notes: Optional[str] = None

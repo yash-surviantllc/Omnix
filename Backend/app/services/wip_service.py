@@ -51,10 +51,16 @@ class WIPService:
         logger = logging.getLogger('wip_debug')
         
         # Resolve Config
-        prod_res = db.table('products').select('code').eq('id', product_id).single().execute()
+        prod_res = db.table('products').select('code, wip_config_id').eq('id', product_id).single().execute()
         sku = prod_res.data['code'] if prod_res.data else None
+        product_config_id = prod_res.data.get('wip_config_id') if prod_res.data else None
         
         config_id = getattr(order_data, 'config_id', None)
+        
+        # If config is default or missing, try to use product's preferred config
+        if (not config_id or config_id == 'default') and product_config_id:
+             config_id = product_config_id
+             
         if not config_id:
             config_id = await StageService.resolve_config_for_entity(sku=sku, wo_no=work_order_number)
         
@@ -758,7 +764,10 @@ class WIPService:
         if not result.data:
             return []
             
-        work_orders = result.data
+        # Deduplicate work_orders by ID just in case
+        work_orders_raw = result.data
+        unique_wos = {wo['id']: wo for wo in work_orders_raw}.values()
+        work_orders = list(unique_wos)
         
         # Batch Fetch Details
         po_ids = list(set([wo['purchase_order_id'] for wo in work_orders if wo.get('purchase_order_id')]))
@@ -931,7 +940,8 @@ class WIPService:
     
     @staticmethod
     async def list_unique_working_orders(
-        status: Optional[List[str]] = None
+        status: Optional[List[str]] = None,
+        purchase_order_id: Optional[str] = None
     ) -> List[UniqueWorkingOrderItem]:
         """
         Get unique work orders (one per work_order_number).
@@ -939,10 +949,13 @@ class WIPService:
         """
         db = get_db()
         
-        query = db.table('work_orders').select('id, work_order_number, product_id, status, created_at')
+        query = db.table('work_orders').select('id, work_order_number, product_id, purchase_order_id, status, target_qty, completed_qty, created_at')
         
         if status:
             query = query.in_('status', status)
+            
+        if purchase_order_id:
+            query = query.eq('purchase_order_id', purchase_order_id)
         
         result = query.order('created_at', desc=True).execute()
         
@@ -971,7 +984,11 @@ class WIPService:
                 id=wo['id'],
                 work_order_number=wo['work_order_number'],
                 product_name=product_map.get(wo.get('product_id'), 'Unknown Product'),
-                status=wo['status']
+                status=wo['status'],
+                target_qty=wo.get('target_qty', 0),
+                completed_qty=wo.get('completed_qty', 0),
+                product_id=wo.get('product_id'),
+                purchase_order_id=wo.get('purchase_order_id')
             )
             for wo in unique_orders
         ]
@@ -1101,7 +1118,10 @@ class WIPService:
         # Get all active stage metrics
         result = db.table('wip_stage_metrics').select('*').eq('is_active', True).order('stage_sequence').execute()
         
-        stages = [WIPStageMetricsListItem(**stage) for stage in result.data]
+        stages = []
+        for s in result.data:
+            s['health_status'] = self._map_health_status(s.get('health_status'))
+            stages.append(WIPStageMetricsListItem(**s))
         
         # Calculate summary stats
         total_orders = sum(s.orders_count for s in stages)
@@ -1110,7 +1130,7 @@ class WIPService:
         
         # Find bottleneck (delayed stage with highest utilization)
         bottleneck_stage = None
-        delayed_stages = [s for s in stages if s.health_status == 'Delayed']
+        delayed_stages = [s for s in stages if s.health_status == 'red']
         if delayed_stages:
             bottleneck_stage = max(delayed_stages, key=lambda s: s.utilization_percentage).stage_name
         
@@ -1130,18 +1150,23 @@ class WIPService:
         
         result = db.table('wip_stage_metrics').select('*').eq('is_active', True).order('stage_sequence').execute()
         
-        return [WIPStageMetricsResponse(**stage) for stage in result.data]
+        metrics = []
+        for stage in result.data:
+            stage['health_status'] = self._map_health_status(stage.get('health_status'))
+            metrics.append(WIPStageMetricsResponse(**stage))
+        return metrics
     
     @staticmethod
     async def get_bottleneck_alerts() -> List[BottleneckAlert]:
         """Get bottleneck alerts for delayed stages"""
         db = get_db()
         
-        result = db.table('wip_stage_metrics').select('*').in_('health_status', ['Warning', 'Delayed']).order('utilization_percentage', desc=True).execute()
+        result = db.table('wip_stage_metrics').select('*').in_('health_status', ['Warning', 'Delayed', 'yellow', 'red']).order('utilization_percentage', desc=True).execute()
         
         alerts = []
         for stage in result.data:
-            severity = 'critical' if stage['health_status'] == 'Delayed' else 'warning'
+            h_status = self._map_health_status(stage.get('health_status'))
+            severity = 'critical' if h_status == 'red' else 'warning'
             alerts.append(BottleneckAlert(
                 stage_name=stage['stage_name'],
                 utilization_percentage=stage['utilization_percentage'],
@@ -1166,12 +1191,12 @@ class WIPService:
         total_units = sum(s['units_count'] for s in stages)
         avg_cycle_time = Decimal(sum(s['avg_time_minutes'] for s in stages) / len(stages)) if stages else Decimal('0')
         
-        stages_healthy = len([s for s in stages if s['health_status'] == 'Healthy'])
-        stages_warning = len([s for s in stages if s['health_status'] == 'Warning'])
-        stages_delayed = len([s for s in stages if s['health_status'] == 'Delayed'])
+        stages_green = len([s for s in stages if self._map_health_status(s['health_status']) == 'green'])
+        stages_yellow = len([s for s in stages if self._map_health_status(s['health_status']) == 'yellow'])
+        stages_red = len([s for s in stages if self._map_health_status(s['health_status']) == 'red'])
         
         bottleneck_stage = None
-        delayed_stages = [s for s in stages if s['health_status'] == 'Delayed']
+        delayed_stages = [s for s in stages if self._map_health_status(s['health_status']) == 'red']
         if delayed_stages:
             bottleneck_stage = max(delayed_stages, key=lambda s: s['utilization_percentage'])['stage_name']
         
@@ -1180,9 +1205,9 @@ class WIPService:
             total_units=total_units,
             avg_cycle_time_minutes=avg_cycle_time,
             bottleneck_stage=bottleneck_stage,
-            stages_healthy=stages_healthy,
-            stages_warning=stages_warning,
-            stages_delayed=stages_delayed
+            stages_green=stages_green,
+            stages_yellow=stages_yellow,
+            stages_red=stages_red
         )
     
     @staticmethod
@@ -1214,9 +1239,24 @@ class WIPService:
                 db.rpc('check_wip_alerts').execute()
             except Exception:
                 pass
-                
         except Exception:
             pass
+            
+    @staticmethod
+    def _map_health_status(status: Optional[str]) -> str:
+        """Map legacy health status strings to color-coded enums"""
+        if not status:
+            return 'green'
+        
+        status_map = {
+            'Healthy': 'green',
+            'Warning': 'yellow',
+            'Delayed': 'red',
+            'green': 'green',
+            'yellow': 'yellow',
+            'red': 'red'
+        }
+        return status_map.get(status, 'green')
 
 
 # Create singleton instance
