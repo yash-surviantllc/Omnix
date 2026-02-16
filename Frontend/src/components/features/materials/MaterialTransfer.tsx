@@ -683,13 +683,15 @@ export function MaterialTransfer({ language, refreshMaterialTransferData }: Mate
                         </option>
                       ))}
                     </optgroup>
-                    <optgroup label="WIP Stages">
-                      {(transferData.workOrderId && availableStages.length > 0 ? availableStages : wipStages).map((stage) => (
-                        <option key={stage.id} value={stage.name} disabled={stage.name === transferData.fromLocation}>
-                          {stage.name}
-                        </option>
-                      ))}
-                    </optgroup>
+                    {transferData.workOrderId && availableStages.length > 0 && (
+                      <optgroup label="WIP Stages">
+                        {availableStages.map((stage) => (
+                          <option key={stage.id} value={stage.name} disabled={stage.name === transferData.fromLocation}>
+                            {stage.name}
+                          </option>
+                        ))}
+                      </optgroup>
+                    )}
                   </select>
                   {errors.toLocation && (
                     <div className="flex items-center gap-1 mt-1 text-sm text-red-600">

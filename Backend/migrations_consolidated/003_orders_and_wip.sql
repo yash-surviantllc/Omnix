@@ -461,21 +461,18 @@ BEGIN
         units_count = ss.total_units,
         avg_time_minutes = ss.avg_duration,
         
-        -- Utilization Formula: (Target / Actual) * 100
+    -- Utilization Formula: (Target / Actual) * 100
         utilization_percentage = CASE 
-            WHEN ss.avg_duration > 0 THEN 
-                (sm.target_time_minutes / ss.avg_duration * 100)
+            WHEN ss.order_count > 0 AND ss.avg_duration > 0 THEN 
+                (sm.target_time_minutes / GREATEST(ss.avg_duration, 1.0) * 100)
             ELSE 0 -- No actual work yet
         END,
         
         -- Health Status Logic
-        -- < 80%: Delayed (Underutilization/Slow)
-        -- 80% - 110%: Healthy (Optimal)
-        -- > 110%: Warning (Overutilization/Too Fast)
         health_status = CASE
-            WHEN ss.avg_duration = 0 THEN 'healthy' -- No activity
-            WHEN (sm.target_time_minutes / ss.avg_duration * 100) < 80 THEN 'delayed'
-            WHEN (sm.target_time_minutes / ss.avg_duration * 100) > 110 THEN 'warning'
+            WHEN ss.order_count = 0 OR ss.avg_duration = 0 THEN 'healthy'
+            WHEN (sm.target_time_minutes / GREATEST(ss.avg_duration, 1.0) * 100) < 80 THEN 'delayed'
+            WHEN (sm.target_time_minutes / GREATEST(ss.avg_duration, 1.0) * 100) > 110 THEN 'warning'
             ELSE 'healthy'
         END,
         
@@ -651,21 +648,18 @@ BEGIN
         units_count = ss.total_units,
         avg_time_minutes = ss.avg_duration,
         
-        -- Utilization Formula: (Target / Actual) * 100
+    -- Utilization Formula: (Target / Actual) * 100
         utilization_percentage = CASE 
-            WHEN ss.avg_duration > 0 THEN 
-                (sm.target_time_minutes / ss.avg_duration * 100)
+            WHEN ss.order_count > 0 AND ss.avg_duration > 0 THEN 
+                (sm.target_time_minutes / GREATEST(ss.avg_duration, 1.0) * 100)
             ELSE 0 -- No actual work yet
         END,
         
         -- Health Status Logic
-        -- < 80%: Delayed (Underutilization/Slow)
-        -- 80% - 110%: Healthy (Optimal)
-        -- > 110%: Warning (Overutilization/Too Fast)
         health_status = CASE
-            WHEN ss.avg_duration = 0 THEN 'healthy' -- No activity
-            WHEN (sm.target_time_minutes / ss.avg_duration * 100) < 80 THEN 'delayed'
-            WHEN (sm.target_time_minutes / ss.avg_duration * 100) > 110 THEN 'warning'
+            WHEN ss.order_count = 0 OR ss.avg_duration = 0 THEN 'healthy'
+            WHEN (sm.target_time_minutes / GREATEST(ss.avg_duration, 1.0) * 100) < 80 THEN 'delayed'
+            WHEN (sm.target_time_minutes / GREATEST(ss.avg_duration, 1.0) * 100) > 110 THEN 'warning'
             ELSE 'healthy'
         END,
         
