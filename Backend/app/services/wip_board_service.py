@@ -504,14 +504,19 @@ class WIPBoardService:
     def _calculate_utilization(self, avg_time: Decimal, target: Decimal) -> Decimal:
         if target is None or target == Decimal("0"):
             return Decimal("0")
-        if avg_time == Decimal("0"):
-            return Decimal("0")
+        
+        # Prevent division by zero or near-zero
+        safe_avg_time = max(avg_time, Decimal("0.1"))
         
         # New Formula: Utilization = (Target Avg Time / Actual Avg Time) * 100
         # > 100%: Faster than target (Good/Overutilized)
         # < 100%: Slower than target (Bad/Backlog)
-        ratio = (target / avg_time) * Decimal("100")
-        return ratio
+        ratio = (target / safe_avg_time) * Decimal("100")
+        
+        # Cap at 500% to prevent UI layout breakage and "Billions" glitches
+        capped_ratio = min(ratio, Decimal("500"))
+        
+        return capped_ratio
 
     def _determine_health(
         self, avg_time: Decimal, target: Decimal, utilization: Decimal
@@ -521,12 +526,12 @@ class WIPBoardService:
         
         # Health Logic based on Utilization:
         # < 80%: Slow / Delayed -> RED
-        # 80% - 110%: Healthy -> GREEN
-        # > 110%: Warning / Overutilized -> YELLOW
+        # 80% - 130%: Healthy -> GREEN (Aligned with SQL)
+        # > 130%: Warning / Overutilized -> YELLOW (Aligned with SQL)
         
         if utilization < Decimal("80"):
             return WIPHealthStatus.RED
-        elif utilization > Decimal("110"):
+        elif utilization > Decimal("130"):
              return WIPHealthStatus.YELLOW
         else:
             return WIPHealthStatus.GREEN
