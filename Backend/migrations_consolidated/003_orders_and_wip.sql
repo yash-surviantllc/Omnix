@@ -428,22 +428,23 @@ DROP FUNCTION IF EXISTS update_wip_stage_metrics() CASCADE;
 CREATE OR REPLACE FUNCTION update_wip_stage_metrics()
 RETURNS void AS $$
 BEGIN
-    -- Use CTE to calculate stats for ALL stages (Left Join from wip_stages)
+    -- Ensure all stages exist in metrics table
+    INSERT INTO wip_stage_metrics (stage_name, stage_sequence, target_time_minutes)
+    SELECT name, sequence_number, target_avg_time_minutes
+    FROM wip_stages
+    ON CONFLICT (stage_name) DO UPDATE SET
+        stage_sequence = EXCLUDED.stage_sequence,
+        target_time_minutes = EXCLUDED.target_time_minutes;
+
     WITH stage_stats AS (
         SELECT 
             s.name as stage_name,
-            -- Count all orders in the pipe (Planned + In Progress)
-            COUNT(DISTINCT wo.purchase_order_id) FILTER (WHERE wo.id IS NOT NULL) as order_count,
-            
-            -- Sum units
+            COUNT(wo.id) as order_count,
             COALESCE(SUM(wo.target_qty), 0) as total_units,
-            
-            -- Avg Duration: ONLY for orders that have actually started (In Progress, or Completed)
-            -- We exclude Planned orders (actual_start IS NULL)
             COALESCE(
                 AVG(
                     CASE 
-                        WHEN wo.actual_start IS NOT NULL THEN
+                        WHEN wo.actual_start IS NOT NULL AND wo.status = 'In Progress' THEN
                             EXTRACT(EPOCH FROM (COALESCE(wo.actual_end, NOW()) - wo.actual_start)) / 60
                         ELSE NULL 
                     END
@@ -459,20 +460,22 @@ BEGIN
     SET 
         orders_count = ss.order_count,
         units_count = ss.total_units,
-        avg_time_minutes = ss.avg_duration,
+        avg_time_minutes = ROUND(ss.avg_duration::numeric, 2),
         
-    -- Utilization Formula: (Target / Actual) * 100
+        -- Utilization Formula (Efficiency): (Target / Actual) * 100
+        -- Capped at 500% to avoid extreme outliers/UI breakage
         utilization_percentage = CASE 
-            WHEN ss.order_count > 0 AND ss.avg_duration > 0 THEN 
-                (sm.target_time_minutes / GREATEST(ss.avg_duration, 1.0) * 100)
-            ELSE 0 -- No actual work yet
+            WHEN ss.order_count > 0 AND ss.avg_duration > 0.1 THEN 
+                LEAST(500.0, ROUND((sm.target_time_minutes / ss.avg_duration * 100)::numeric, 2))
+            ELSE 0 
         END,
         
-        -- Health Status Logic
+        -- Health Status Logic: Efficiency-based
+        -- > 130% Warning (too fast), < 80% Delayed (too slow), else Healthy
         health_status = CASE
-            WHEN ss.order_count = 0 OR ss.avg_duration = 0 THEN 'healthy'
-            WHEN (sm.target_time_minutes / GREATEST(ss.avg_duration, 1.0) * 100) < 80 THEN 'delayed'
-            WHEN (sm.target_time_minutes / GREATEST(ss.avg_duration, 1.0) * 100) > 110 THEN 'warning'
+            WHEN ss.order_count = 0 OR ss.avg_duration <= 0.1 THEN 'healthy'
+            WHEN (sm.target_time_minutes / ss.avg_duration * 100) < 80 THEN 'delayed'
+            WHEN (sm.target_time_minutes / ss.avg_duration * 100) > 130 THEN 'warning'
             ELSE 'healthy'
         END,
         
@@ -615,22 +618,23 @@ LEFT JOIN products p ON p.id = wo.product_id;
 CREATE OR REPLACE FUNCTION update_wip_stage_metrics()
 RETURNS void AS $$
 BEGIN
-    -- Use CTE to calculate stats for ALL stages (Left Join from wip_stages)
+    -- Ensure all stages exist in metrics table
+    INSERT INTO wip_stage_metrics (stage_name, stage_sequence, target_time_minutes)
+    SELECT name, sequence_number, target_avg_time_minutes
+    FROM wip_stages
+    ON CONFLICT (stage_name) DO UPDATE SET
+        stage_sequence = EXCLUDED.stage_sequence,
+        target_time_minutes = EXCLUDED.target_time_minutes;
+
     WITH stage_stats AS (
         SELECT 
             s.name as stage_name,
-            -- Count all orders in the pipe (Planned + In Progress)
-            COUNT(DISTINCT wo.purchase_order_id) FILTER (WHERE wo.id IS NOT NULL) as order_count,
-            
-            -- Sum units
+            COUNT(wo.id) as order_count,
             COALESCE(SUM(wo.target_qty), 0) as total_units,
-            
-            -- Avg Duration: ONLY for orders that have actually started (In Progress, or Completed)
-            -- We exclude Planned orders (actual_start IS NULL)
             COALESCE(
                 AVG(
                     CASE 
-                        WHEN wo.actual_start IS NOT NULL THEN
+                        WHEN wo.actual_start IS NOT NULL AND wo.status = 'In Progress' THEN
                             EXTRACT(EPOCH FROM (COALESCE(wo.actual_end, NOW()) - wo.actual_start)) / 60
                         ELSE NULL 
                     END
@@ -646,20 +650,22 @@ BEGIN
     SET 
         orders_count = ss.order_count,
         units_count = ss.total_units,
-        avg_time_minutes = ss.avg_duration,
+        avg_time_minutes = ROUND(ss.avg_duration::numeric, 2),
         
-    -- Utilization Formula: (Target / Actual) * 100
+        -- Utilization Formula (Efficiency): (Target / Actual) * 100
+        -- Capped at 500% to avoid extreme outliers/UI breakage
         utilization_percentage = CASE 
-            WHEN ss.order_count > 0 AND ss.avg_duration > 0 THEN 
-                (sm.target_time_minutes / GREATEST(ss.avg_duration, 1.0) * 100)
-            ELSE 0 -- No actual work yet
+            WHEN ss.order_count > 0 AND ss.avg_duration > 0.1 THEN 
+                LEAST(500.0, ROUND((sm.target_time_minutes / ss.avg_duration * 100)::numeric, 2))
+            ELSE 0 
         END,
         
-        -- Health Status Logic
+        -- Health Status Logic: Efficiency-based
+        -- > 130% Warning (too fast), < 80% Delayed (too slow), else Healthy
         health_status = CASE
-            WHEN ss.order_count = 0 OR ss.avg_duration = 0 THEN 'healthy'
-            WHEN (sm.target_time_minutes / GREATEST(ss.avg_duration, 1.0) * 100) < 80 THEN 'delayed'
-            WHEN (sm.target_time_minutes / GREATEST(ss.avg_duration, 1.0) * 100) > 110 THEN 'warning'
+            WHEN ss.order_count = 0 OR ss.avg_duration <= 0.1 THEN 'healthy'
+            WHEN (sm.target_time_minutes / ss.avg_duration * 100) < 80 THEN 'delayed'
+            WHEN (sm.target_time_minutes / ss.avg_duration * 100) > 130 THEN 'warning'
             ELSE 'healthy'
         END,
         

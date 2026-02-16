@@ -583,24 +583,26 @@ export function WIPBoard({ language }: WIPBoardProps) {
                     const targetTime = stage.target_avg_time_minutes;
 
                     // Dynamic Utilization for Search View
+                    // Using Efficiency Formula: (Target / Actual) * 100
                     const utilization = avgTime > 0
-                      ? (targetTime / avgTime) * 100
+                      ? Math.min(500, (targetTime / Math.max(0.1, avgTime)) * 100)
                       : 0;
 
                     // Determine aggregate health for filtered view
-                    // < 80%: Delayed (Underutilization)
-                    // > 110%: Warning (Overutilization)
-                    // Else: Healthy
+                    // Efficiency-based: 
+                    // > 110%: Warning (Too fast/Over-target)
+                    // < 80%: Delayed (Too slow/Under-target)
+                    // Else/Zero: Healthy
                     let healthStatus: WIPHealthStatus = 'green';
 
-                    if (metrics.count === 0) {
+                    if (metrics.count === 0 || avgTime === 0) {
                       healthStatus = 'green';
                     } else if (metrics.delayedCount > 0) {
                       healthStatus = 'red'; // Keep explicit delay count focus
                     } else if (utilization < 80) {
-                      healthStatus = 'red'; // Slower than target
+                      healthStatus = 'red'; // Efficiency drops as time increases
                     } else if (utilization > 110) {
-                      healthStatus = 'yellow'; // Faster than target
+                      healthStatus = 'yellow';
                     }
 
                     return (
