@@ -435,8 +435,12 @@ class BOMService:
         
         # If BOM is active, create new version
         if bom['is_active']:
-            current_version = bom.get('version', 1)
-            new_version = current_version + 1
+            # boms.version is VARCHAR in DB — cast to int for arithmetic, store back as string
+            try:
+                current_version = int(bom.get('version', '1'))
+            except (TypeError, ValueError):
+                current_version = 1
+            new_version = str(current_version + 1)
             
             # Update version number
             db.table('boms').update({
@@ -759,7 +763,11 @@ class BOMService:
         
         # Create new version if BOM is active
         if bom.data[0]['is_active']:
-            new_version = bom.data[0].get('version', 1) + 1
+            try:
+                current_version = int(bom.data[0].get('version', '1'))
+            except (TypeError, ValueError):
+                current_version = 1
+            new_version = str(current_version + 1)
             db.table('boms').update({
                 'version': new_version,
                 'updated_at': datetime.utcnow().isoformat()
@@ -808,7 +816,11 @@ class BOMService:
         
         # Create new version if BOM is active
         if bom.data[0]['is_active']:
-            new_version = bom.data[0].get('version', 1) + 1
+            try:
+                current_version = int(bom.data[0].get('version', '1'))
+            except (TypeError, ValueError):
+                current_version = 1
+            new_version = str(current_version + 1)
             db.table('boms').update({
                 'version': new_version,
                 'updated_at': datetime.utcnow().isoformat()
@@ -845,7 +857,11 @@ class BOMService:
         
         # Create new version if BOM is active
         if bom.data[0]['is_active']:
-            new_version = bom.data[0].get('version', 1) + 1
+            try:
+                current_version = int(bom.data[0].get('version', '1'))
+            except (TypeError, ValueError):
+                current_version = 1
+            new_version = str(current_version + 1)
             db.table('boms').update({
                 'version': new_version,
                 'updated_at': datetime.utcnow().isoformat()
@@ -995,75 +1011,67 @@ class BOMService:
             total_bom_cost += material_cost
             
             # Check inventory availability from main inventory table
-            # Only count inventory in valid storage locations (exclude scrap and quality)
+            # Only count inventory in valid storage locations (skip scrap and quality)
             inventory_result = db.table('inventory').select('*').eq('product_id', material_id).execute()
-            
-            print(f"[DEBUG] Material ID: {material_id}")
-            print(f"[DEBUG] Inventory table result count: {len(inventory_result.data) if inventory_result.data else 0}")
-            
+
+
             # --- FALLBACK: CHECK inventory_items TABLE ---
             # The system has TWO inventory tables:
-            # 1. inventory (aggregated by product_id + location_id)
-            # 2. inventory_items (individual items by material_code)
-            # If inventory table is empty, check inventory_items as fallback
+            # 1. inventory  (aggregated by product_id + location_id, preferred source)
+            # 2. inventory_items (individual items by material_code, used as fallback)
+            # When inventory table has no row for this product, fall back to inventory_items.
+            # Allocation is sourced from order_materials.allocated_qty for the same product
+            # so that free_qty = fallback_qty - fallback_allocated (Fix 14).
             fallback_qty = Decimal('0')
+            fallback_allocated = Decimal('0')
+
             if not inventory_result.data:
                 try:
-                    # Get the material code from products table
                     p_res = db.table('products').select('code, name').eq('id', material_id).execute()
                     if p_res.data:
                         material_code = p_res.data[0]['code']
-                        material_name = p_res.data[0]['name']
-                        print(f"[DEBUG] Material Code from products: '{material_code}', Name: '{material_name}'")
-                        
-                        # DIAGNOSTIC: List ALL inventory_items to find the mismatch
-                        all_items = db.table('inventory_items').select('material_code, material_name, quantity').execute()
-                        if all_items.data:
-                            print(f"[DEBUG] ALL inventory_items in database ({len(all_items.data)} total):")
-                            for idx, item in enumerate(all_items.data[:10]):  # Show first 10
-                                print(f"[DEBUG]   {idx+1}. Code: '{item.get('material_code')}', Name: '{item.get('material_name')}', Qty: {item.get('quantity')}")
-                        
-                        # Try exact match first
-                        items_result = db.table('inventory_items').select('material_code, quantity, status').eq('material_code', material_code).execute()
+                        material_name_str = p_res.data[0]['name']
+
+                        # Exact match on material_code (primary)
+                        items_result = db.table('inventory_items').select(
+                            'material_code, quantity'
+                        ).eq('material_code', material_code).execute()
+
                         if items_result.data:
-                            print(f"[DEBUG] Found EXACT match for code '{material_code}'")
-                            for item in items_result.data:
-                                item_qty = Decimal(str(item.get('quantity', 0)))
-                                fallback_qty += item_qty
+                            for it in items_result.data:
+                                fallback_qty += Decimal(str(it.get('quantity', 0)))
                         else:
-                            print(f"[DEBUG] No EXACT match for code '{material_code}'")
-                            
-                            # Try fuzzy match by name
-                            name_result = db.table('inventory_items').select('material_code, material_name, quantity, status').ilike('material_name', f'%{material_name}%').execute()
+                            # Fuzzy match by name when code doesn't match
+                            name_result = db.table('inventory_items').select(
+                                'material_code, material_name, quantity'
+                            ).ilike('material_name', f'%{material_name_str}%').execute()
                             if name_result.data:
-                                print(f"[DEBUG] Found NAME match for '{material_name}':")
-                                for item in name_result.data:
-                                    print(f"[DEBUG]   - Code: '{item.get('material_code')}', Qty: {item.get('quantity')}")
-                                    item_qty = Decimal(str(item.get('quantity', 0)))
-                                    fallback_qty += item_qty
-                            else:
-                                print(f"[DEBUG] No NAME match for '{material_name}' either")
-                        
-                        if fallback_qty > 0:
-                            print(f"[DEBUG] Using inventory_items fallback: {fallback_qty}")
-                except Exception as e:
-                    print(f"[DEBUG] Error checking inventory_items: {e}")
-                    import traceback
-                    traceback.print_exc()
+                                for it in name_result.data:
+                                    fallback_qty += Decimal(str(it.get('quantity', 0)))
+
+                        # Fetch allocated amount from order_materials so free_qty is accurate
+                        if fallback_qty > Decimal('0'):
+                            alloc_res = db.table('order_materials').select(
+                                'allocated_qty'
+                            ).eq('product_id', material_id).execute()
+                            if alloc_res.data:
+                                fallback_allocated = sum(
+                                    Decimal(str(r.get('allocated_qty', 0) or 0))
+                                    for r in alloc_res.data
+                                )
+                except Exception:
+                    pass
             # -------------------------------------------
 
-            if inventory_result.data:
-                print(f"[DEBUG] First Inventory Record: {inventory_result.data[0]}")
 
             available_qty = Decimal('0')
             allocated_qty = Decimal('0')
             location_breakdown = []
-            
-            # Get all location IDs from inventory
+
+            # Get all location IDs from inventory result
             location_ids = [inv['location_id'] for inv in inventory_result.data] if inventory_result.data else []
-            print(f"[DEBUG] Location IDs: {location_ids}")
-            
-            # Fetch location details separately to ensure we get the type
+
+            # Fetch location details to filter out scrap/quality locations
             location_map = {}
             if location_ids:
                 locations_result = db.table('locations').select('id, name, type').in_('id', location_ids).execute()
@@ -1076,24 +1084,21 @@ class BOMService:
                 for inv in inventory_result.data:
                     location_id = inv.get('location_id')
                     location_info = location_map.get(location_id, {})
-                    
-                    # Get location type - if not found, assume it's a valid storage location
-                    loc_type = location_info.get('type', 'warehouse')  # Default to warehouse if type not found
-                    loc_name = location_info.get('name', 'Unknown Location')
-                    
-                    print(f"[DEBUG] Processing Inv: Loc={loc_name}, Type={loc_type}, Qty={inv.get('available_qty')}")
 
-                    # Skip scrap and quality locations
+                    # Default to 'warehouse' if location type unknown — treat as usable stock
+                    loc_type = location_info.get('type', 'warehouse')
+                    loc_name = location_info.get('name', 'Unknown Location')
+
+                    # Skip scrap and quality-hold locations — not usable for production
                     if loc_type in ['scrap', 'quality']:
-                        print(f"[DEBUG] Skipping location {loc_name} (type: {loc_type})")
                         continue
-                    
+
                     loc_available = Decimal(str(inv.get('available_qty', 0)))
                     loc_allocated = Decimal(str(inv.get('allocated_qty', 0)))
-                    
+
                     available_qty += loc_available
                     allocated_qty += loc_allocated
-                    
+
                     location_breakdown.append({
                         'location_id': location_id,
                         'location_name': loc_name,
@@ -1103,12 +1108,12 @@ class BOMService:
                         'free_qty': float(loc_available - loc_allocated)
                     })
             
-            # If inventory table had no data, use fallback from inventory_items
-            if fallback_qty > 0 and available_qty == 0:
+            # Apply fallback from inventory_items if the inventory table had no usable rows
+            if fallback_qty > Decimal('0') and available_qty == Decimal('0'):
                 available_qty = fallback_qty
-                print(f"[DEBUG] Applied fallback quantity: {available_qty}")
-            
-            print(f"[DEBUG] Final Available Qty: {available_qty}")
+                allocated_qty = fallback_allocated  # Fix 14: carry through actual allocation
+
+
             
             # Calculate free quantity
             if include_allocated:

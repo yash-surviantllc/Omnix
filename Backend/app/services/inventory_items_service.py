@@ -12,6 +12,38 @@ from app.core.exceptions import NotFoundException, ValidationException
 
 
 class InventoryItemsService:
+
+    @staticmethod
+    def _compute_status(
+        quantity: Decimal,
+        reorder_level: Decimal,
+        min_stock_level: Decimal = Decimal('0')
+    ) -> str:
+        """
+        Compute inventory status from quantity, reorder_level, and min_stock_level.
+        Returns Title Case string matching frontend expectations.
+
+        Thresholds:
+          qty <= 0                               -> 'Out of Stock'
+          min_stock_level > 0:
+            qty <= min_stock_level               -> 'Critical'  (below safety stock)
+          else (min_stock_level not set):
+            qty <= reorder_level * 0.25          -> 'Critical'  (25% heuristic)
+          qty <= reorder_level                   -> 'Low Stock'  (below reorder point)
+          qty >  reorder_level                   -> 'Sufficient'
+        """
+        if quantity <= Decimal('0'):
+            return 'Out of Stock'
+        # Use min_stock_level (safety stock) when explicitly configured (> 0)
+        if min_stock_level > Decimal('0'):
+            if quantity <= min_stock_level:
+                return 'Critical'
+        elif reorder_level > Decimal('0') and quantity <= reorder_level * Decimal('0.25'):
+            # Fallback heuristic: 25% of reorder level
+            return 'Critical'
+        if reorder_level > Decimal('0') and quantity <= reorder_level:
+            return 'Low Stock'
+        return 'Sufficient'
     
     @staticmethod
     async def list_inventory_items(
@@ -29,7 +61,8 @@ class InventoryItemsService:
         query = db.table('inventory_items').select('*')
         
         if status:
-            query = query.eq('status', status)
+            # Use ilike for case-insensitive matching (handles legacy lowercase rows)
+            query = query.ilike('status', status)
         
         if category:
             query = query.eq('category', category)
@@ -92,7 +125,16 @@ class InventoryItemsService:
                 unit=item['unit'],
                 location=item.get('location'),
                 reorder_level=Decimal(str(item.get('reorder_level', 0))),
-                status=item['status'],
+                min_stock_level=Decimal(str(item.get('min_stock_level', 0) or 0)),
+                max_stock_level=Decimal(str(item.get('max_stock_level'))) if item.get('max_stock_level') is not None else None,
+                # Normalize status to Title Case — DB may have legacy lowercase values.
+                # _compute_status recalculates from quantity+reorder_level+min_stock_level
+                # always producing correct Title Case without depending on stale DB status.
+                status=InventoryItemsService._compute_status(
+                    quantity,
+                    Decimal(str(item.get('reorder_level', 0))),
+                    Decimal(str(item.get('min_stock_level', 0) or 0))
+                ),
                 unit_cost=Decimal(str(item['unit_cost'])),
                 total_value=quantity * Decimal(str(item['unit_cost']))
             ))
@@ -135,6 +177,13 @@ class InventoryItemsService:
         item['free_quantity'] = quantity - allocated  # FIXED: Actual free stock
         item['allocated_quantity'] = allocated
         item['total_value'] = quantity * Decimal(str(item['unit_cost']))
+        # Normalize status to Title Case regardless of what the DB stored (Fix 15),
+        # and use min_stock_level for accurate Critical threshold (Fix 16)
+        item['status'] = InventoryItemsService._compute_status(
+            quantity,
+            Decimal(str(item.get('reorder_level', 0))),
+            Decimal(str(item.get('min_stock_level', 0) or 0))
+        )
         
         return InventoryItemResponse(**item)
     
@@ -162,29 +211,28 @@ class InventoryItemsService:
         if existing_name.data:
             raise ValidationException(detail="Material name already exists")
         
-        # Validate reorder level
-        if item_data.reorder_level > item_data.quantity:
-            raise ValidationException(detail="Reorder level cannot exceed available quantity")
+        # Validate inputs — NOTE: reorder_level > quantity is NOT an error.
+        # A reorder level higher than current stock simply means we're already
+        # below the reorder threshold and should reorder. Do not block creation.
         
         # Create item
         item_dict = item_data.model_dump()
         # FIX: Insert with 0 quantity first. The transaction trigger will update it to the correct value.
         # This prevents double counting (Insert + Trigger Update).
-        target_quantity = float(item_data.quantity)
-        item_dict['quantity'] = 0.0 
+        target_quantity = Decimal(str(item_data.quantity))
+        item_dict['quantity'] = 0.0
         item_dict['reorder_level'] = float(item_data.reorder_level)
+        item_dict['min_stock_level'] = float(item_data.min_stock_level) if item_data.min_stock_level is not None else 0.0
+        item_dict['max_stock_level'] = float(item_data.max_stock_level) if item_data.max_stock_level is not None else None
         item_dict['unit_cost'] = float(item_data.unit_cost)
         item_dict['created_by'] = user_id
         
-        # Determine initial status based on TARGET quantity
-        if target_quantity == 0:
-            item_dict['status'] = 'Out of Stock'
-        elif target_quantity <= float(item_data.reorder_level) * 0.5:
-            item_dict['status'] = 'Critical'
-        elif target_quantity <= float(item_data.reorder_level):
-            item_dict['status'] = 'Low Stock'
-        else:
-            item_dict['status'] = 'Sufficient'
+        # Determine initial status based on TARGET quantity using shared helper
+        item_dict['status'] = InventoryItemsService._compute_status(
+            target_quantity,
+            Decimal(str(item_data.reorder_level)),
+            Decimal(str(item_data.min_stock_level or 0))
+        )
         
         result = db.table('inventory_items').insert(item_dict).execute()
         
@@ -336,9 +384,11 @@ class InventoryItemsService:
             update_dict['category'] = item_data.category
         
         if item_data.quantity is not None:
-            update_dict['quantity'] = float(item_data.quantity)
-            
-            # Log transaction if quantity changed
+            # Do NOT add quantity to update_dict.
+            # The DB trigger apply_inventory_item_transaction (BEFORE INSERT on
+            # inventory_item_transactions) is the sole authority for updating
+            # inventory_items.quantity. Adding quantity to update_dict AND logging
+            # a transaction would apply the change twice.
             old_qty = Decimal(str(old_item['quantity']))
             new_qty = item_data.quantity
             
@@ -354,6 +404,13 @@ class InventoryItemsService:
                     reason='Manual adjustment via update',
                     user_id=user_id
                 )
+                # Recalculate and persist status based on new quantity
+                new_status = InventoryItemsService._compute_status(
+                    new_qty,
+                    Decimal(str(old_item['reorder_level'])),
+                    Decimal(str(old_item.get('min_stock_level', 0) or 0))
+                )
+                update_dict['status'] = new_status
         
         if item_data.unit is not None:
             update_dict['unit'] = item_data.unit
@@ -362,12 +419,18 @@ class InventoryItemsService:
             update_dict['location'] = item_data.location
         
         if item_data.reorder_level is not None:
-            # Validate reorder level
-            current_qty = Decimal(str(update_dict.get('quantity', old_item['quantity'])))
-            if item_data.reorder_level > current_qty:
-                raise ValidationException(detail="Reorder level cannot exceed available quantity")
-            
+            # No quantity floor check here — reorder level CAN legitimately exceed
+            # current quantity; that is precisely the condition that signals reordering
+            # is needed. We do recalculate status if reorder_level changes.
             update_dict['reorder_level'] = float(item_data.reorder_level)
+            # Recompute status in case new reorder_level changes the threshold bracket
+            current_qty_for_status = Decimal(str(old_item['quantity']))
+            new_status = InventoryItemsService._compute_status(
+                current_qty_for_status,
+                item_data.reorder_level,
+                Decimal(str(old_item.get('min_stock_level', 0) or 0))
+            )
+            update_dict['status'] = new_status
         
         if item_data.unit_cost is not None:
             update_dict['unit_cost'] = float(item_data.unit_cost)
@@ -416,13 +479,13 @@ class InventoryItemsService:
         if new_qty < 0:
             raise ValidationException(detail="Adjustment would result in negative quantity")
         
-        # Update quantity
-        db.table('inventory_items').update({
-            'quantity': float(new_qty),
-            'updated_by': user_id
-        }).eq('id', adjustment.inventory_item_id).execute()
+        # Do NOT update quantity directly here.
+        # The DB trigger apply_inventory_item_transaction (BEFORE INSERT on
+        # inventory_item_transactions) reads current quantity and applies
+        # quantity_change atomically. A direct UPDATE here followed by the
+        # transaction INSERT would apply the change twice (double-update bug).
         
-        # Log transaction
+        # Log transaction — trigger handles the quantity update
         await InventoryItemsService._log_transaction(
             inventory_item_id=adjustment.inventory_item_id,
             transaction_type='ADJUST',
@@ -435,6 +498,17 @@ class InventoryItemsService:
             notes=adjustment.notes,
             user_id=user_id
         )
+        
+        # Recalculate and persist status based on new quantity
+        new_status = InventoryItemsService._compute_status(
+            new_qty,
+            Decimal(str(item_data['reorder_level'])),
+            Decimal(str(item_data.get('min_stock_level', 0) or 0))
+        )
+        db.table('inventory_items').update({
+            'status': new_status,
+            'updated_by': user_id
+        }).eq('id', adjustment.inventory_item_id).execute()
         
         return await InventoryItemsService.get_inventory_item(adjustment.inventory_item_id)
     
@@ -490,7 +564,7 @@ class InventoryItemsService:
         if transaction_type:
             query = query.eq('transaction_type', transaction_type)
         
-        result = query.order('transaction_date', desc=True).limit(limit).execute()
+        result = query.order('created_at', desc=True).limit(limit).execute()
         
         transactions = []
         for trans in result.data:
@@ -542,11 +616,14 @@ class InventoryItemsService:
         for item in result.data:
             status = item['status']
             
-            if status == 'Out of Stock':
+            # Compare case-insensitively to handle legacy lowercase DB values
+            # ('sufficient') and current Title Case values ('Sufficient', etc.)
+            status_lower = status.lower() if status else ''
+            if status_lower == 'out of stock':
                 out_of_stock_count += 1
-            elif status == 'Critical':
+            elif status_lower == 'critical':
                 critical_count += 1
-            elif status == 'Low Stock':
+            elif status_lower == 'low stock':
                 low_stock_count += 1
             else:
                 sufficient_count += 1

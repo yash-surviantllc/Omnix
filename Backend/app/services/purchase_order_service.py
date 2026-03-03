@@ -545,14 +545,33 @@ class PurchaseOrderService:  # Changed from ProductionOrderService
 
         # Persist aggregated material requirements
         for material_id, info in material_totals.items():
+            required_qty = float(info['required_qty'])
+            # Compute real availability_status from inventory instead of hardcoding 'Shortage'
+            try:
+                inv_check = db.table('inventory').select('available_qty', 'allocated_qty').eq('product_id', material_id).execute()
+                free_stock = sum(
+                    float(r['available_qty']) - float(r['allocated_qty'])
+                    for r in inv_check.data
+                ) if inv_check.data else 0.0
+                if free_stock < 0:
+                    free_stock = 0.0
+                if free_stock >= required_qty:
+                    avail_status = 'Available'
+                elif free_stock > 0:
+                    avail_status = 'Partial'
+                else:
+                    avail_status = 'Shortage'
+            except Exception:
+                avail_status = 'Shortage'
+            
             db.table('order_materials').insert({
                 'purchase_order_id': created_order['id'],
                 'product_id': material_id,
-                'required_qty': float(info['required_qty']),
+                'required_qty': required_qty,
                 'allocated_qty': 0.0,
                 'issued_qty': 0.0,
                 'unit': info['unit'],
-                'availability_status': 'Shortage',
+                'availability_status': avail_status,
                 'created_at': datetime.utcnow().isoformat(),
                 'updated_at': datetime.utcnow().isoformat()
             }).execute()
@@ -609,15 +628,37 @@ class PurchaseOrderService:  # Changed from ProductionOrderService
             mat_reqs = await bom_service.calculate_material_requirements(product_id, quantity)
             
             for req in mat_reqs:
+                required_qty = float(req.required_quantity)
+                
+                # Compute real availability_status from inventory instead of
+                # hardcoding 'Shortage'. Query free stock for this material.
+                try:
+                    inv_res = db.table('inventory').select('available_qty', 'allocated_qty').eq('product_id', req.material_id).execute()
+                    free_stock = sum(
+                        float(r['available_qty']) - float(r['allocated_qty'])
+                        for r in inv_res.data
+                    ) if inv_res.data else 0.0
+                    if free_stock < 0:
+                        free_stock = 0.0
+                    
+                    if free_stock >= required_qty:
+                        avail_status = 'Available'
+                    elif free_stock > 0:
+                        avail_status = 'Partial'
+                    else:
+                        avail_status = 'Shortage'
+                except Exception:
+                    avail_status = 'Shortage'  # Safe fallback
+                
                 # Create material requirement
                 material_data = {
                     'purchase_order_id': order_id,
                     'product_id': req.material_id,
-                    'required_qty': float(req.required_quantity),
+                    'required_qty': required_qty,
                     'allocated_qty': 0.0,
                     'issued_qty': 0.0,
                     'unit': req.unit,
-                    'availability_status': 'Shortage',
+                    'availability_status': avail_status,
                     'created_at': datetime.utcnow().isoformat(),
                     'updated_at': datetime.utcnow().isoformat()
                 }
@@ -976,13 +1017,20 @@ class PurchaseOrderService:  # Changed from ProductionOrderService
         for item in bom_materials.data:
             required = Decimal(str(item['quantity'])) * quantity
             
-            # Get stock
-            stock_query = db.table('inventory').select('quantity').eq('product_id', item['material_id'])
+            # Get stock — inventory table uses available_qty and allocated_qty.
+            # There is NO 'quantity' column on inventory. Free quantity is
+            # available_qty - allocated_qty.
+            stock_query = db.table('inventory').select('available_qty', 'allocated_qty').eq('product_id', item['material_id'])
             if target_location_id:
                 stock_query = stock_query.eq('location_id', target_location_id)
             
             stock_res = stock_query.execute()
-            available = sum(Decimal(str(s['quantity'])) for s in stock_res.data) if stock_res.data else Decimal('0')
+            available = sum(
+                Decimal(str(s['available_qty'])) - Decimal(str(s['allocated_qty']))
+                for s in stock_res.data
+            ) if stock_res.data else Decimal('0')
+            if available < Decimal('0'):
+                available = Decimal('0')
             
             shortage = required - available
             if shortage < 0: shortage = Decimal('0')
@@ -1030,7 +1078,8 @@ class PurchaseOrderService:  # Changed from ProductionOrderService
         if not order.data:
             raise NotFoundException(detail="Purchase order not found")
 
-        materials_result = db.table('order_materials').select('*').eq('order_id', order_id).execute()
+        # Column is purchase_order_id, NOT order_id (order_id does not exist on order_materials)
+        materials_result = db.table('order_materials').select('*').eq('purchase_order_id', order_id).execute()
         materials = []
 
         for mat in materials_result.data:
@@ -1038,9 +1087,19 @@ class PurchaseOrderService:  # Changed from ProductionOrderService
             required_qty = Decimal(str(mat['required_qty']))
             allocated_qty = Decimal(str(mat.get('allocated_qty', 0)))
             issued_qty = Decimal(str(mat.get('issued_qty', 0)))
-            available_qty = Decimal(str(mat.get('available_qty', allocated_qty)))
+            # order_materials has no available_qty column. Look up from inventory.
+            inv_stock = db.table('inventory').select('available_qty', 'allocated_qty').eq('product_id', mat['product_id']).execute()
+            if inv_stock.data:
+                available_qty = sum(
+                    Decimal(str(r['available_qty'])) - Decimal(str(r['allocated_qty']))
+                    for r in inv_stock.data
+                )
+                if available_qty < Decimal('0'):
+                    available_qty = Decimal('0')
+            else:
+                available_qty = Decimal('0')
             shortage_qty = required_qty - available_qty
-            if shortage_qty < 0:
+            if shortage_qty < Decimal('0'):
                 shortage_qty = Decimal('0')
 
             materials.append(MaterialRequirement(

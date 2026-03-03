@@ -1319,12 +1319,79 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
                   <label className="block text-sm font-medium text-zinc-700 mb-1">
                     {language === 'en' ? 'Start Date & Time' : 'प्रारंभ तिथि और समय'}
                   </label>
-                  <Input
-                    type="datetime-local"
-                    value={newWorkOrderData.scheduled_start}
-                    onChange={(e) => setNewWorkOrderData(prev => ({ ...prev, scheduled_start: e.target.value }))}
-                    className="w-full"
-                  />
+                  <div className="flex gap-2">
+                    <Input
+                      type="date"
+                      value={newWorkOrderData.scheduled_start ? newWorkOrderData.scheduled_start.split('T')[0] : ''}
+                      onChange={(e) => {
+                        const newDate = e.target.value;
+                        const currentTime = newWorkOrderData.scheduled_start ? newWorkOrderData.scheduled_start.split('T')[1] : '09:00';
+                        if (newDate) {
+                          setNewWorkOrderData(prev => ({ ...prev, scheduled_start: `${newDate}T${currentTime}` }));
+                        }
+                      }}
+                      className="flex-1"
+                    />
+                    <select
+                      value={newWorkOrderData.scheduled_start ? newWorkOrderData.scheduled_start.split('T')[1]?.substring(0, 5) : ''}
+                      onChange={(e) => {
+                        const newTime = e.target.value;
+                        const currentDate = newWorkOrderData.scheduled_start ? newWorkOrderData.scheduled_start.split('T')[0] : new Date().toISOString().split('T')[0];
+                        if (newTime) {
+                          setNewWorkOrderData(prev => ({ ...prev, scheduled_start: `${currentDate}T${newTime}` }));
+                        }
+                      }}
+                      className="w-32 p-2 border border-zinc-300 rounded-md"
+                    >
+                      <option value="">{language === 'en' ? 'Time...' : 'समय...'}</option>
+                      {(() => {
+                        const selectedShift = shifts.find(s => s.name === newWorkOrderData.shift);
+                        if (!selectedShift) return <option value="09:00">09:00</option>;
+
+                        const times: string[] = [];
+                        const start = parseInt(selectedShift.start_time.split(':')[0]);
+                        const end = parseInt(selectedShift.end_time.split(':')[0]);
+                        const startMin = parseInt(selectedShift.start_time.split(':')[1] || '0');
+                        const endMin = parseInt(selectedShift.end_time.split(':')[1] || '0');
+
+                        // Handle day shift (e.g. 06:00 to 14:00) vs night shift (e.g. 22:00 to 06:00)
+                        let currentHour = start;
+                        let currentMin = startMin;
+
+                        // Safety break to prevent infinite loops
+                        let safety = 0;
+                        while (safety < 48) { // Max 24 hours * 2 slots/hr
+                          const timeString = `${currentHour.toString().padStart(2, '0')}:${currentMin.toString().padStart(2, '0')}`;
+                          times.push(timeString);
+
+                          // Check if we reached end time
+                          if (currentHour === end && currentMin === endMin) break;
+
+                          // Increment by 30 mins
+                          currentMin += 30;
+                          if (currentMin >= 60) {
+                            currentMin = 0;
+                            currentHour += 1;
+                          }
+                          if (currentHour >= 24) currentHour = 0;
+
+                          // For night shift wrapping logic check
+                          if (start > end) {
+                            // Night shift case: checks are complex, loop acts as generator
+                            // Just define strict equality break above
+                          } else {
+                            // Day shift case: output times greater than end are invalid
+                            if (currentHour > end || (currentHour === end && currentMin > endMin)) break;
+                          }
+                          safety++;
+                        }
+
+                        return times.map(t => (
+                          <option key={t} value={t}>{t}</option>
+                        ));
+                      })()}
+                    </select>
+                  </div>
                 </div>
               </div>
 

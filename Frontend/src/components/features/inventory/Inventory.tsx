@@ -311,11 +311,22 @@ export function Inventory({ language }: InventoryProps) {
 
   const t = translations[language];
 
+  // Normalize status to Title Case so filters, badges, and stats all work
+  // regardless of what case legacy DB rows stored (e.g. 'sufficient' → 'Sufficient')
+  const normalizeStatus = (raw: string): 'Sufficient' | 'Low Stock' | 'Critical' | 'Out of Stock' => {
+    const lower = (raw || '').toLowerCase().trim();
+    if (lower === 'out of stock') return 'Out of Stock';
+    if (lower === 'critical') return 'Critical';
+    if (lower === 'low stock') return 'Low Stock';
+    return 'Sufficient';
+  };
+
   const allInventoryItems: InventoryDisplayItem[] = inventoryItems.map((item) => {
     const available = item.quantity;
     const allocated = item.allocated_quantity || 0;
-    const free = item.free_quantity || available;
+    const free = item.free_quantity ?? available;
     const reorderLevel = item.reorder_level;
+    const status = normalizeStatus(item.status);
 
     return {
       id: item.id,
@@ -326,7 +337,7 @@ export function Inventory({ language }: InventoryProps) {
       free: `${free} ${item.unit}`,
       location: item.location || 'N/A',
       reorderLevel: `${reorderLevel} ${item.unit}`,
-      status: item.status as 'Sufficient' | 'Low Stock' | 'Critical' | 'Out of Stock',
+      status,
       unit: item.unit,
       // Numeric values for calculations
       availableNum: available,
@@ -550,7 +561,7 @@ export function Inventory({ language }: InventoryProps) {
               <div className="flex justify-between text-xs mb-1">
                 <span className="text-zinc-600">{language === 'en' ? 'Stock Level' : 'स्टॉक स्तर'}</span>
                 <span>
-                  {Math.round((item.freeNum / item.availableNum) * 100)}% {language === 'en' ? 'free' : 'मुक्त'}
+                  {item.availableNum > 0 ? Math.round((item.freeNum / item.availableNum) * 100) : 0}% {language === 'en' ? 'free' : 'मुक्त'}
                 </span>
               </div>
               <div className="h-2 bg-zinc-200 rounded-full overflow-hidden">
@@ -563,7 +574,7 @@ export function Inventory({ language }: InventoryProps) {
                         ? 'bg-zinc-500'
                         : 'bg-emerald-500'
                     }`}
-                  style={{ width: `${(item.freeNum / item.availableNum) * 100}%` }}
+                  style={{ width: `${item.availableNum > 0 ? (item.freeNum / item.availableNum) * 100 : 0}%` }}
                 />
               </div>
             </div>

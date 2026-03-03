@@ -77,8 +77,9 @@ ALTER SEQUENCE IF EXISTS material_requisition_seq RESTART WITH 1;
 -- 5. RE-INITIALIZE WIP STAGE METRICS
 -- This ensures the dashboard doesn't show empty/stale metrics for stages
 INSERT INTO wip_stage_metrics (stage_name, stage_sequence, target_time_minutes)
-SELECT name, sequence_number, COALESCE(target_avg_time_minutes, 30)
+SELECT DISTINCT ON (name) name, sequence_number, COALESCE(target_avg_time_minutes, 30)
 FROM wip_stages
+ORDER BY name, sequence_number
 ON CONFLICT (stage_name) DO UPDATE SET
     orders_count = 0,
     units_count = 0,

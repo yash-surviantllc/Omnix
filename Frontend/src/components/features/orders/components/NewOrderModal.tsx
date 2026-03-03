@@ -1,4 +1,4 @@
-import { XCircle, Clock, Package, ArrowRight } from 'lucide-react';
+import { XCircle, Package, ArrowRight } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -17,8 +17,6 @@ interface NewOrderData {
   priority: string;
   notes: string;
   shift: string;
-  startDate?: string;
-  endDate?: string;
 }
 
 interface NewOrderModalProps {
@@ -253,38 +251,6 @@ export function NewOrderModal({
                       ))
                     )}
                   </select>
-                </div>
-              </div>
-
-              {/* Production Timeline Section */}
-              <div className="bg-blue-50/50 p-5 rounded-xl border border-blue-100 space-y-4">
-                <h3 className="text-sm font-bold text-blue-900 flex items-center gap-2">
-                  <Clock className="w-4 h-4 text-blue-600" />
-                  {t.productionTimeline || 'Production Timeline'}
-                </h3>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1.5">
-                    <label className="block text-xs font-semibold text-blue-700">
-                      {t.startTime || 'Start Time'}
-                    </label>
-                    <Input
-                      type="datetime-local"
-                      value={orderData.startDate || ''}
-                      onChange={(e) => updateField('startDate', e.target.value)}
-                      className="w-full h-10 rounded-lg bg-white border-blue-200 focus:ring-blue-500/20 shadow-sm"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="block text-xs font-semibold text-blue-700">
-                      {t.endTime || 'End Time'}
-                    </label>
-                    <Input
-                      type="datetime-local"
-                      value={orderData.endDate || ''}
-                      onChange={(e) => updateField('endDate', e.target.value)}
-                      className="w-full h-10 rounded-lg bg-white border-blue-200 focus:ring-blue-500/20 shadow-sm"
-                    />
-                  </div>
                 </div>
               </div>
 

@@ -46,17 +46,24 @@ class OrderMaterialCreate(OrderMaterialBase):
     pass
 
 
-class OrderMaterialResponse(OrderMaterialBase):
+class OrderMaterialResponse(BaseModel):
     id: str
     purchase_order_id: str
-    order_id: str  # Required field
+    # DB column is 'product_id'. Service fills material_id from product_id.
+    material_id: Optional[str] = None
     material_code: Optional[str] = None
     material_name: Optional[str] = None
-    allocated_qty: Decimal
-    issued_qty: Decimal
-    total_cost: Decimal  # Required field
-    status: str  # Required field - Pending, Allocated, Issued, Completed
-    availability_status: str # Available, Shortage, Partial
+    required_qty: Decimal
+    allocated_qty: Decimal = Decimal('0')
+    issued_qty: Decimal = Decimal('0')
+    unit: str
+    # unit_cost, total_cost, order_id, status do NOT exist on order_materials table.
+    # Making them Optional prevents Pydantic validation crashes.
+    unit_cost: Optional[Decimal] = None
+    total_cost: Optional[Decimal] = None
+    order_id: Optional[str] = None
+    status: Optional[str] = None  # Not a DB column; derived if needed
+    availability_status: str = 'Available'
     created_at: datetime
     updated_at: datetime
     
@@ -72,8 +79,6 @@ class PurchaseOrderBase(BaseModel):  # Changed from ProductionOrderBase
     notes: Optional[str] = None
     customer_name: Optional[str] = None
     shift_number: Optional[str] = None
-    start_date: Optional[datetime] = None
-    end_date: Optional[datetime] = None
 
 
 class PurchaseOrderCreate(PurchaseOrderBase):  # Changed from ProductionOrderCreate
@@ -87,8 +92,6 @@ class PurchaseOrderMultiSKUCreate(BaseModel):  # Changed from ProductionOrderMul
     shift_number: Optional[str] = None
     due_date: date = Field(..., description="Target completion date")
     priority: str = Field(default="Medium", description="Low, Medium, High, Urgent")
-    start_date: Optional[datetime] = None
-    end_date: Optional[datetime] = None
     notes: Optional[str] = None
     items: List[POItemCreate] = Field(..., min_length=1, description="List of SKU items")
     ocr_document_url: Optional[str] = None

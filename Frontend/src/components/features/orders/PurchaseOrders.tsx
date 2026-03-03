@@ -73,9 +73,7 @@ export function PurchaseOrders({ language, onNavigate }: PurchaseOrdersProps) {
     items: [{ id: '1', product: '', quantity: '' }],
     dueDate: '',
     priority: 'MEDIUM',
-    notes: '',
-    startDate: '',
-    endDate: ''
+    notes: ''
   });
   const [associatedWorkOrders, setAssociatedWorkOrders] = useState<any[]>([]);
 
@@ -757,9 +755,7 @@ export function PurchaseOrders({ language, onNavigate }: PurchaseOrdersProps) {
       items: [{ id: '1', product: '', quantity: '' }],
       dueDate: '',
       priority: 'MEDIUM',
-      notes: '',
-      startDate: '',
-      endDate: ''
+      notes: ''
     });
   };
 
@@ -796,8 +792,6 @@ export function PurchaseOrders({ language, onNavigate }: PurchaseOrdersProps) {
         due_date: newOrderData.dueDate,
         priority: newOrderData.priority.toUpperCase(),
         notes: newOrderData.notes || undefined,
-        start_date: newOrderData.startDate ? newOrderData.startDate : undefined,
-        end_date: newOrderData.endDate ? newOrderData.endDate : undefined,
         shift_number: newOrderData.shift || undefined,
         items: itemsToCreate
       });

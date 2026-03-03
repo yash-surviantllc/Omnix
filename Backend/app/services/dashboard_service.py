@@ -83,25 +83,24 @@ class DashboardService:
         low_count = 0
         
         try:
-            # Get all active inventory items with low or critical status
+            # Get all active inventory items — note: inventory_items has NO is_active column.
+            # Query all items and use quantity vs reorder_level for shortage detection.
             items = db.table('inventory_items').select(
-                'id', 'material_name', 'quantity', 'reorder_level', 'status', 'allocated_quantity'
-            ).eq('is_active', True).execute()
+                'id', 'material_name', 'quantity', 'reorder_level', 'status'
+            ).execute()
             
             for item in items.data:
                 status = item.get('status', 'sufficient')
                 quantity = Decimal(str(item.get('quantity', 0)))
-                allocated_quantity = Decimal(str(item.get('allocated_quantity', 0)))
-                free_qty = quantity - allocated_quantity
                 reorder_level = Decimal(str(item.get('reorder_level', 0)))
                 
-                # Count items below reorder level
-                if free_qty <= reorder_level:
+                # Count items at or below reorder level as shortages
+                if quantity <= reorder_level:
                     shortage_count += 1
                     
-                    if status == 'critical' or free_qty == 0:
+                    if quantity <= Decimal('0') or status.lower() == 'out of stock':
                         critical_count += 1
-                    elif status == 'low':
+                    elif status.lower() in ('critical', 'low stock'):
                         low_count += 1
                         
         except Exception:
@@ -145,10 +144,10 @@ class DashboardService:
             from datetime import date
             today = date.today().isoformat()
             
-            # Count orders completed today
+            # Count orders completed today — column is end_date, not completion_date
             completed_orders = db.table('purchase_orders').select(
                 'id', count='exact'
-            ).eq('status', 'Completed').gte('completion_date', today).execute()
+            ).eq('status', 'Completed').gte('end_date', today).execute()
             
             completed_today_count = completed_orders.count if hasattr(completed_orders, 'count') else len(completed_orders.data or [])
             
@@ -358,8 +357,8 @@ class DashboardService:
         # ========================================
         try:
             inv_items_trans = db.table('inventory_item_transactions').select(
-                'id', 'transaction_type', 'inventory_item_id', 'quantity_change', 'reason', 'created_by', 'transaction_date'
-            ).order('transaction_date', desc=True).limit(10).execute()
+                'id', 'transaction_type', 'inventory_item_id', 'quantity_change', 'reason', 'created_by', 'created_at'
+            ).order('created_at', desc=True).limit(10).execute()
             
             for trans in inv_items_trans.data:
                 # Get inventory item details
@@ -401,7 +400,7 @@ class DashboardService:
                         activity_type=f"inventory_{trans['transaction_type'].lower()}",
                         description=description,
                         user_name=user_name,
-                        timestamp=datetime.fromisoformat(trans['transaction_date'].replace('Z', '+00:00')).replace(tzinfo=None),
+                        timestamp=datetime.fromisoformat(trans['created_at'].replace('Z', '+00:00')).replace(tzinfo=None),
                         icon=icon
                     ))
         except Exception:
@@ -464,8 +463,10 @@ class DashboardService:
         # ========================================
         try:
             # Get recent inventory transactions
+            # DB columns: id, transaction_type, product_id, quantity, created_by, created_at, notes
+            # NOTE: 'performed_by' does NOT exist — the column is 'created_by'
             trans_result = db.table('inventory_transactions').select(
-                'id', 'transaction_type', 'product_id', 'quantity', 'performed_by', 'created_at', 'notes'
+                'id', 'transaction_type', 'product_id', 'quantity', 'created_by', 'created_at', 'notes'
             ).order('created_at', desc=True).limit(10).execute()
             
             for trans in trans_result.data:
@@ -476,8 +477,8 @@ class DashboardService:
                 
                 # Get user name
                 user_name = "System"
-                if trans.get('performed_by'):
-                    user = db.table('users').select('full_name', 'username').eq('id', trans['performed_by']).execute()
+                if trans.get('created_by'):
+                    user = db.table('users').select('full_name', 'username').eq('id', trans['created_by']).execute()
                     if user.data:
                         user_name = user.data[0].get('full_name') or user.data[0].get('username')
                 

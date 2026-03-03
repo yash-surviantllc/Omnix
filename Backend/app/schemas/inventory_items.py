@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, AliasChoices
 from typing import Optional
 from datetime import datetime
 from decimal import Decimal
@@ -16,6 +16,8 @@ class InventoryItemBase(BaseModel):
     unit: str = Field(..., min_length=1, max_length=20)
     location: Optional[str] = None
     reorder_level: Decimal = Field(default=0, ge=0)
+    min_stock_level: Decimal = Field(default=0, ge=0)
+    max_stock_level: Optional[Decimal] = Field(default=None, ge=0)
     unit_cost: Decimal = Field(default=0, ge=0)
     description: Optional[str] = None
 
@@ -33,6 +35,8 @@ class InventoryItemUpdate(BaseModel):
     unit: Optional[str] = Field(None, min_length=1, max_length=20)
     location: Optional[str] = None
     reorder_level: Optional[Decimal] = Field(None, ge=0)
+    min_stock_level: Optional[Decimal] = Field(None, ge=0)
+    max_stock_level: Optional[Decimal] = Field(None, ge=0)
     unit_cost: Optional[Decimal] = Field(None, ge=0)
     description: Optional[str] = None
 
@@ -65,6 +69,8 @@ class InventoryItemListResponse(BaseModel):
     unit: str
     location: Optional[str]
     reorder_level: Decimal
+    min_stock_level: Decimal
+    max_stock_level: Optional[Decimal]
     status: str
     unit_cost: Decimal
     total_value: Decimal
@@ -113,17 +119,24 @@ class InventoryItemTransactionResponse(BaseModel):
     quantity_after: Decimal
     unit: str
     unit_cost: Optional[Decimal] = None
+    # total_cost and notes do NOT exist as DB columns on inventory_item_transactions.
+    # Making them Optional prevents Pydantic validation crashes when the **trans
+    # dict is unpacked from a DB row that lacks these fields.
     total_cost: Optional[Decimal] = None
     reference_type: Optional[str] = None
-    reference_id: Optional[str] = None
+    reference_id: Optional[str] = None  # DB column exists but is UUID, keep Optional
     reference_number: Optional[str] = None
     reason: Optional[str] = None
-    notes: Optional[str] = None
-    transaction_date: datetime
+    notes: Optional[str] = None  # DB has no notes column — will always be None
+    # DB column is 'created_at', not 'transaction_date'.
+    # AliasChoices lets Pydantic read from 'created_at' in the DB dict,
+    # while the field is named 'transaction_date' and serialized as such to the frontend.
+    transaction_date: datetime = Field(validation_alias=AliasChoices('transaction_date', 'created_at'))
     created_by: Optional[str] = None
     
     class Config:
         from_attributes = True
+        populate_by_name = True
 
 
 # =============================================
@@ -137,8 +150,9 @@ class StockAlertItemResponse(BaseModel):
     material_code: Optional[str] = None
     material_name: Optional[str] = None
     alert_type: str
-    alert_level: str
-    current_quantity: Decimal
+    # DB column is 'severity', not 'alert_level'. Fixed to prevent Pydantic crash.
+    severity: Optional[str] = None
+    current_quantity: Optional[Decimal] = None
     threshold_quantity: Optional[Decimal] = None
     status: str
     message: Optional[str] = None
