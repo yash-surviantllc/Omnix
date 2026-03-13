@@ -121,7 +121,8 @@ class InventoryItemsService:
                 material_name=item['material_name'],
                 quantity=quantity,
                 allocated_quantity=allocated,
-                free_quantity=quantity - allocated,  # FIXED: Actual free stock
+                free_quantity=quantity - allocated,
+                transit_quantity=transit,
                 unit=item['unit'],
                 location=item.get('location'),
                 reorder_level=Decimal(str(item.get('reorder_level', 0))),
@@ -174,8 +175,9 @@ class InventoryItemsService:
         except Exception:
             pass
 
-        item['free_quantity'] = quantity - allocated  # FIXED: Actual free stock
+        item['free_quantity'] = quantity - allocated
         item['allocated_quantity'] = allocated
+        item['transit_quantity'] = transit
         item['total_value'] = quantity * Decimal(str(item['unit_cost']))
         # Normalize status to Title Case regardless of what the DB stored (Fix 15),
         # and use min_stock_level for accurate Critical threshold (Fix 16)

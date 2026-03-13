@@ -163,7 +163,8 @@ export function Inventory({ language }: InventoryProps) {
       material: 'Material',
       available: 'Available',
       allocated: 'Allocated',
-      free: 'Transit Stock',
+      free: 'Free Stock',
+      transit: 'Transit Stock',
       location: 'Location',
       status: 'Status',
       reorderLevel: 'Reorder Level',
@@ -182,7 +183,8 @@ export function Inventory({ language }: InventoryProps) {
       material: 'सामग्री',
       available: 'उपलब्ध',
       allocated: 'आवंटित',
-      free: 'ट्रांजिट स्टॉक',
+      free: 'फ्री स्टॉक',
+      transit: 'ट्रांजिट स्टॉक',
       location: 'स्थान',
       status: 'स्थिति',
       reorderLevel: 'पुन: ऑर्डर स्तर',
@@ -210,7 +212,8 @@ export function Inventory({ language }: InventoryProps) {
       critical: 'गंभीर',
       unit: 'ಯೂನಿಟ್',
       addInventory: 'ಸೂಚಿ ಸೇರಿಸಿ',
-      totalMaterials: 'ಒಟ್ಟು ಸಾಮಾನುಗಳು'
+      totalMaterials: 'ಒಟ್ಟು ಸಾಮಾನುಗಳು',
+      transit: 'ಟ್ರಾನ್ಸಿಟ್ ಸ್ಟಾಕ್'
     },
     ta: {
       title: 'சரக்கு',
@@ -229,7 +232,8 @@ export function Inventory({ language }: InventoryProps) {
       critical: 'கритிகல்',
       unit: 'அலகு',
       addInventory: 'பட்டியல் சேர்',
-      totalMaterials: 'மொத்த பொருட்கள்'
+      totalMaterials: 'மொத்த பொருட்கள்',
+      transit: 'டிரான்சிட் பங்கு'
     },
     te: {
       title: 'సమావేశం',
@@ -248,7 +252,8 @@ export function Inventory({ language }: InventoryProps) {
       critical: 'క్రిటికల్',
       unit: 'అలకా',
       addInventory: 'జాబితా జోడించు',
-      totalMaterials: 'మొత్తం పదార్థాలు'
+      totalMaterials: 'మొత్తం పదార్థాలు',
+      transit: 'ట్రాన్సిట్ స్టాక్'
     },
     mr: {
       title: 'संचय',
@@ -267,7 +272,8 @@ export function Inventory({ language }: InventoryProps) {
       critical: 'गंभीर',
       unit: 'यूनिट',
       addInventory: 'यादी जोडा',
-      totalMaterials: 'एकूण साहित्य'
+      totalMaterials: 'एकूण साहित्य',
+      transit: 'ट्रान्झिट स्टॉक'
     },
     gu: {
       title: 'સ્થોલ',
@@ -286,7 +292,8 @@ export function Inventory({ language }: InventoryProps) {
       critical: 'ક્રિટિકલ',
       unit: 'યૂનિટ',
       addInventory: 'યાદી ઉમેરો',
-      totalMaterials: 'કુલ સામગ્રી'
+      totalMaterials: 'કુલ સામગ્રી',
+      transit: 'ટ્રાન્ઝિટ સ્ટોક'
     },
     pa: {
       title: 'ਖੋਜ',
@@ -296,7 +303,7 @@ export function Inventory({ language }: InventoryProps) {
       material: 'ਮਾਟੇਰਿਅਲ',
       available: 'उपलब्ध',
       allocated: 'ਵਿਭਾਜਿਤ',
-      free: 'ਟ੍ਰਾਂਜਿਟ ਸਟਾਕ',
+      free: 'ਫ੍ਰੀ ਸਟਾਕ',
       location: 'ਸਥਾਨ',
       status: 'ਸਥਿਤਿ',
       reorderLevel: 'ਪੁਨ: ਆਰਡਰ ਸਤਰ',
@@ -305,7 +312,8 @@ export function Inventory({ language }: InventoryProps) {
       critical: 'ਕ੍ਰਿਟਿਕਲ',
       unit: 'ਯੂਨਿਟ',
       addInventory: 'ਸੂਚੀ ਜੋੜੋ',
-      totalMaterials: 'ਕੁੱਲ ਸਮੱਗਰੀ'
+      totalMaterials: 'ਕੁੱਲ ਸਮੱਗਰੀ',
+      transit: 'ਟ੍ਰਾਂਜਿਟ ਸਟਾਕ'
     }
   };
 
@@ -324,7 +332,8 @@ export function Inventory({ language }: InventoryProps) {
   const allInventoryItems: InventoryDisplayItem[] = inventoryItems.map((item) => {
     const available = item.quantity;
     const allocated = item.allocated_quantity || 0;
-    const free = item.free_quantity ?? available;
+    const transit = item.transit_quantity || 0;
+    const free = item.free_quantity ?? (available - allocated);
     const reorderLevel = item.reorder_level;
     const status = normalizeStatus(item.status);
 
@@ -335,13 +344,16 @@ export function Inventory({ language }: InventoryProps) {
       available: `${available} ${item.unit}`,
       allocated: `${allocated} ${item.unit}`,
       free: `${free} ${item.unit}`,
+      transit: `${transit} ${item.unit}`,
       location: item.location || 'N/A',
       reorderLevel: `${reorderLevel} ${item.unit}`,
       status,
       unit: item.unit,
       // Numeric values for calculations
       availableNum: available,
-      freeNum: free
+      freeNum: free,
+      transitNum: transit,
+      reorderLevelNum: reorderLevel
     } as InventoryDisplayItem;
   });
 
@@ -550,9 +562,13 @@ export function Inventory({ language }: InventoryProps) {
               </div>
               <div className="flex justify-between">
                 <span className="text-zinc-600">{t.free}:</span>
-                <span className={item.free <= item.reorderLevel ? 'text-red-600' : 'text-emerald-600'}>
+                <span className={item.freeNum <= item.reorderLevelNum ? 'text-red-600' : 'text-emerald-600'}>
                   {item.free}
                 </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-zinc-600 font-medium text-blue-600">{t.transit}:</span>
+                <span className="font-medium text-blue-700">{item.transit}</span>
               </div>
             </div>
 
@@ -593,6 +609,7 @@ export function Inventory({ language }: InventoryProps) {
                 <th className="text-left p-4">{t.available}</th>
                 <th className="text-left p-4">{t.allocated}</th>
                 <th className="text-left p-4">{t.free}</th>
+                <th className="text-left p-4 font-semibold text-blue-600">{t.transit}</th>
                 <th className="text-left p-4">{t.location}</th>
                 <th className="text-left p-4">{t.reorderLevel}</th>
                 <th className="text-left p-4">{t.status}</th>
@@ -614,6 +631,9 @@ export function Inventory({ language }: InventoryProps) {
                   </td>
                   <td className="p-4">
                     {getFreeStockBadge(item.freeNum, item.reorderLevel, item.free)}
+                  </td>
+                  <td className="p-4 font-medium text-blue-700">
+                    {item.transit}
                   </td>
                   <td className="p-4">{item.location}</td>
                   <td className="p-4">

@@ -46,6 +46,7 @@ class InventoryItemResponse(InventoryItemBase):
     id: str
     free_quantity: Decimal
     allocated_quantity: Decimal = Decimal('0')
+    transit_quantity: Decimal = Decimal('0')
     status: str
     total_value: Decimal
     # is_active: bool - Dropped (Not in DB)
@@ -66,6 +67,7 @@ class InventoryItemListResponse(BaseModel):
     quantity: Decimal
     allocated_quantity: Decimal
     free_quantity: Decimal
+    transit_quantity: Decimal
     unit: str
     location: Optional[str]
     reorder_level: Decimal

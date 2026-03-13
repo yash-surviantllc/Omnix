@@ -44,12 +44,15 @@ export interface InventoryDisplayItem {
   available: string;
   allocated: string;
   free: string;
+  transit: string;
   location: string;
   reorderLevel: string;
   status: 'Sufficient' | 'Low Stock' | 'Critical' | 'Out of Stock';
   unit: string;
   availableNum: number;
   freeNum: number;
+  transitNum: number;
+  reorderLevelNum: number;
 }
 
 export type InventoryData = Record<string, InventoryItem>;

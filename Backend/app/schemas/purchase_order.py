@@ -76,9 +76,7 @@ class PurchaseOrderBase(BaseModel):  # Changed from ProductionOrderBase
     quantity: Decimal = Field(..., gt=0, description="Order quantity")
     due_date: date = Field(..., description="Target completion date")
     priority: str = Field(default="Medium", description="Low, Medium, High, Urgent")
-    notes: Optional[str] = None
     customer_name: Optional[str] = None
-    shift_number: Optional[str] = None
 
 
 class PurchaseOrderCreate(PurchaseOrderBase):  # Changed from ProductionOrderCreate
@@ -89,7 +87,6 @@ class PurchaseOrderCreate(PurchaseOrderBase):  # Changed from ProductionOrderCre
 class PurchaseOrderMultiSKUCreate(BaseModel):  # Changed from ProductionOrderMultiSKUCreate
     """Create purchase order with multiple SKUs"""
     customer_name: Optional[str] = None
-    shift_number: Optional[str] = None
     due_date: date = Field(..., description="Target completion date")
     priority: str = Field(default="Medium", description="Low, Medium, High, Urgent")
     notes: Optional[str] = None

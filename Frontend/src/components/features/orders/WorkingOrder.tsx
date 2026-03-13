@@ -271,8 +271,8 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
         else if (statuses.some(s => s === 'on-hold')) aggregateStatus = 'on-hold';
 
         // Calculate total stats
-        const totalTarget = operations.reduce((sum, op) => sum + op.targetUnits, 0);
-        const totalCompleted = operations.reduce((sum, op) => sum + op.completedUnits, 0);
+        const totalTarget = Math.max(...operations.map(op => op.targetUnits), 0);
+        const totalCompleted = Math.max(...operations.map(op => op.completedUnits), 0);
 
         return {
           id: firstOp.id,

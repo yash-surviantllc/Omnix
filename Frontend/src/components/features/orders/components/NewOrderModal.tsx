@@ -1,9 +1,7 @@
-import { XCircle, Package, ArrowRight } from 'lucide-react';
+import { Package, XCircle, ArrowRight } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { useState, useEffect } from 'react';
-import { shiftsApi, type Shift } from '@/lib/api/shifts';
 
 interface OrderItem {
   id: string; // Internal ID for keys
@@ -16,7 +14,6 @@ interface NewOrderData {
   dueDate: string;
   priority: string;
   notes: string;
-  shift: string;
 }
 
 interface NewOrderModalProps {
@@ -49,10 +46,6 @@ interface NewOrderModalProps {
     requiredFields: string;
     createOrder: string;
     cancel: string;
-    shiftNumber: string;
-    shift1: string;
-    shift2: string;
-    shift3: string;
     productionTimeline: string;
     startTime: string;
     endTime: string;
@@ -72,24 +65,6 @@ export function NewOrderModal({
   language = 'en',
   translations: t
 }: NewOrderModalProps) {
-  const [shifts, setShifts] = useState<Shift[]>([]);
-
-  // Load shifts from backend
-  useEffect(() => {
-    const loadShifts = async () => {
-      try {
-        const data = await shiftsApi.list();
-        setShifts(data.filter(s => s.is_active));
-      } catch (err) {
-        console.error('Failed to load shifts:', err);
-        // Fallback to empty array, form will show "No shifts available"
-      }
-    };
-    if (isOpen) {
-      loadShifts();
-    }
-  }, [isOpen]);
-
   if (!isOpen) return null;
 
   const updateField = (field: keyof NewOrderData, value: any) => {
@@ -227,29 +202,6 @@ export function NewOrderModal({
                     <option value="Normal">{t.normal}</option>
                     <option value="High">{t.high}</option>
                     <option value="Urgent">{t.urgent}</option>
-                  </select>
-                </div>
-
-                {/* Shift Selection */}
-                <div className="space-y-1.5">
-                  <label className="block text-sm font-medium text-zinc-700">
-                    {t.shiftNumber || 'Shift'}
-                  </label>
-                  <select
-                    value={orderData.shift}
-                    onChange={(e) => updateField('shift', e.target.value)}
-                    className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-sm h-10 bg-white"
-                  >
-                    <option value="">Select Shift...</option>
-                    {shifts.length === 0 ? (
-                      <option value="" disabled>Loading shifts...</option>
-                    ) : (
-                      shifts.map(shift => (
-                        <option key={shift.id} value={shift.name}>
-                          {shift.name} ({shift.start_time} - {shift.end_time})
-                        </option>
-                      ))
-                    )}
                   </select>
                 </div>
               </div>
