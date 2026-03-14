@@ -378,7 +378,7 @@ class PurchaseOrderService:  # Changed from ProductionOrderService
             'bom_id': bom_id,
             'notes': order_data.notes,
             'customer_name': order_data.customer_name,
-            'shift_number': order_data.shift_number,
+            # 'shift_number': order_data.shift_number, # Column does not exist in DB
             'created_by': user_id,
             # 'updated_by': user_id,
             'created_at': datetime.utcnow().isoformat(),
@@ -512,7 +512,7 @@ class PurchaseOrderService:  # Changed from ProductionOrderService
             'bom_id': None,
             'notes': combined_notes,
             'customer_name': order_data.customer_name,
-            'shift_number': order_data.shift_number,
+            # 'shift_number': order_data.shift_number, # Column does not exist in DB
             'created_by': user_id,
             # 'updated_by': user_id,
             'created_at': datetime.utcnow().isoformat(),
