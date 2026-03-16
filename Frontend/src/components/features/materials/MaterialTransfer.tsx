@@ -186,7 +186,6 @@ export function MaterialTransfer({ language, refreshMaterialTransferData }: Mate
   const [, setSubmitError] = useState<string | null>(null);
   const [, setSuccessMessage] = useState<string | null>(null);
   const [transferHistory, setTransferHistory] = useState<any[]>([]);
-  const [wipStages, setWipStages] = useState<any[]>([]);
   const [workingOrders, setWorkingOrders] = useState<any[]>([]);
   const [showStageTransferModal, setShowStageTransferModal] = useState(false);
   const [stageTransferData, setStageTransferData] = useState({
@@ -203,7 +202,6 @@ export function MaterialTransfer({ language, refreshMaterialTransferData }: Mate
   useEffect(() => {
     fetchInventoryData();
     fetchTransferHistory();
-    fetchWipStages();
     fetchWorkingOrders();
   }, [])
 
@@ -222,15 +220,6 @@ export function MaterialTransfer({ language, refreshMaterialTransferData }: Mate
       setTransferHistory(response);
     } catch (error) {
       console.error('Failed to fetch transfer history:', error);
-    }
-  };
-
-  const fetchWipStages = async () => {
-    try {
-      const response = await apiClient.get<any[]>('/wip-board/stages');
-      setWipStages(response);
-    } catch (error) {
-      console.error('Failed to fetch WIP stages:', error);
     }
   };
 
@@ -397,68 +386,106 @@ export function MaterialTransfer({ language, refreshMaterialTransferData }: Mate
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-2 border-b border-zinc-200">
-        <button
-          onClick={() => setActiveTab('new')}
-          className={`px-4 py-2 border-b-2 transition-colors ${activeTab === 'new'
-            ? 'border-emerald-600 text-emerald-900'
-            : 'border-transparent text-zinc-600 hover:text-zinc-900'
-            }`}
-        >
-          {t.newTransfer}
-        </button>
-        <button
-          onClick={() => setActiveTab('history')}
-          className={`px-4 py-2 border-b-2 transition-colors ${activeTab === 'history'
-            ? 'border-emerald-600 text-emerald-900'
-            : 'border-transparent text-zinc-600 hover:text-zinc-900'
-            }`}
-        >
-          <div className="flex items-center gap-2">
-            <History className="w-4 h-4" />
-            {t.history}
-          </div>
-        </button>
+      <div className="flex items-center justify-between border-b border-zinc-200">
+        <div className="flex gap-2">
+          <button
+            onClick={() => setActiveTab('new')}
+            className={`px-4 py-2 border-b-2 transition-colors ${activeTab === 'new'
+              ? 'border-emerald-600 text-emerald-900'
+              : 'border-transparent text-zinc-600 hover:text-zinc-900'
+              }`}
+          >
+            {t.newTransfer}
+          </button>
+          <button
+            onClick={() => setActiveTab('history')}
+            className={`px-4 py-2 border-b-2 transition-colors ${activeTab === 'history'
+              ? 'border-emerald-600 text-emerald-900'
+              : 'border-transparent text-zinc-600 hover:text-zinc-900'
+              }`}
+          >
+            <div className="flex items-center gap-2">
+              <History className="w-4 h-4" />
+              {t.history}
+            </div>
+          </button>
+        </div>
       </div>
 
-      {activeTab === 'new' ? (
-        <div className="space-y-6">
-          {/* WIP Stage Transfer Section */}
-          <Card className="p-6 border-2 border-blue-200 bg-gradient-to-br from-blue-50 to-indigo-50">
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <h2 className="text-blue-900 mb-1 flex items-center gap-2">
-                  <ArrowRight className="w-5 h-5" />
-                  {t.wipStageTransfer}
-                </h2>
-                <p className="text-sm text-blue-700">{t.stageTransferSubtitle}</p>
-              </div>
-              <Button
-                onClick={() => setShowStageTransferModal(true)}
-                className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
-              >
-                <ArrowRight className="w-4 h-4 mr-2" />
-                {t.newStageTransfer}
-              </Button>
-            </div>
+{activeTab === 'new' ? (
+<div className="space-y-6">
+{/* WIP Stage Transfer Section */}
+<Card className="p-6 border-2 border-blue-200 bg-gradient-to-br from-blue-50 to-indigo-50">
+<div className="mb-4">
+<div className="flex items-center justify-between">
+<div>
+<h2 className="text-blue-900 mb-1 flex items-center gap-2">
+<ArrowRight className="w-5 h-5" />
+{t.wipStageTransfer}
+</h2>
+<p className="text-sm text-blue-700">{t.stageTransferSubtitle}</p>
+</div>
+{/* Work Order Selection */}
+<div className="flex items-center gap-2">
+<select
+value={stageTransferData.orderId || ''}
+onChange={(e) => {
+const selected = workingOrders.find(wo => wo.id === e.target.value);
+setStageTransferData({
+...stageTransferData,
+orderId: e.target.value,
+orderNumber: selected?.work_order_number || ''
+});
 
-            {/* Stage Flow Visualization */}
-            <div className="flex items-center justify-between gap-2 p-4 bg-white rounded-lg overflow-x-auto">
-              {wipStages.map((stage, index) => (
-                <div key={stage.id} className="flex items-center">
-                  <div className="text-center">
-                    <div className={`px-4 py-2 rounded-lg border-2 ${stage.health === 'healthy' ? 'bg-green-50 border-green-300 text-green-900' : stage.health === 'warning' ? 'bg-yellow-50 border-yellow-300 text-yellow-900' : 'bg-red-50 border-red-300 text-red-900'}`}>
-                      <div className="text-sm">{stage.name}</div>
-                      <div className="text-xs mt-1 opacity-75">{stage.items} units</div>
-                    </div>
-                  </div>
-                  {index < wipStages.length - 1 && (
-                    <ArrowRight className="w-5 h-5 mx-2 text-blue-400" />
-                  )}
-                </div>
-              ))}
-            </div>
-          </Card>
+// Fetch stages for the selected work order
+if (selected?.work_order_number) {
+fetchWorkOrderStages(selected.work_order_number);
+} else {
+setAvailableStages([]);
+}
+}}
+className="w-48 p-2 border border-blue-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-sm"
+>
+<option value="">Select Work Order</option>
+{workingOrders.map((wo) => (
+<option key={wo.id} value={wo.id}>
+{wo.work_order_number} - {wo.product_name}
+</option>
+))}
+</select>
+<Button
+onClick={() => setShowStageTransferModal(true)}
+className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
+>
+<ArrowRight className="w-4 h-4 mr-2" />
+{t.newStageTransfer}
+</Button>
+</div>
+</div>
+</div>
+
+{/* Stage Flow Visualization */}
+<div className="flex items-center justify-between gap-2 p-4 bg-white rounded-lg overflow-x-auto">
+{availableStages.length > 0 ? (
+availableStages.map((stage, index) => (
+<div key={stage.id} className="flex items-center">
+<div className="text-center">
+<div className={`px-4 py-2 rounded-lg border-2 ${stage.health === 'healthy' ? 'bg-green-50 border-green-300 text-green-900' : stage.health === 'warning' ? 'bg-yellow-50 border-yellow-300 text-yellow-900' : 'bg-red-50 border-red-300 text-red-900'}`}>
+<div className="text-sm">{stage.name}</div>
+</div>
+</div>
+{index < availableStages.length - 1 && (
+<ArrowRight className="w-5 h-5 mx-2 text-blue-400" />
+)}
+</div>
+))
+) : (
+<div className="text-center text-gray-500 w-full">
+{stageTransferData.orderId ? 'No stages configured for this work order' : 'Select a work order to view stages'}
+</div>
+)}
+</div>
+</Card>
 
           {/* Material Selection */}
           <Card className="p-6">
@@ -1001,7 +1028,6 @@ export function MaterialTransfer({ language, refreshMaterialTransferData }: Mate
                       notes: ''
                     });
                     // Refresh data to show updated state
-                    fetchWipStages();
                     fetchWorkingOrders();
                     fetchTransferHistory();
                   } catch (err: any) {
