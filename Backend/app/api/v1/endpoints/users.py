@@ -234,7 +234,8 @@ async def assign_roles(
     db = get_db()
     
     # Check if user exists
-    user_result = db.table('users').select('id').eq('id', user_id).execute()
+    user_result = db.table('users').select('*').eq('id', user_id).execute()
+
     if not user_result.data:
         raise NotFoundException(detail="User not found")
     
@@ -259,9 +260,12 @@ async def assign_roles(
         }).execute()
     
     # Get updated user with roles
+    roles_query = db.table('user_roles').select('roles(name)').eq('user_id', user_id).execute()
+    roles = [role['roles']['name'] for role in roles_query.data] if roles_query.data else []
+
     return UserResponse(
         **user_result.data[0],
-        roles=[role['name'] for role in roles_result.data]
+        roles=roles
     )
 
 
