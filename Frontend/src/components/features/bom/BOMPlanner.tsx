@@ -803,49 +803,6 @@ export function BOMPlanner({ language }: BOMPlannerProps) {
           </div>
         )}
 
-        {/* Production Quantity Input with Cost Columns */}
-        <div className="mt-4">
-          <div className="flex items-start gap-4 p-4 border border-zinc-200 rounded-lg bg-white shadow-sm mt-4">
-            <div className="flex-1">
-              <label className="block text-sm font-medium text-zinc-700 mb-1">Production Quantity</label>
-              <Input
-                type="number"
-                value={productionQty}
-                onChange={(e) => setProductionQty(Number(e.target.value))}
-                min={1}
-                className="h-10"
-              />
-              <div className="mt-1 text-xs text-zinc-500">
-                Batch size: {currentBOM ? currentBOM.batch_size : 'N/A'}
-              </div>
-            </div>
-
-            {/* Unit Cost - shown when product is selected */}
-            {selectedProductForCosts && currentBOM && materials.length > 0 && (
-              <>
-                <div className="flex-1">
-                  <label className="block text-sm font-medium text-zinc-700 mb-1">Unit Cost (per 1 unit)</label>
-                  <div className="flex w-full h-10 items-center justify-center rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm">
-                    <span className="font-semibold text-emerald-600">
-                      ₹{materials.reduce((sum, mat) => sum + (mat.unit_cost * mat.quantity_per_unit), 0).toFixed(2)}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Total Cost - shown when product is selected */}
-                <div className="flex-1">
-                  <label className="block text-sm font-medium text-zinc-700 mb-1">Total Cost (for {productionQty} units)</label>
-                  <div className="flex w-full h-10 items-center justify-center rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm">
-                    <span className="font-semibold text-emerald-700">
-                      ₹{(materials.reduce((sum, mat) => sum + (mat.unit_cost * mat.quantity_per_unit), 0) * productionQty).toFixed(2)}
-                    </span>
-                  </div>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-
         {/* BOM Status */}
         {isLoadingBOM && (
           <div className="mt-4 flex items-center gap-2 text-zinc-600">
@@ -1275,20 +1232,45 @@ export function BOMPlanner({ language }: BOMPlannerProps) {
             </div>
 
             <div className="p-6 space-y-6">
-              {/* Production Quantity Info */}
-              <div className="bg-zinc-50 p-4 rounded-lg">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="text-sm text-zinc-600">Production Quantity</label>
-                    <p className="font-semibold text-lg">{productionQty}</p>
+              {/* Production Quantity & Cost Section */}
+              <div className="flex items-start gap-4 p-4 border border-zinc-200 rounded-lg bg-white shadow-sm">
+                <div className="flex-1">
+                  <label className="block text-sm font-medium text-zinc-700 mb-1">Production Quantity</label>
+                  <Input
+                    type="number"
+                    value={productionQty}
+                    onChange={(e) => setProductionQty(Number(e.target.value))}
+                    min={1}
+                    className="h-10"
+                  />
+                  <div className="mt-1 text-xs text-zinc-500">
+                    Batch size: {currentBOM ? currentBOM.batch_size : 'N/A'}
                   </div>
-                  {currentBOM && (
-                    <div>
-                      <label className="text-sm text-zinc-600">Batch size</label>
-                      <p className="font-semibold text-lg">{currentBOM.batch_size}</p>
-                    </div>
-                  )}
                 </div>
+
+                {/* Unit Cost - shown when product is selected */}
+                {currentBOM && materials.length > 0 && (
+                  <>
+                    <div className="flex-1">
+                      <label className="block text-sm font-medium text-zinc-700 mb-1">Unit Cost (per 1 unit)</label>
+                      <div className="flex w-full h-10 items-center justify-center rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm">
+                        <span className="font-semibold text-emerald-600">
+                          ₹{materials.reduce((sum, mat) => sum + (mat.unit_cost * mat.quantity_per_unit), 0).toFixed(2)}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Total Cost - shown when product is selected */}
+                    <div className="flex-1">
+                      <label className="block text-sm font-medium text-zinc-700 mb-1">Total Cost (for {productionQty} units)</label>
+                      <div className="flex w-full h-10 items-center justify-center rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm">
+                        <span className="font-semibold text-emerald-700">
+                          ₹{(materials.reduce((sum, mat) => sum + (mat.unit_cost * mat.quantity_per_unit), 0) * productionQty).toFixed(2)}
+                        </span>
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
 
               {/* Materials Table */}
