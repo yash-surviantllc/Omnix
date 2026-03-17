@@ -107,6 +107,7 @@ class WorkingOrderListItem(BaseModel):
     actual_end: Optional[datetime] = None
     rejected_qty: Decimal = Decimal('0')
     notes: Optional[str] = None
+    shift: Optional[str] = None
     created_at: datetime
     updated_at: datetime
     

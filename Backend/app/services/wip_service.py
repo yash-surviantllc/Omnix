@@ -873,11 +873,11 @@ class WIPService:
                 
                 # 3. Fetch and aggregate transfers
                 if all_related_wo_ids:
-                    all_transfers = db.table('wip_stage_transfers').select('order_id, to_stage_id, quantity').in_('order_id', all_related_wo_ids).execute()
+                    all_transfers = db.table('wip_stage_transfers').select('order_id, from_stage_id, quantity').in_('order_id', all_related_wo_ids).execute()
                     
                     for t in all_transfers.data:
                         po_id = wo_to_po.get(t['order_id'])
-                        stage_id = t['to_stage_id']
+                        stage_id = t.get('from_stage_id')
                         if po_id and stage_id:
                             key = f"{po_id}:{stage_id}"
                             transfers_by_po_stage[key] = transfers_by_po_stage.get(key, 0) + float(t['quantity'])

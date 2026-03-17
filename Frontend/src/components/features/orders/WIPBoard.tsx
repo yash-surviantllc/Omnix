@@ -31,17 +31,20 @@ export function WIPBoard({ language }: WIPBoardProps) {
   const [isSearching, setIsSearching] = useState(false);
   const [assignmentRules, setAssignmentRules] = useState<{ sku_assignments: any; wo_assignments: any } | null>(null);
   const [configStagesMap, setConfigStagesMap] = useState<Record<string, Stage[]>>({});
+  const [allOrders, setAllOrders] = useState<any[]>([]);
+  const [tick, setTick] = useState(0);
 
   // Toggle expansion
   const toggleStage = (stageId: string) => {
     setExpandedStageId(prev => (prev === stageId ? null : stageId));
   };
 
-  const handleQuickLookup = async () => {
-    if (!searchQuery.trim()) return;
+  const handleQuickLookup = async (query?: string) => {
+    const q = query ?? searchQuery;
+    if (!q || !q.trim()) return;
     setIsSearching(true);
     try {
-      const results = await wipApi.listWorkingOrders({ search: searchQuery });
+      const results = await wipApi.listWorkingOrders({ search: q });
       setLookupResult(results);
     } catch (err) {
       console.error('Lookup failed', err);
@@ -94,12 +97,18 @@ export function WIPBoard({ language }: WIPBoardProps) {
     let unsubscribe: (() => void) | undefined;
 
     const initialize = async () => {
-      await Promise.all([
-        refreshBoardAndAlerts(),
-        fetchAssignmentsAndStages()
-      ]);
-      wipBoardWebsocket.connect();
-      unsubscribe = wipBoardWebsocket.subscribe(handleWebsocketEvent);
+      try {
+        const [_, __, orders] = await Promise.all([
+          refreshBoardAndAlerts(),
+          fetchAssignmentsAndStages(),
+          wipApi.listWorkingOrders({})
+        ]);
+        if (orders) setAllOrders(orders);
+        wipBoardWebsocket.connect();
+        unsubscribe = wipBoardWebsocket.subscribe(handleWebsocketEvent);
+      } catch (err) {
+        console.error('Error initializing WIP Board dropdown', err);
+      }
     };
 
     initialize();
@@ -109,6 +118,11 @@ export function WIPBoard({ language }: WIPBoardProps) {
       wipBoardWebsocket.disconnect();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    const timer = setInterval(() => setTick(prev => prev + 1), 30000);
+    return () => clearInterval(timer);
   }, []);
 
   const refreshBoardAndAlerts = async () => {
@@ -190,11 +204,11 @@ export function WIPBoard({ language }: WIPBoardProps) {
     };
   };
 
-  const calculateElapsedTime = (startDate?: string) => {
+  const calculateElapsedTime = (startDate?: string, endDate?: string) => {
     if (!startDate) return 0;
     const start = new Date(startDate).getTime();
-    const now = new Date().getTime();
-    return Math.max(0, Math.round((now - start) / (1000 * 60)));
+    const end = endDate ? new Date(endDate).getTime() : new Date().getTime();
+    return Math.max(0, Math.round((end - start) / (1000 * 60)));
   };
 
   const translations = {
@@ -363,13 +377,41 @@ export function WIPBoard({ language }: WIPBoardProps) {
   const t = translations[language];
 
   const summary = useMemo(
-    () => ({
-      totalOrders: board?.total_orders ?? 0,
-      totalUnits: board?.total_units ?? 0,
-      avgCycleTime: board?.avg_cycle_time ?? 0,
-      bottleneckStage: board?.bottleneck_stage ?? null,
-    }),
-    [board],
+    () => {
+      if (lookupResult.length > 0) {
+        const uniqueOrdersMap = lookupResult.reduce((acc: any, r: any) => {
+          if (!acc[r.work_order_number]) {
+            acc[r.work_order_number] = Number(r.target_qty || 0);
+          }
+          return acc;
+        }, {});
+        const totalUnits = Object.values(uniqueOrdersMap).reduce((sum: any, qty: any) => sum + qty, 0) as number;
+        const totalOrders = Array.from(new Set(lookupResult.map((r: any) => r.work_order_number))).length;
+        const times = lookupResult.map((r: any) => calculateElapsedTime(r.actual_start, r.actual_end)).filter((t: number) => t > 0);
+        const avgCycleTime = times.length > 0 ? times.reduce((a: number, b: number) => a + b, 0) / times.length : 0;
+
+        let bottleneckStage = null;
+        for (const res of lookupResult) {
+          const elapsedTime = calculateElapsedTime(res.actual_start, res.actual_end);
+          const cId = res.config_id || 'default';
+          const cStages = configStagesMap[cId] || [];
+          const resolvedStage = resolveDisplayStage(res);
+          const target = cStages.find((s: any) => s.name === resolvedStage)?.target_avg_time_minutes || 30;
+          if (elapsedTime > target) {
+            bottleneckStage = resolvedStage;
+            break;
+          }
+        }
+        return { totalOrders, totalUnits, avgCycleTime, bottleneckStage };
+      }
+      return {
+        totalOrders: board?.total_orders ?? 0,
+        totalUnits: board?.total_units ?? 0,
+        avgCycleTime: board?.avg_cycle_time ?? 0,
+        bottleneckStage: board?.bottleneck_stage ?? null,
+      };
+    },
+    [board, lookupResult, configStagesMap, tick]
   );
 
   const bottleneckStageData = useMemo(
@@ -442,25 +484,34 @@ export function WIPBoard({ language }: WIPBoardProps) {
         {/* Quick Lookup */}
         <div className="flex gap-2">
           <div className="relative">
-            <input
-              type="text"
-              placeholder={language === 'en' ? 'Search PO/WO...' : 'PO/WO खोजें...'}
+            <select
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleQuickLookup()}
-              className="pl-3 pr-10 py-2 border rounded-lg text-sm w-full sm:w-64 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-            <button
-              onClick={handleQuickLookup}
-              disabled={isSearching}
-              className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-zinc-400 hover:text-blue-500"
+              onChange={(e) => {
+                const val = e.target.value;
+                setSearchQuery(val);
+                if (val) {
+                  handleQuickLookup(val);
+                } else {
+                  setLookupResult([]);
+                }
+              }}
+              className="pl-3 pr-10 py-2 border rounded-lg text-sm w-full sm:w-64 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white cursor-pointer"
             >
-              {isSearching ? (
-                <div className="h-4 w-4 border-2 border-zinc-300 border-t-blue-500 rounded-full animate-spin" />
-              ) : (
-                <AlertCircle className="h-4 w-4 rotate-45 transform" /> // Search Icon improvised
-              )}
-            </button>
+              <option value="">{language === 'en' ? 'Select PO / WO...' : 'PO / WO चुनें...'}</option>
+              {(() => {
+                const uniqueOrders = allOrders.reduce((acc: any[], current: any) => {
+                  if (!acc.some(item => item.work_order_number === current.work_order_number)) {
+                    acc.push(current);
+                  }
+                  return acc;
+                }, []);
+                return uniqueOrders.map((order: any) => (
+                  <option key={order.id} value={order.work_order_number}>
+                    {order.work_order_number} {order.product_name ? `- ${order.product_name}` : ''}
+                  </option>
+                ));
+              })()}
+            </select>
           </div>
         </div>
       </div>
@@ -477,7 +528,7 @@ export function WIPBoard({ language }: WIPBoardProps) {
                 {language === 'en' ? 'Live Order Search Results' : 'लाइव ऑर्डर खोज परिणाम'}
               </h3>
               <Badge variant="outline" className="ml-2 bg-white text-indigo-600 border-indigo-200 font-bold">
-                {lookupResult.length} {language === 'en' ? 'Orders Found' : 'ऑर्डर मिले'}
+                {Array.from(new Set(lookupResult.map(res => res.work_order_number))).length} {language === 'en' ? 'Order Found' : 'ऑर्डर मिले'}
               </Badge>
             </div>
             <button
@@ -542,9 +593,9 @@ export function WIPBoard({ language }: WIPBoardProps) {
 
                     const metrics = acc[resolvedStageName];
                     metrics.count += 1;
-                    metrics.units += (res.target_qty || 0);
+                    metrics.units += Number(res.target_qty || 0);
 
-                    const elapsedTime = calculateElapsedTime(res.actual_start);
+                    const elapsedTime = calculateElapsedTime(res.actual_start, res.actual_end);
                     if (res.actual_start) {
                       metrics.totalTime += elapsedTime;
                       metrics.countWithTime += 1;
@@ -555,7 +606,7 @@ export function WIPBoard({ language }: WIPBoardProps) {
                     const configStages = configStagesMap[configId] || [];
                     const targetTime = configStages.find(s => s.name === resolvedStageName)?.target_avg_time_minutes || 30;
 
-                    if (elapsedTime > targetTime) {
+                    if (Number(elapsedTime) > Number(targetTime)) {
                       metrics.delayedCount += 1;
                     }
 
@@ -565,7 +616,13 @@ export function WIPBoard({ language }: WIPBoardProps) {
                   // 3. Filter board stages to only those in the relevant set
                   // We still map over 'stages' to preserve the correct board order/metadata, 
                   // but we filter first.
-                  const displayedStages = stages.filter(s => relevantStageNames.has(s.stage_name));
+                  const displayedStagesTemp = stages.filter(s => relevantStageNames.has(s.stage_name));
+                  const displayedStages = displayedStagesTemp.reduce((acc: any[], current: any) => {
+                    if (!acc.some(item => item.stage_name === current.stage_name)) {
+                      acc.push(current);
+                    }
+                    return acc;
+                  }, []);
 
                   return displayedStages.map((stage) => {
                     const metrics = searchMetricsByStage[stage.stage_name] || {
@@ -584,8 +641,8 @@ export function WIPBoard({ language }: WIPBoardProps) {
 
                     // Dynamic Utilization for Search View
                     // Using Efficiency Formula: (Target / Actual) * 100
-                    const utilization = avgTime > 0
-                      ? Math.min(500, (targetTime / Math.max(0.1, avgTime)) * 100)
+                    const utilization = targetTime > 0
+                      ? Math.min(100, (avgTime / targetTime) * 100)
                       : 0;
 
                     // Determine aggregate health for filtered view
@@ -599,10 +656,8 @@ export function WIPBoard({ language }: WIPBoardProps) {
                       healthStatus = 'green';
                     } else if (metrics.delayedCount > 0) {
                       healthStatus = 'red'; // Keep explicit delay count focus
-                    } else if (utilization < 80) {
-                      healthStatus = 'red'; // Efficiency drops as time increases
-                    } else if (utilization > 110) {
-                      healthStatus = 'yellow';
+                    } else if (utilization > 100) {
+                      healthStatus = 'red'; // Overloaded load capacity
                     }
 
                     return (
@@ -633,7 +688,7 @@ export function WIPBoard({ language }: WIPBoardProps) {
                           <div className="flex items-center gap-2">
                             <div className="flex-1 h-2 bg-zinc-200 rounded-full overflow-hidden w-24">
                               <div
-                                className={`h-full rounded-full ${utilization < 80 ? 'bg-red-500' : utilization > 110 ? 'bg-yellow-500' : 'bg-emerald-500'}`}
+                                className={`h-full rounded-full ${healthStatus === 'red' ? 'bg-red-500' : 'bg-emerald-500'}`}
                                 style={{ width: `${Math.min(utilization, 150)}%` }}
                               />
                             </div>
@@ -660,6 +715,23 @@ export function WIPBoard({ language }: WIPBoardProps) {
 
       {/* Main Board Content (Hidden when searching) */}
       {!isSearching && lookupResult.length === 0 && (
+        <Card className="p-12 text-center border-dashed bg-zinc-50/50 flex flex-col items-center justify-center animate-in fade-in duration-300">
+          <div className="h-16 w-16 bg-zinc-100 rounded-full flex items-center justify-center mb-4">
+            <Search className="h-8 w-8 text-zinc-400" />
+          </div>
+          <h4 className="text-zinc-800 font-bold mb-2">
+            {language === 'en' ? 'No Order Selected' : 'कोई ऑर्डर चयनित नहीं है'}
+          </h4>
+          <p className="text-zinc-500 text-sm max-w-sm">
+            {language === 'en'
+              ? 'Please select a Purchase Order or Work Order from the dropdown above to view live metrics and bottlenecks.'
+              : 'लाइव रिपोर्ट और मेट्रिक्स देखने के लिए कृपया ऊपर दिए गए ड्रॉपडाउन से एक परचेज ऑर्डर या वर्क ऑर्डर चुनें।'}
+          </p>
+        </Card>
+      )}
+
+      {/* Main Board Content (Hidden when searching) Placeholder to enclose ending bracket safely */}
+      {false && (
         <>
           {/* Bottleneck Alert */}
           {bottleneckStageData && (
@@ -672,11 +744,11 @@ export function WIPBoard({ language }: WIPBoardProps) {
                   </h3>
                   <p className="text-red-700 text-sm mb-2">
                     {language === 'en'
-                      ? `${bottleneckStageData.stage_name} is delayed - ${Math.round(
-                        bottleneckStageData.utilization_percentage,
+                      ? `${bottleneckStageData?.stage_name} is delayed - ${Math.round(
+                        bottleneckStageData?.utilization_percentage ?? 0,
                       )}% capacity utilization`
-                      : `${bottleneckStageData.stage_name} विलंबित है - ${Math.round(
-                        bottleneckStageData.utilization_percentage,
+                      : `${bottleneckStageData?.stage_name} विलंबित है - ${Math.round(
+                        bottleneckStageData?.utilization_percentage ?? 0,
                       )}% क्षमता उपयोग`}
                   </p>
                   <button className="text-sm text-red-900 underline">{t.askBot}</button>
@@ -885,57 +957,58 @@ export function WIPBoard({ language }: WIPBoardProps) {
             </Card>
           )}
 
-          {/* Summary Stats */}
-          <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
-            <Card className="p-4">
-              <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-lg bg-blue-500 text-white flex items-center justify-center">
-                  <Package className="h-5 w-5" />
-                </div>
-                <div>
-                  <p className="text-sm text-zinc-600">{language === 'en' ? 'Total Orders' : 'कुल ऑर्डर'}</p>
-                  <h3>{summary.totalOrders}</h3>
-                </div>
-              </div>
-            </Card>
-            <Card className="p-4">
-              <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-lg bg-emerald-500 text-white flex items-center justify-center">
-                  <TrendingUp className="h-5 w-5" />
-                </div>
-                <div>
-                  <p className="text-sm text-zinc-600">{language === 'en' ? 'Total Units' : 'कुल यूनिट'}</p>
-                  <h3>{summary.totalUnits}</h3>
-                </div>
-              </div>
-            </Card>
-            <Card className="p-4">
-              <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-lg bg-yellow-500 text-white flex items-center justify-center">
-                  <Clock className="h-5 w-5" />
-                </div>
-                <div>
-                  <p className="text-sm text-zinc-600">{language === 'en' ? 'Avg Cycle Time' : 'औसत चक्र समय'}</p>
-                  <h3>{Math.round(summary.avgCycleTime)} {t.min}</h3>
-                </div>
-              </div>
-            </Card>
-            <Card className="p-4">
-              <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-lg bg-red-500 text-white flex items-center justify-center">
-                  <AlertCircle className="h-5 w-5" />
-                </div>
-                <div>
-                  <p className="text-sm text-zinc-600">{t.bottleneck}</p>
-                  <h3 className="text-sm">
-                    {summary.bottleneckStage || (language === 'en' ? 'None' : 'कोई नहीं')}
-                  </h3>
-                </div>
-              </div>
-            </Card>
-          </div>
         </>
       )}
+
+      {/* Summary Stats */}
+      <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 mt-6">
+        <Card className="p-4">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-lg bg-blue-500 text-white flex items-center justify-center">
+              <Package className="h-5 w-5" />
+            </div>
+            <div>
+              <p className="text-sm text-zinc-600">{language === 'en' ? 'Total Orders' : 'कुल ऑर्डर'}</p>
+              <h3>{summary.totalOrders}</h3>
+            </div>
+          </div>
+        </Card>
+        <Card className="p-4">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-lg bg-emerald-500 text-white flex items-center justify-center">
+              <TrendingUp className="h-5 w-5" />
+            </div>
+            <div>
+              <p className="text-sm text-zinc-600">{language === 'en' ? 'Total Units' : 'कुल यूनिट'}</p>
+              <h3>{summary.totalUnits}</h3>
+            </div>
+          </div>
+        </Card>
+        <Card className="p-4">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-lg bg-yellow-500 text-white flex items-center justify-center">
+              <Clock className="h-5 w-5" />
+            </div>
+            <div>
+              <p className="text-sm text-zinc-600">{language === 'en' ? 'Avg Cycle Time' : 'औसत चक्र समय'}</p>
+              <h3>{Math.round(summary.avgCycleTime)} {t.min}</h3>
+            </div>
+          </div>
+        </Card>
+        <Card className="p-4">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-lg bg-red-500 text-white flex items-center justify-center">
+              <AlertCircle className="h-5 w-5" />
+            </div>
+            <div>
+              <p className="text-sm text-zinc-600">{t.bottleneck}</p>
+              <h3 className="text-sm">
+                {summary.bottleneckStage || (language === 'en' ? 'None' : 'कोई नहीं')}
+              </h3>
+            </div>
+          </div>
+        </Card>
+      </div>
 
     </div>
   );

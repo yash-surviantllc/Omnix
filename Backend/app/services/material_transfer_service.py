@@ -485,7 +485,9 @@ class MaterialTransferService:
             
             wo = work_order.data[0]
             
-            # CRITICAL VALIDATION: Check total transferred quantity
+            # CRITICAL VALIDATION 1: Cannot transfer more than available in FROM stage (Moved down)
+            
+            # CRITICAL VALIDATION 2: Check total transferred quantity
             target_qty = Decimal(str(wo.get('target_qty', 0)))
             if target_qty <= 0:
                 raise ValidationException(detail="Work order has no target quantity set")
@@ -519,6 +521,36 @@ class MaterialTransferService:
                     raise NotFoundException(detail="Source stage not found")
                 from_stage = from_stage_result.data[0]
                 from_stage_name = from_stage['name']
+
+                # CRITICAL VALIDATION 1: Cannot transfer more than available in FROM stage
+                # 1. Fetch sequences to identify First Stage
+                ops_result = db.table('work_order_operations').select('operation_name').eq(
+                    'work_order_id', wo['id']
+                ).order('sequence_number').execute()
+                
+                is_first = ops_result.data and from_stage_name and (ops_result.data[0]['operation_name'].lower().strip() == from_stage_name.lower().strip())
+
+                # 2. Compute Incoming
+                if is_first:
+                    incoming = target_qty
+                else:
+                    tos = db.table('wip_stage_transfers').select('quantity').eq(
+                        'order_id', wip_transfer.order_id
+                    ).eq('to_stage_id', wip_transfer.from_stage_id).execute()
+                    incoming = sum(Decimal(str(t['quantity'])) for t in tos.data) if tos.data else Decimal('0')
+
+                # 3. Compute Outgoing
+                froms = db.table('wip_stage_transfers').select('quantity').eq(
+                    'order_id', wip_transfer.order_id
+                ).eq('from_stage_id', wip_transfer.from_stage_id).execute()
+                outgoing = sum(Decimal(str(t['quantity'])) for t in froms.data) if froms.data else Decimal('0')
+
+                available_qty = incoming - outgoing
+                
+                if wip_transfer.quantity > available_qty:
+                    raise ValidationException(
+                        detail=f"Transfer rejected: Insufficient units in current stage. Available: {available_qty}, Requested: {wip_transfer.quantity}"
+                    )
             
             to_stage_result = db.table('wip_stages').select('*').eq('id', wip_transfer.to_stage_id).execute()
             if not to_stage_result.data:

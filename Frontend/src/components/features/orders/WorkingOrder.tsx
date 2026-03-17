@@ -41,6 +41,7 @@ interface WorkOrder {
   startTime: string;
   estimatedEnd: string;
   actualEnd?: string;
+  shift?: string;
 }
 
 export function WorkingOrder({ language }: WorkingOrderProps) {
@@ -270,9 +271,20 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
         else if (statuses.some(s => s === 'completed')) aggregateStatus = 'in-progress';
         else if (statuses.some(s => s === 'on-hold')) aggregateStatus = 'on-hold';
 
-        // Calculate total stats
-        const totalTarget = Math.max(...operations.map(op => op.targetUnits), 0);
-        const totalCompleted = Math.max(...operations.map(op => op.completedUnits), 0);
+        // Find the last operation based on stage sequence to count finished goods
+        const sortedOps = [...operations].sort((a, b) => {
+          const stageA = availableStages.find(s => s.name.toLowerCase().trim() === a.name.toLowerCase().trim());
+          const stageB = availableStages.find(s => s.name.toLowerCase().trim() === b.name.toLowerCase().trim());
+          const seqA = stageA?.sequence_number ?? 9999;
+          const seqB = stageB?.sequence_number ?? 9999;
+          
+          if (seqA === seqB) return a.name.localeCompare(b.name);
+          return seqA - seqB;
+        });
+
+        const lastOp = sortedOps[sortedOps.length - 1];
+        const totalCompleted = lastOp ? Math.max(lastOp.completedUnits || 0, lastOp.transferredUnits || 0) : 0;
+        const totalTarget = lastOp ? lastOp.targetUnits : Math.max(...operations.map(op => op.targetUnits), 0);
 
         return {
           id: firstOp.id,
@@ -288,7 +300,8 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
           priority: (firstOp.priority as 'Low' | 'Medium' | 'High' | 'Urgent') || 'Medium',
           startTime: firstOp.scheduled_start || firstOp.created_at || '',
           estimatedEnd: firstOp.scheduled_end || '',
-          actualEnd: firstOp.actual_end || undefined
+          actualEnd: firstOp.actual_end || undefined,
+          shift: firstOp.shift
         };
       });
 
@@ -298,7 +311,7 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [wipApi]);
+  }, [wipApi, availableStages]);
 
   // Fetch purchase orders for the dropdown
   const fetchProductionOrders = async () => {
@@ -362,6 +375,15 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
 
     return () => clearInterval(intervalId);
   }, []);
+
+  // Periodic refresh of work order quantities and stats (every 30 seconds)
+  useEffect(() => {
+    const intervalId = setInterval(() => {
+      fetchWorkOrders(true, true);
+    }, 30000);
+
+    return () => clearInterval(intervalId);
+  }, [fetchWorkOrders]);
 
   // Refresh stages when page becomes visible
   useEffect(() => {
@@ -984,141 +1006,166 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
           </div>
         ) : (
           <div className="grid gap-4 md:grid-cols-1 lg:grid-cols-1">
-            {filteredOrders.map((order) => (
-              <Card key={order.id} className="overflow-hidden border-zinc-200 shadow-sm hover:shadow-md transition-shadow duration-200">
-                <div className="p-4 md:p-6">
-                  {/* Card Header: Main Info */}
-                  <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
-                    <div>
-                      <div className="flex items-center gap-3 mb-1">
-                        <h3 className="text-lg font-bold text-zinc-900">{order.product}</h3>
-                        {getStatusBadge(order.status)}
-                        <Badge variant="outline" className={`
-                          ${order.priority === 'High' ? 'text-orange-600 border-orange-200 bg-orange-50' :
-                            order.priority === 'Urgent' ? 'text-red-600 border-red-200 bg-red-50' :
-                              'text-zinc-500 border-zinc-200 bg-zinc-50'}
-                        `}>
-                          {order.priority.charAt(0).toUpperCase() + order.priority.slice(1)} Priority
-                        </Badge>
-                      </div>
-                      <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-zinc-500">
-                        <span className="flex items-center gap-1.5">
-                          <Package className="h-4 w-4 text-zinc-400" />
-                          WO: <span className="font-medium text-zinc-700">{order.workOrderNumber}</span>
-                        </span>
-                        <span className="flex items-center gap-1.5">
-                          <Package className="h-4 w-4 text-zinc-400" />
-                          PO: <span className="font-medium text-zinc-700">{order.purchaseOrderNumber}</span>
-                        </span>
-                        {order.assignedTo !== 'Unassigned' && (
-                          <span className="flex items-center gap-1.5">
-                            <span className="h-4 w-4 rounded-full bg-zinc-200 flex items-center justify-center text-[10px] font-bold text-zinc-600">
-                              {order.assignedTo.charAt(0)}
-                            </span>
-                            Team: <span className="font-medium text-zinc-700">{order.assignedTo}</span>
-                          </span>
-                        )}
-                      </div>
-                    </div>
+            {filteredOrders.map((order) => {
+              // Calculate overall stats dynamically on render to prevent async races
+              const sortedOps = [...order.operations].sort((a, b) => {
+                const stageA = availableStages.find(s => s.name.toLowerCase().trim() === a.name.toLowerCase().trim());
+                const stageB = availableStages.find(s => s.name.toLowerCase().trim() === b.name.toLowerCase().trim());
+                const seqA = stageA?.sequence_number ?? 9999;
+                const seqB = stageB?.sequence_number ?? 9999;
+                
+                if (seqA === seqB) return a.name.localeCompare(b.name);
+                return seqA - seqB;
+              });
 
-                    {/* Quick Stats / Actions */}
-                    <div className="flex items-center gap-4 w-full md:w-auto">
-                      <div className="flex flex-col items-end min-w-[100px]">
-                        <div className="text-2xl font-bold text-zinc-900">
-                          {Math.round((order.completedQty / order.quantity) * 100)}%
-                        </div>
-                        <div className="text-xs text-zinc-500">
-                          {order.completedQty} / {order.quantity} {t.units}
-                        </div>
-                      </div>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => toggleExpanded(order.id)}
-                        className="ml-auto md:ml-0"
-                      >
-                        {expandedOrders.has(order.id) ? (
-                          <ChevronUp className="h-5 w-5 text-zinc-500" />
-                        ) : (
-                          <ChevronDown className="h-5 w-5 text-zinc-500" />
-                        )}
-                      </Button>
-                    </div>
-                  </div>
+              const lastOp = sortedOps[sortedOps.length - 1];
+              const secondToLastOp = sortedOps.length > 1 ? sortedOps[sortedOps.length - 2] : null;
 
-                  {/* Expanded Content: Operations */}
-                  {expandedOrders.has(order.id) && (
-                    <div className="mt-6 space-y-6 border-t border-zinc-100 pt-6 animate-in fade-in slide-in-from-top-2 duration-200">
-                      {/* Production Order Info */}
-                      <div className="text-sm text-zinc-600">
-                        Production Order: <span className="font-medium text-zinc-900">{order.purchaseOrderNumber}</span>
-                      </div>
+              // Overall Completed = Units that REACHED the final stage (Finished Goods)
+              const displayCompleted = secondToLastOp 
+                ? (secondToLastOp.transferredUnits || 0) 
+                : lastOp ? Math.max(lastOp.completedUnits || 0, lastOp.transferredUnits || 0) : 0;
 
-                      {/* Operation Progress - Horizontal Cards */}
+              const displayTarget = lastOp ? lastOp.targetUnits : order.quantity;
+
+              return (
+                <Card key={order.id} className="overflow-hidden border-zinc-200 shadow-sm hover:shadow-md transition-shadow duration-200">
+                  <div className="p-4 md:p-6">
+                    {/* Card Header: Main Info */}
+                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
                       <div>
-                        <h4 className="text-sm font-semibold text-zinc-700 mb-3">Operation Progress</h4>
-                        <div className="flex gap-3">
-                          {/* Sort operations by stage sequence from availableStages */}
-                          {order.operations
-                            .filter(op => !op.id.toString().startsWith('placeholder-'))
-                            .sort((a, b) => {
-                              const stageA = availableStages.find(s => s.name === a.name);
-                              const stageB = availableStages.find(s => s.name === b.name);
-                              const seqA = stageA?.sequence_number ?? 9999;
-                              const seqB = stageB?.sequence_number ?? 9999;
-                              return seqA - seqB;
-                            })
-                            .map((op) => {
-                              const opProgress = op.targetUnits > 0 ? Math.round((op.completedUnits / op.targetUnits) * 100) : 0;
+                        <div className="flex items-center gap-3 mb-1">
+                          <h3 className="text-lg font-bold text-zinc-900">{order.product}</h3>
+                          {getStatusBadge(order.status)}
+                          <Badge variant="outline" className={`
+                            ${order.priority === 'High' ? 'text-orange-600 border-orange-200 bg-orange-50' :
+                              order.priority === 'Urgent' ? 'text-red-600 border-red-200 bg-red-50' :
+                                'text-zinc-500 border-zinc-200 bg-zinc-50'}
+                          `}>
+                            {order.priority.charAt(0).toUpperCase() + order.priority.slice(1)} Priority
+                          </Badge>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-zinc-500">
+                          <span className="flex items-center gap-1.5">
+                            <Package className="h-4 w-4 text-zinc-400" />
+                            WO: <span className="font-medium text-zinc-700">{order.workOrderNumber}</span>
+                          </span>
+                          <span className="flex items-center gap-1.5">
+                            <Package className="h-4 w-4 text-zinc-400" />
+                            PO: <span className="font-medium text-zinc-700">{order.purchaseOrderNumber}</span>
+                          </span>
+                          {(order.assignedTo !== 'Unassigned' || order.shift) && (
+                            <span className="flex items-center gap-1.5">
+                              <span className="h-4 w-4 rounded-full bg-zinc-200 flex items-center justify-center text-[10px] font-bold text-zinc-600">
+                                {order.assignedTo?.charAt(0) || 'S'}
+                              </span>
+                              Assigned to: <span className="font-medium text-zinc-700">{order.shift ? `${order.shift}` : order.assignedTo}</span>
+                            </span>
+                          )}
+                        </div>
+                      </div>
 
-                              return (
-                                <div
-                                  key={op.id}
-                                  className={`
-                                  flex-1 p-3 rounded-lg border text-center space-y-1.5 transition-all
-                                  ${op.status === 'completed' ? 'bg-emerald-50 border-emerald-200' :
-                                      op.status === 'in-progress' ? 'bg-blue-50 border-blue-200' :
-                                        'bg-zinc-50 border-zinc-200'}
-                                `}
-                                >
-                                  <div className="font-semibold text-sm text-zinc-900">{op.name}</div>
+                      {/* Quick Stats / Actions */}
+                      <div className="flex items-center gap-4 w-full md:w-auto">
+                        <div className="flex flex-col items-end min-w-[100px]">
+                          <div className="text-2xl font-bold text-zinc-900">
+                            {Math.round((displayCompleted / displayTarget) * 100)}%
+                          </div>
+                          <div className="text-xs text-zinc-500">
+                            {displayCompleted} / {displayTarget} {t.units}
+                          </div>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => toggleExpanded(order.id)}
+                          className="ml-auto md:ml-0"
+                        >
+                          {expandedOrders.has(order.id) ? (
+                            <ChevronUp className="h-5 w-5 text-zinc-500" />
+                          ) : (
+                            <ChevronDown className="h-5 w-5 text-zinc-500" />
+                          )}
+                        </Button>
+                      </div>
+                    </div>
 
-                                  <div className="mt-2 space-y-1">
-                                    <div className="text-xs text-zinc-500 font-medium">Status Completion:</div>
-                                    <div className="text-lg font-bold text-zinc-900">{op.completedUnits} units</div>
-                                    <div className="text-xs text-zinc-500">{opProgress}% of {op.targetUnits}</div>
-                                  </div>
+                    {/* Expanded Content: Operations */}
+                    {expandedOrders.has(order.id) && (
+                      <div className="mt-6 space-y-6 border-t border-zinc-100 pt-6 animate-in fade-in slide-in-from-top-2 duration-200">
+                        {/* Production Order Info */}
+                        <div className="text-sm text-zinc-600">
+                          Production Order: <span className="font-medium text-zinc-900">{order.purchaseOrderNumber}</span>
+                        </div>
 
-                                  <div className="mt-2 pt-2 border-t border-zinc-200 space-y-1">
-                                    <div className="text-xs text-emerald-600 font-medium">Physically Transferred:</div>
-                                    <div className="text-lg font-bold text-emerald-700">{op.transferredUnits || 0} units</div>
-                                    <div className="text-[10px] text-zinc-400 italic">
-                                      {op.transferredUnits > 0 ? 'Via Stage Transfer' : 'No transfers yet'}
+                        {/* Operation Progress - Horizontal Cards */}
+                        <div>
+                          <h4 className="text-sm font-semibold text-zinc-700 mb-3">Operation Progress</h4>
+                          <div className="flex gap-3">
+                            {sortedOps
+                              .filter(op => !op.id.toString().startsWith('placeholder-'))
+                              .map((op, idx, opsList) => {
+                                const receivedValue = idx > 0 ? opsList[idx - 1].transferredUnits : null;
+                                const isLastStage = idx === opsList.length - 1;
+                                const incomingQty = idx === 0 ? displayTarget : (opsList[idx - 1].transferredUnits || 0);
+                                const remainingBalance = incomingQty - (op.transferredUnits || 0);
+
+                                return (
+                                  <div
+                                    key={op.id}
+                                    className={`
+                                    flex-1 p-3 rounded-lg border text-center space-y-1.5 transition-all
+                                    ${op.status === 'completed' ? 'bg-emerald-50 border-emerald-200' :
+                                        op.status === 'in-progress' ? 'bg-blue-50 border-blue-200' :
+                                          'bg-zinc-50 border-zinc-200'}
+                                  `}
+                                  >
+                                    <div className="font-semibold text-sm text-zinc-900">{op.name}</div>
+
+                                    {receivedValue !== null && (
+                                      <div className="mt-2 space-y-1">
+                                        <div className="text-xs text-zinc-500 font-medium">Received:</div>
+                                        <div className="text-lg font-bold text-zinc-900">{receivedValue} units</div>
+                                      </div>
+                                    )}
+
+                                    {!isLastStage && (
+                                      <div className="mt-2 pt-2 border-t border-zinc-200 space-y-1">
+                                        <div className="text-xs text-emerald-600 font-medium">Transferred:</div>
+                                        <div className="text-lg font-bold text-emerald-700">{op.transferredUnits || 0} units</div>
+                                        <div className="text-[10px] text-zinc-400 italic">
+                                          {op.transferredUnits > 0 ? 'To Next Stage' : 'No transfers yet'}
+                                        </div>
+                                      </div>
+                                    )}
+
+                                    <div className="mt-2 pt-2 border-t border-zinc-200 space-y-1">
+                                      <div className="text-xs text-blue-600 font-medium">In Process / Remaining:</div>
+                                      <div className="text-lg font-bold text-blue-700">{remainingBalance} units</div>
+                                    </div>
+
+                                    <div className="text-xs text-zinc-600 mt-2">
+                                      <div>Assigned: {order.shift ? `${order.shift}` : op.assignedTo}</div>
                                     </div>
                                   </div>
+                                );
+                              })}
+                          </div>
+                        </div>
 
-                                  <div className="text-xs text-zinc-600 mt-2">
-                                    <div>Assigned to: {op.assignedTo}</div>
-                                  </div>
-                                </div>
-                              );
-                            })}
+                        {/* Overall Progress */}
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="font-medium text-zinc-700">Overall Progress:</span>
+                            <span className="font-bold text-zinc-900">{displayCompleted} of {displayTarget} units ({Math.round((displayCompleted / displayTarget) * 100)}%)</span>
+                          </div>
+                          <div className="w-full bg-zinc-200 rounded-full h-2 overflow-hidden">
+                            <div
+                              className="bg-blue-600 h-full rounded-full transition-all duration-500"
+                              style={{ width: `${Math.min((displayCompleted / displayTarget) * 100, 100)}%` }}
+                            />
+                          </div>
                         </div>
-                      </div>
-
-                      {/* Overall Progress */}
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between text-sm">
-                          <span className="font-medium text-zinc-700">Overall Progress:</span>
-                          <span className="font-bold text-zinc-900">{order.completedQty} of {order.quantity} units ({Math.round((order.completedQty / order.quantity) * 100)}%)</span>
-                        </div>
-                        <div className="w-full bg-zinc-200 rounded-full h-2 overflow-hidden">
-                          <div
-                            className="bg-blue-600 h-full rounded-full transition-all duration-500"
-                            style={{ width: `${Math.min((order.completedQty / order.quantity) * 100, 100)}%` }}
-                          />
-                        </div>
-                      </div>
 
                       {/* Timeline */}
                       <div className="flex items-center gap-6 text-sm text-zinc-600">
@@ -1168,8 +1215,9 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
                   )}
                 </div>
               </Card>
-            ))}
-          </div>
+            );
+          })}
+        </div>
         )}
       </div>
 
