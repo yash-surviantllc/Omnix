@@ -2,7 +2,7 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Depends, Query, WebSocket, WebSocketDisconnect, HTTPException
 
-from app.api.deps import get_current_user, require_role
+from app.api.deps import get_current_user, require_role, block_worker_delete
 from app.services.websocket_manager import manager as ws_manager
 from app.schemas.user import UserResponse
 from app.schemas.wip import (
@@ -60,6 +60,7 @@ async def update_wip_stage(
 async def delete_wip_stage(
     stage_id: str,
     current_user: UserResponse = Depends(require_role("Admin")),
+    _worker_guard: UserResponse = Depends(block_worker_delete),
 ):
     return await wip_board_service.delete_stage(stage_id)
 

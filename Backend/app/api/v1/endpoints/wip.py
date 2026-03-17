@@ -9,7 +9,7 @@ from app.schemas.wip import (
 from app.schemas.material_transfer import WIPStageResponse
 from app.schemas.user import UserResponse
 from app.services.wip_service import wip_service
-from app.api.deps import get_current_user, require_role
+from app.api.deps import get_current_user, require_role, block_worker_delete
 
 router = APIRouter()
 
@@ -155,7 +155,8 @@ async def update_working_order(
 @router.delete("/working-orders/{order_id}")
 async def cancel_working_order(
     order_id: str,
-    current_user: UserResponse = Depends(require_role("Supervisor"))
+    current_user: UserResponse = Depends(require_role("Supervisor")),
+    _worker_guard: UserResponse = Depends(block_worker_delete)
 ):
     """Cancel working order"""
     return await wip_service.delete_working_order(order_id)

@@ -1,7 +1,9 @@
 from typing import List
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from app.schemas.shifts import ShiftCreate, ShiftUpdate, ShiftResponse
 from app.services.shift_service import ShiftService
+from app.api.deps import block_worker_delete
+from app.schemas.user import UserResponse
 
 router = APIRouter()
 
@@ -27,7 +29,7 @@ async def update_shift(shift_id: str, shift: ShiftUpdate):
         raise HTTPException(status_code=400, detail=str(e))
 
 @router.delete("/{shift_id}")
-async def delete_shift(shift_id: str):
+async def delete_shift(shift_id: str, _worker_guard: UserResponse = Depends(block_worker_delete)):
     """Delete a shift configuration."""
     try:
         return await ShiftService.delete_shift(shift_id)

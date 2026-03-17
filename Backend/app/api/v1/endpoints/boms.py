@@ -22,7 +22,7 @@ from app.schemas.bom import (
 )
 from app.schemas.user import UserResponse
 from app.services.bom_service import bom_service
-from app.api.deps import get_current_user, require_role
+from app.api.deps import get_current_user, require_role, block_worker_delete
 import asyncio
 
 router = APIRouter()
@@ -111,7 +111,8 @@ async def update_bom(
 @router.delete("/{bom_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_bom(
     bom_id: str,
-    current_user: UserResponse = Depends(require_role("Admin"))
+    current_user: UserResponse = Depends(require_role("Admin")),
+    _worker_guard: UserResponse = Depends(block_worker_delete)
 ):
     """Soft delete BOM (deactivate)."""
     await bom_service.delete_bom(bom_id)
@@ -207,7 +208,8 @@ async def update_bom_material(
 async def remove_material_from_bom(
     bom_id: str,
     material_id: str,
-    current_user: UserResponse = Depends(require_role("Planner"))
+    current_user: UserResponse = Depends(require_role("Planner")),
+    _worker_guard: UserResponse = Depends(block_worker_delete)
 ):
     """
     Remove a single material from BOM.

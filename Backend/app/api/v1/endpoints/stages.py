@@ -5,7 +5,7 @@ from app.schemas.stages import (
     ProductStagesResponse, BulkStageAssignment, StageReorderRequest
 )
 from app.services.stage_service import stage_service
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, block_worker_delete
 
 router = APIRouter()
 
@@ -121,7 +121,8 @@ async def update_stage(
 async def delete_stage(
     stage_id: str,
     force: bool = Query(default=False, description="Force hard delete (will fail if stage is in use)"),
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user),
+    _worker_guard: dict = Depends(block_worker_delete)
 ):
     """
     Delete a stage
@@ -223,7 +224,8 @@ async def assign_stage_to_configuration(
 async def remove_stage_from_configuration(
     config_id: str,
     stage_id: str,
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user),
+    _worker_guard: dict = Depends(block_worker_delete)
 ):
     """
     Remove a stage from a configuration
@@ -305,7 +307,8 @@ async def assign_product_stages(
 @router.delete("/product/{product_id}")
 async def remove_product_stages(
     product_id: str,
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user),
+    _worker_guard: dict = Depends(block_worker_delete)
 ):
     """
     Remove custom stage assignments for a product

@@ -8,7 +8,7 @@ from app.schemas.material_transfer import (
 )
 from app.schemas.user import UserResponse
 from app.services.material_transfer_service import material_transfer_service
-from app.api.deps import get_current_user, require_role
+from app.api.deps import get_current_user, require_role, block_worker_delete
 
 router = APIRouter()
 
@@ -128,7 +128,8 @@ async def execute_transfer(
 @router.delete("/{transfer_id}", status_code=status.HTTP_200_OK)
 async def cancel_transfer(
     transfer_id: str,
-    current_user: UserResponse = Depends(require_role("Store Manager"))
+    current_user: UserResponse = Depends(require_role("Store Manager")),
+    _worker_guard: UserResponse = Depends(block_worker_delete)
 ):
     """
     Cancel a transfer (only Pending or Approved).

@@ -6,7 +6,7 @@ from app.schemas.alert import (
     SendNotificationRequest, NotificationResponse, AlertSummary
 )
 from app.schemas.user import UserResponse
-from app.api.deps import get_current_user, require_role
+from app.api.deps import get_current_user, require_role, block_worker_delete
 from app.database import get_db
 from app.services.notification_service import notification_service
 from datetime import datetime, timedelta
@@ -108,7 +108,8 @@ async def update_alert_config(
 @router.delete("/config/{config_id}")
 async def delete_alert_config(
     config_id: str,
-    current_user: UserResponse = Depends(require_role("Admin"))
+    current_user: UserResponse = Depends(require_role("Admin")),
+    _worker_guard: UserResponse = Depends(block_worker_delete)
 ):
     """Delete alert configuration"""
     db = get_db()

@@ -212,7 +212,19 @@ class AuthService:
         
         roles = [r['roles']['name'] for r in roles_result.data] if roles_result.data else []
         
-        return UserResponse(**user, roles=roles)
+        # For workers, fetch granted modules
+        worker_modules = None
+        roles_lower = [r.lower() for r in roles]
+        if 'worker' in roles_lower:
+            mods_result = db.table('worker_module_permissions') \
+                .select('module_key') \
+                .eq('user_id', user_id) \
+                .execute()
+            worker_modules = [r['module_key'] for r in mods_result.data] if mods_result.data else []
+            if 'dashboard' not in worker_modules:
+                worker_modules.insert(0, 'dashboard')
+        
+        return UserResponse(**user, roles=roles, worker_modules=worker_modules)
     
     @staticmethod
     async def forgot_password(email: str) -> Dict[str, str]:

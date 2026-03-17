@@ -4,6 +4,7 @@ from typing import Optional, List, Union
 from app.core.security import decode_token
 from app.services.auth_service import auth_service
 from app.schemas.user import UserResponse
+from app.database import get_db
 
 # Security scheme
 security = HTTPBearer()
@@ -139,3 +140,56 @@ async def get_current_user_ws(token: str) -> UserResponse:
         )
     
     return user
+
+
+def require_worker_module_access(module_key: str):
+    """
+    Dependency factory for worker-scoped module access.
+    - Admin bypasses all checks.
+    - Workers must have the module explicitly granted via worker_module_permissions.
+    - All other roles (manager, supervisor, etc.) pass through unchanged.
+    """
+    async def checker(current_user: UserResponse = Depends(get_current_user)):
+        user_roles_lower = [r.lower() for r in current_user.roles] if current_user.roles else []
+
+        # Admin always passes
+        if 'admin' in user_roles_lower:
+            return current_user
+
+        # Non-worker roles pass through without module checks
+        if 'worker' not in user_roles_lower:
+            return current_user
+
+        # Worker: check module permission
+        db = get_db()
+        result = db.table('worker_module_permissions') \
+            .select('id') \
+            .eq('user_id', current_user.id) \
+            .eq('module_key', module_key) \
+            .execute()
+
+        if not result.data:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Access to module '{module_key}' has not been granted"
+            )
+
+        return current_user
+
+    return checker
+
+
+async def block_worker_delete(
+    current_user: UserResponse = Depends(get_current_user)
+) -> UserResponse:
+    """
+    Blocks DELETE operations for workers.
+    Apply this as a dependency on all DELETE routes.
+    """
+    user_roles_lower = [r.lower() for r in current_user.roles] if current_user.roles else []
+    if 'worker' in user_roles_lower and 'admin' not in user_roles_lower:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Workers are not permitted to delete records"
+        )
+    return current_user

@@ -1,4 +1,5 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
+from app.api.deps import require_worker_module_access
 from app.api.v1.endpoints import (
     auth,
     users,
@@ -10,8 +11,8 @@ from app.api.v1.endpoints import (
     purchase_orders,
     material_transfers,
     material_requests,
-    material_requisitions, # NEW
-    notifications,  # NEW
+    material_requisitions,
+    notifications,
     wip,
     wip_board,
     alerts,
@@ -20,7 +21,7 @@ from app.api.v1.endpoints import (
     websockets,
     qc,
     stages,
-    shifts # NEW
+    shifts
 )
 
 api_router = APIRouter()
@@ -57,55 +58,63 @@ api_router.include_router(
 api_router.include_router(
     boms.router,
     prefix="/boms",
-    tags=["BOM Planner"]
+    tags=["BOM Planner"],
+    dependencies=[Depends(require_worker_module_access('bom'))]
 )
 
 # Inventory routes
 api_router.include_router(
     inventory.router,
     prefix="/inventory",
-    tags=["Inventory"]
+    tags=["Inventory"],
+    dependencies=[Depends(require_worker_module_access('inventory'))]
 )
 
 # Inventory Items routes (Material Management)
 api_router.include_router(
     inventory_items.router,
     prefix="/inventory-items",
-    tags=["Inventory Items"]
+    tags=["Inventory Items"],
+    dependencies=[Depends(require_worker_module_access('inventory'))]
 )
 
 # Purchase Orders routes
 api_router.include_router(
     purchase_orders.router,
     prefix="/orders",
-    tags=["Purchase Orders"]
+    tags=["Purchase Orders"],
+    dependencies=[Depends(require_worker_module_access('orders'))]
 )
 
 # Material Transfers routes
 api_router.include_router(
     material_transfers.router,
     prefix="/material-transfers",
-    tags=["Material Transfer"]
+    tags=["Material Transfer"],
+    dependencies=[Depends(require_worker_module_access('transfer'))]
 )
 
 api_router.include_router(
     material_requests.router,
     prefix="/material-requests",
-    tags=["Material Request"]
+    tags=["Material Request"],
+    dependencies=[Depends(require_worker_module_access('material-request'))]
 )
 
 # WIP routes
 api_router.include_router(
     wip.router,
     prefix="/wip",
-    tags=["WIP Live Board"]
+    tags=["WIP Live Board"],
+    dependencies=[Depends(require_worker_module_access('working-order'))]
 )
 
 # WIP board routes
 api_router.include_router(
     wip_board.router,
     prefix="/wip-board",
-    tags=["WIP Board"]
+    tags=["WIP Board"],
+    dependencies=[Depends(require_worker_module_access('wip'))]
 )
 
 # Alert routes
@@ -119,7 +128,8 @@ api_router.include_router(
 api_router.include_router(
     gate_entries.router,
     prefix="/gate-entries",
-    tags=["Gate Entry"]
+    tags=["Gate Entry"],
+    dependencies=[Depends(require_worker_module_access('gate-entry'))]
 )
 
 # WebSocket routes
@@ -133,14 +143,16 @@ api_router.include_router(
 api_router.include_router(
     gate_exits.router,
     prefix="/gate-exits",
-    tags=["Gate Exits"]
+    tags=["Gate Exits"],
+    dependencies=[Depends(require_worker_module_access('gate-exit'))]
 )
 
 # QC routes
 api_router.include_router(
     qc.router,
     prefix="/qc",
-    tags=["Quality Control"]
+    tags=["Quality Control"],
+    dependencies=[Depends(require_worker_module_access('qc'))]
 )
 
 # Stage Management routes

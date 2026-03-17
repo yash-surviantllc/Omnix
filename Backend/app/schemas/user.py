@@ -71,6 +71,10 @@ class UserUpdate(BaseModel):
     phone: Optional[str] = None
 
 
+class WorkerModulesUpdate(BaseModel):
+    modules: List[str]
+
+
 class UserResponse(UserBase):
     id: str
     is_active: bool
@@ -78,6 +82,7 @@ class UserResponse(UserBase):
     created_at: datetime
     updated_at: datetime
     roles: Optional[List[str]] = []
+    worker_modules: Optional[List[str]] = None
     
     class Config:
         from_attributes = True

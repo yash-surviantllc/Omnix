@@ -1,10 +1,15 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from typing import List, Optional
-from app.schemas.user import UserResponse, UserCreate
+from app.schemas.user import UserResponse, UserCreate, WorkerModulesUpdate
 from app.api.deps import get_current_user, require_role
 from app.database import get_db, get_admin_db
 from app.core.security import get_password_hash
 from app.core.exceptions import NotFoundException, ConflictException
+
+VALID_MODULE_KEYS = {
+    'dashboard', 'bom', 'orders', 'working-order', 'wip', 'transfer',
+    'material-request', 'qc', 'inventory', 'gate-entry', 'gate-exit',
+}
 
 router = APIRouter()
 
@@ -275,7 +280,6 @@ async def list_roles(
 ):
     """
     List all available roles.
-    
     Available to all authenticated users.
     """
     db = get_db()
@@ -283,3 +287,137 @@ async def list_roles(
     result = db.table('roles').select('*').eq('is_active', True).execute()
     
     return result.data
+
+
+# ── Worker Module Permission Management ──────────────────────────────────────
+
+@router.get("/{user_id}/worker-modules", response_model=List[str])
+async def get_worker_modules(
+    user_id: str,
+    current_user: UserResponse = Depends(require_role("admin"))
+):
+    """
+    List granted modules for a worker (Admin only).
+    """
+    db = get_db()
+    result = db.table('worker_module_permissions') \
+        .select('module_key') \
+        .eq('user_id', user_id) \
+        .execute()
+    modules = [r['module_key'] for r in result.data] if result.data else []
+    if 'dashboard' not in modules:
+        modules.insert(0, 'dashboard')
+    return modules
+
+
+@router.put("/{user_id}/worker-modules", response_model=List[str])
+async def replace_worker_modules(
+    user_id: str,
+    body: WorkerModulesUpdate,
+    current_user: UserResponse = Depends(require_role("admin"))
+):
+    """
+    Replace full module list for a worker (Admin only).
+    Dashboard is always granted implicitly.
+    """
+    db = get_db()
+
+    # Validate user exists
+    user_check = db.table('users').select('id').eq('id', user_id).execute()
+    if not user_check.data:
+        raise NotFoundException(detail="User not found")
+
+    # Validate module keys
+    invalid = [m for m in body.modules if m not in VALID_MODULE_KEYS]
+    if invalid:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid module keys: {invalid}"
+        )
+
+    # Remove 'dashboard' from payload — it's always implicitly granted
+    modules_to_store = [m for m in body.modules if m != 'dashboard']
+
+    # Atomic replace: delete existing, insert new
+    db.table('worker_module_permissions').delete().eq('user_id', user_id).execute()
+    for mod in modules_to_store:
+        db.table('worker_module_permissions').insert({
+            'user_id': user_id,
+            'module_key': mod,
+            'granted_by': current_user.id,
+        }).execute()
+
+    return ['dashboard'] + modules_to_store
+
+
+@router.post("/{user_id}/worker-modules/{module_key}", status_code=status.HTTP_201_CREATED)
+async def grant_worker_module(
+    user_id: str,
+    module_key: str,
+    current_user: UserResponse = Depends(require_role("admin"))
+):
+    """
+    Grant a single module to a worker (Admin only).
+    """
+    if module_key not in VALID_MODULE_KEYS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid module key: '{module_key}'"
+        )
+    if module_key == 'dashboard':
+        return {"detail": "Dashboard is always granted by default"}
+
+    db = get_db()
+
+    # Check user exists
+    user_check = db.table('users').select('id').eq('id', user_id).execute()
+    if not user_check.data:
+        raise NotFoundException(detail="User not found")
+
+    # Check for duplicate
+    existing = db.table('worker_module_permissions') \
+        .select('id') \
+        .eq('user_id', user_id) \
+        .eq('module_key', module_key) \
+        .execute()
+    if existing.data:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Module '{module_key}' already granted"
+        )
+
+    db.table('worker_module_permissions').insert({
+        'user_id': user_id,
+        'module_key': module_key,
+        'granted_by': current_user.id,
+    }).execute()
+
+    return {"detail": f"Module '{module_key}' granted to user {user_id}"}
+
+
+@router.delete("/{user_id}/worker-modules/{module_key}", status_code=status.HTTP_200_OK)
+async def revoke_worker_module(
+    user_id: str,
+    module_key: str,
+    current_user: UserResponse = Depends(require_role("admin"))
+):
+    """
+    Revoke a single module from a worker (Admin only).
+    """
+    if module_key == 'dashboard':
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot revoke dashboard access"
+        )
+
+    db = get_db()
+    result = db.table('worker_module_permissions') \
+        .delete() \
+        .eq('user_id', user_id) \
+        .eq('module_key', module_key) \
+        .execute()
+
+    if not result.data:
+        raise NotFoundException(detail=f"Module '{module_key}' was not granted to this user")
+
+    return {"detail": f"Module '{module_key}' revoked from user {user_id}"}

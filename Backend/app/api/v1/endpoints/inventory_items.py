@@ -9,7 +9,7 @@ from app.schemas.inventory_items import (
 from app.schemas.user import UserResponse
 from app.services.inventory_items_service import inventory_items_service
 from app.services.dashboard_service import dashboard_service
-from app.api.deps import get_current_user, require_role
+from app.api.deps import get_current_user, require_role, block_worker_delete
 
 router = APIRouter()
 
@@ -131,7 +131,8 @@ async def update_inventory_item(
 @router.delete("/{item_id}")
 async def delete_inventory_item(
     item_id: str,
-    current_user: UserResponse = Depends(require_role("Admin"))
+    current_user: UserResponse = Depends(require_role("Admin")),
+    _worker_guard: UserResponse = Depends(block_worker_delete)
 ):
     """
     Delete an inventory item (soft delete).

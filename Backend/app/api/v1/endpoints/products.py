@@ -3,7 +3,7 @@ from typing import List, Optional
 from app.schemas.product import ProductCreate, ProductUpdate, ProductResponse, ProductListItem
 from app.schemas.user import UserResponse
 from app.services.product_service import product_service
-from app.api.deps import get_current_user, require_role
+from app.api.deps import get_current_user, require_role, block_worker_delete
 
 router = APIRouter()
 
@@ -118,7 +118,8 @@ async def update_product(
 @router.delete("/{product_id}")
 async def delete_product(
     product_id: str,
-    current_user: UserResponse = Depends(require_role("Admin"))
+    current_user: UserResponse = Depends(require_role("Admin")),
+    _worker_guard: UserResponse = Depends(block_worker_delete)
 ):
     """
     Delete product - deactivates instead of hard delete (Admin only).
