@@ -1,7 +1,7 @@
 
-  # Manufacturing OS (Copy)
+# OMNIX - Frontend Application
 
-  This is a code bundle for Manufacturing OS (Copy). The original project is available at https://www.figma.com/design/q802ybNBfDXCmm3iGOq9yX/Manufacturing-OS--Copy-.
+This is the React-based frontend application for the OMNIX Manufacturing Operations System. The original design references are available at https://www.figma.com/design/q802ybNBfDXCmm3iGOq9yX/Manufacturing-OS--Copy-.
 
   ## Running the code
 
