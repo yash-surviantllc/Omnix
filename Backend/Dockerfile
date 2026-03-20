@@ -29,4 +29,4 @@ EXPOSE 80
 
 # The CMD is overrides by Railway Start Command if specified,
 # but providing one guarantees a valid fallback.
-CMD ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "80"]
+CMD ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "80", "--proxy-headers"]
