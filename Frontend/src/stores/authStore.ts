@@ -11,6 +11,7 @@ interface UserData {
   mobile: string;
   role: string;
   roles: string[];
+  workerModules: string[];
   department: string;
   employeeId: string;
   avatar?: string;
@@ -45,6 +46,7 @@ const mapUserResponse = (apiUser: UserResponse): UserData => ({
   mobile: apiUser.phone || '',
   role: apiUser.roles[0] || 'Operator',
   roles: apiUser.roles,
+  workerModules: apiUser.worker_modules || [],
   department: 'Production',
   employeeId: apiUser.username.toUpperCase(),
 });
@@ -61,7 +63,7 @@ export const useAuthStore = create<AuthStore>()(
       error: null,
 
       // Actions
-      login: async (username: string, password: string, rememberMe?: boolean) => {
+      login: async (username: string, password: string, _rememberMe?: boolean) => {
         set({ isLoading: true, error: null });
 
         try {

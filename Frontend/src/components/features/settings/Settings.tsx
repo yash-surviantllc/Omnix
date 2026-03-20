@@ -16,6 +16,8 @@ import { Button } from '@/components/ui/button';
 
 import { WIPSettings } from './WIPSettings';
 import { ShiftSettings } from './ShiftSettings';
+import { WorkerModuleAccess } from './WorkerModuleAccess';
+import { useAuthStore } from '@/stores/authStore';
 
 type Language = 'en' | 'hi' | 'kn' | 'ta' | 'te' | 'mr' | 'gu' | 'pa';
 
@@ -26,6 +28,8 @@ interface SettingsProps {
 }
 
 export function Settings({ language, onLanguageChange, onClose }: SettingsProps) {
+  const user = useAuthStore((s) => s.user);
+  const isAdmin = user?.roles?.some((r) => r.toLowerCase() === 'admin') ?? false;
   const [selectedLanguage, setSelectedLanguage] = useState<Language>(language);
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
   const [notifications, setNotifications] = useState({
@@ -409,6 +413,9 @@ export function Settings({ language, onLanguageChange, onClose }: SettingsProps)
           ))}
         </div>
       </Card>
+
+      {/* Worker Module Access — Admin only */}
+      {isAdmin && <WorkerModuleAccess />}
 
       {/* Preferences */}
       <Card className="p-6">

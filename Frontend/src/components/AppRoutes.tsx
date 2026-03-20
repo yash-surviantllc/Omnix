@@ -1,7 +1,9 @@
-import { lazy, Suspense } from 'react';
+import { lazy, Suspense, type ReactNode } from 'react';
 import { Routes, Route } from 'react-router-dom';
 import type { View, Language } from '@/types';
 import { useAppStore } from '@/stores/appStore';
+import { useAuthStore } from '@/stores/authStore';
+import { AccessDenied } from '@/components/ui/AccessDenied';
 
 // Lazy load components
 const Dashboard = lazy(() => import('@/components/features').then(module => ({ default: module.Dashboard })));
@@ -24,6 +26,38 @@ const LoadingSpinner = () => (
   </div>
 );
 
+/** Module key → human-readable label map */
+const MODULE_LABELS: Record<string, string> = {
+  bom: 'BOM Planner',
+  orders: 'Purchase Orders',
+  'working-order': 'Working Order',
+  wip: 'WIP Board',
+  transfer: 'Material Transfer',
+  'material-request': 'Material Request',
+  qc: 'QC Check',
+  inventory: 'Inventory',
+  'gate-entry': 'Gate Entry',
+  'gate-exit': 'Gate Exit',
+};
+
+/**
+ * ModuleGuard — wraps a module page.
+ * Workers without the required module in workerModules see the AccessDenied screen.
+ * Non-worker roles (admin, planner, etc.) pass through freely.
+ */
+function ModuleGuard({ moduleKey, children }: { moduleKey: string; children: ReactNode }) {
+  const user = useAuthStore((s) => s.user);
+
+  // Only enforce for users with the worker role
+  const isWorker = user?.roles?.some((r) => r.toLowerCase() === 'worker') ?? false;
+  if (!isWorker) return <>{children}</>;
+
+  const hasAccess = user?.workerModules?.includes(moduleKey) ?? false;
+  if (hasAccess) return <>{children}</>;
+
+  return <AccessDenied moduleKey={moduleKey} moduleLabel={MODULE_LABELS[moduleKey] || moduleKey} />;
+}
+
 interface AppRoutesProps {
   language: Language;
   setCurrentView: (view: View | string, state?: any) => void;
@@ -36,16 +70,16 @@ export function AppRoutes({ language, setCurrentView }: AppRoutesProps) {
     <Suspense fallback={<LoadingSpinner />}>
       <Routes>
         <Route path="/" element={<Dashboard onNavigate={setCurrentView} language={language} />} />
-        <Route path="/orders" element={<PurchaseOrders language={language} onNavigate={setCurrentView} />} />
-        <Route path="/working-order" element={<WorkingOrder language={language} />} />
-        <Route path="/bom" element={<BOMPlanner language={language} />} />
-        <Route path="/wip" element={<WIPBoard language={language} />} />
-        <Route path="/transfer" element={<MaterialTransfer language={language} />} />
-        <Route path="/material-request" element={<MaterialRequest language={language} />} />
-        <Route path="/qc" element={<QCCheck language={language} />} />
-        <Route path="/inventory" element={<Inventory language={language} />} />
-        <Route path="/gate-entry" element={<GateEntry language={language} />} />
-        <Route path="/gate-exit" element={<GateExit language={language} />} />
+        <Route path="/orders" element={<ModuleGuard moduleKey="orders"><PurchaseOrders language={language} onNavigate={setCurrentView} /></ModuleGuard>} />
+        <Route path="/working-order" element={<ModuleGuard moduleKey="working-order"><WorkingOrder language={language} /></ModuleGuard>} />
+        <Route path="/bom" element={<ModuleGuard moduleKey="bom"><BOMPlanner language={language} /></ModuleGuard>} />
+        <Route path="/wip" element={<ModuleGuard moduleKey="wip"><WIPBoard language={language} /></ModuleGuard>} />
+        <Route path="/transfer" element={<ModuleGuard moduleKey="transfer"><MaterialTransfer language={language} /></ModuleGuard>} />
+        <Route path="/material-request" element={<ModuleGuard moduleKey="material-request"><MaterialRequest language={language} /></ModuleGuard>} />
+        <Route path="/qc" element={<ModuleGuard moduleKey="qc"><QCCheck language={language} /></ModuleGuard>} />
+        <Route path="/inventory" element={<ModuleGuard moduleKey="inventory"><Inventory language={language} /></ModuleGuard>} />
+        <Route path="/gate-entry" element={<ModuleGuard moduleKey="gate-entry"><GateEntry language={language} /></ModuleGuard>} />
+        <Route path="/gate-exit" element={<ModuleGuard moduleKey="gate-exit"><GateExit language={language} /></ModuleGuard>} />
         <Route path="/settings" element={<Settings language={language} onLanguageChange={setLanguage} />} />
         <Route path="*" element={<Dashboard onNavigate={setCurrentView} language={language} />} />
       </Routes>

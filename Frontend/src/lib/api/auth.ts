@@ -30,6 +30,7 @@ export interface UserResponse {
   created_at: string;
   updated_at: string;
   roles: string[];
+  worker_modules?: string[];
 }
 
 export interface ChangePasswordData {
