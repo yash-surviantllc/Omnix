@@ -8,6 +8,14 @@ dist
 build
 *.local
 
+# Python (in case any scripts)
+venv/
+.venv/
+ENV/
+env/
+__pycache__/
+*.py[cod]
+
 # Logs
 logs
 *.log
