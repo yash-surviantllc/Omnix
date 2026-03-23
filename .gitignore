@@ -19,6 +19,10 @@ wheels/
 .installed.cfg
 *.egg
 
+# Virtual Environments
+.venv/
+venv/
+
 # Node
 node_modules/
 npm-debug.log*
