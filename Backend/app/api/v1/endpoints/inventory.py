@@ -9,7 +9,7 @@ from app.schemas.inventory import (
 from app.schemas.user import UserResponse
 from app.services.inventory_service import inventory_service
 from app.services.dashboard_service import dashboard_service
-from app.api.deps import get_current_user, require_role, block_worker_delete
+from app.api.deps import get_current_user, require_role, block_worker_delete, require_worker_module_access
 from app.schemas.inventory import InventoryTransactionCreate
 from decimal import Decimal
 import asyncio
@@ -275,11 +275,11 @@ async def update_stock_alert(
 @router.delete("/alerts/{alert_id}")
 async def delete_stock_alert(
     alert_id: str,
-    current_user: UserResponse = Depends(require_role("Admin")),
-    _worker_guard: UserResponse = Depends(block_worker_delete)
+    current_user: UserResponse = Depends(require_role(["Admin", "Worker"])),
+    _module_guard: UserResponse = Depends(require_worker_module_access("inventory"))
 ):
     """
-    Delete stock alert (Admin only).
+    Delete stock alert.
     """
     result = await inventory_service.delete_stock_alert(alert_id)
     await dashboard_service.broadcast_shortages_update()

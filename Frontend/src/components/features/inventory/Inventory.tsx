@@ -1,9 +1,10 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Search, Package, ArrowUpDown, AlertTriangle, PlusCircle, Edit2, Trash2 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { AddInventoryModal } from './AddInventoryModal';
+import { DeleteConfirmDialog } from '@/components/ui/DeleteConfirmDialog';
 import { MaterialData, InventoryDisplayItem, Language } from '@/types/inventory';
 import { inventoryItemsApi, convertFromMaterialData } from '@/lib/api/inventory';
 import { getWsUrl } from '@/lib/api/client';
@@ -101,19 +102,21 @@ export function Inventory({ language }: InventoryProps) {
     }
   };
 
-  const handleDeleteMaterial = async (id: string, materialName: string) => {
-    if (window.confirm(language === 'en'
-      ? `Are you sure you want to delete "${materialName}"?`
-      : `क्या आप वाकई "${materialName}" को हटाना चाहते हैं?`)) {
-      try {
-        await inventoryItemsApi.delete(id);
-        await fetchInventoryData(); // Refresh list
-      } catch (err: any) {
-        console.error('Error deleting material:', err);
-        alert(err.response?.data?.detail || 'Failed to delete material');
-      }
+  // Delete confirmation state
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
+
+  const confirmDeleteMaterial = useCallback(async () => {
+    if (!deleteTarget) return;
+    try {
+      await inventoryItemsApi.delete(deleteTarget.id);
+      await fetchInventoryData();
+    } catch (err: any) {
+      console.error('Error deleting material:', err);
+      alert(err.response?.data?.detail || 'Failed to delete material');
+    } finally {
+      setDeleteTarget(null);
     }
-  };
+  }, [deleteTarget]);
 
   const handleEditMaterial = (id: string) => {
     const item = inventoryItems.find(i => i.id === id);
@@ -542,7 +545,7 @@ export function Inventory({ language }: InventoryProps) {
                   <Edit2 className="h-4 w-4" />
                 </button>
                 <button
-                  onClick={() => handleDeleteMaterial(item.id, item.material)}
+                  onClick={() => setDeleteTarget({ id: item.id, name: item.material })}
                   className="p-2 text-red-600 hover:bg-red-50 rounded-md transition-colors"
                   title={language === 'en' ? 'Delete' : 'हटाएं'}
                 >
@@ -650,7 +653,7 @@ export function Inventory({ language }: InventoryProps) {
                         <Edit2 className="h-4 w-4" />
                       </button>
                       <button
-                        onClick={() => handleDeleteMaterial(item.id, item.material)}
+                        onClick={() => setDeleteTarget({ id: item.id, name: item.material })}
                         className="p-2 text-red-600 hover:bg-red-50 rounded-md transition-colors"
                         title={language === 'en' ? 'Delete' : 'हटाएं'}
                       >
@@ -701,6 +704,20 @@ export function Inventory({ language }: InventoryProps) {
         mode="edit"
         initialData={editingMaterial || undefined}
         currentInventory={{}}
+      />
+
+      <DeleteConfirmDialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}
+        onConfirm={confirmDeleteMaterial}
+        title={language === 'en'
+          ? `Are you sure you want to delete "${deleteTarget?.name}"?`
+          : `क्या आप वाकई "${deleteTarget?.name}" को हटाना चाहते हैं?`}
+        description={language === 'en'
+          ? 'This action cannot be undone. This will permanently remove the material from inventory.'
+          : 'यह क्रिया पूर्ववत नहीं की जा सकती। यह सामग्री को इन्वेंटरी से स्थायी रूप से हटा देगा।'}
+        confirmLabel={language === 'en' ? 'Delete' : 'हटाएं'}
+        cancelLabel={language === 'en' ? 'Cancel' : 'रद्द करें'}
       />
     </div>
   );

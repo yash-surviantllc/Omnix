@@ -196,30 +196,33 @@ async def delete_user(
     current_user: UserResponse = Depends(require_role("Admin"))
 ):
     """
-    Delete/deactivate user (Admin only).
-    
-    Instead of hard delete, we deactivate the user.
+    Hard-delete user (Admin only).
+
+    Permanently removes the user and nullifies references in other tables
+    that use RESTRICT foreign keys.
     """
     db = get_db()
-    
+
     # Check if user exists
     existing = db.table('users').select('id').eq('id', user_id).execute()
     if not existing.data:
         raise NotFoundException(detail="User not found")
-    
+
     # Prevent self-deletion
     if user_id == current_user.id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Cannot delete your own account"
         )
-    
-    # Deactivate user instead of deleting
-    db.table('users').update({
-        'is_active': False,
-        'updated_by': current_user.id
-    }).eq('id', user_id).execute()
-    
+
+    # Nullify RESTRICT FK references so the delete doesn't fail
+    db.table('qc_inspections').update({'inspector_id': None}).eq('inspector_id', user_id).execute()
+    db.table('wip_alert_history').update({'acknowledged_by': None}).eq('acknowledged_by', user_id).execute()
+    db.table('worker_module_permissions').delete().eq('granted_by', user_id).execute()
+
+    # Hard-delete the user (CASCADE / SET NULL handles the rest)
+    db.table('users').delete().eq('id', user_id).execute()
+
     return None
 
 

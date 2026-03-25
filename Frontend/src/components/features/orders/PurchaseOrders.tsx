@@ -830,19 +830,15 @@ export function PurchaseOrders({ language, onNavigate }: PurchaseOrdersProps) {
           break;
 
         case 'cancel':
-          if (confirm(`${language === 'en' ? 'Are you sure you want to cancel this order?' : 'क्या आप वाकई इस ऑर्डर को रद्द करना चाहते हैं?'}\n${selectedOrder.order_number}`)) {
-            await purchaseOrdersApi.updateStatus(selectedOrder.id, { status: 'Cancelled' });
-            alert(language === 'en' ? 'Order cancelled' : 'ऑर्डर रद्द किया गया');
-            fetchOrders();
-          }
+          await purchaseOrdersApi.updateStatus(selectedOrder.id, { status: 'Cancelled' });
+          alert(language === 'en' ? 'Order cancelled' : 'ऑर्डर रद्द किया गया');
+          fetchOrders();
           break;
 
         case 'delete':
-          if (confirm(`${language === 'en' ? 'Are you sure you want to delete this order? This cannot be undone.' : 'क्या आप वाकई इस ऑर्डर को हटाना चाहते हैं? यह पूर्ववत नहीं किया जा सकता।'}\n${selectedOrder.order_number}`)) {
-            const { message } = await purchaseOrdersApi.deleteOrder(selectedOrder.id);
-            alert(message);
-            fetchOrders();
-          }
+          const { message } = await purchaseOrdersApi.deleteOrder(selectedOrder.id);
+          alert(message);
+          fetchOrders();
           break;
 
         case 'print':
@@ -1662,7 +1658,7 @@ export function PurchaseOrders({ language, onNavigate }: PurchaseOrdersProps) {
                   </p>
                 </div>
                 <p className="text-sm text-zinc-600">
-                  {t.order}: <strong>{selectedOrder.id}</strong>
+                  {t.order}: <strong>{selectedOrder.order_number}</strong>
                 </p>
                 {activeModal === 'delete' && (
                   <p className={`text-sm text-${config.color}-700 mt-2`}>

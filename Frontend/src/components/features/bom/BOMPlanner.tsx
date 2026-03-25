@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Plus, Edit, Trash2, AlertCircle, CheckCircle, RefreshCw, Loader2 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -8,6 +8,7 @@ import { bomApi, productsApi, type Product, type BOM, type BOMMaterialWithShorta
 import { getWsUrl } from '@/lib/api/client';
 import { AddMaterialModal } from './AddMaterialModal';
 import { EditMaterialModal } from './EditMaterialModal';
+import { DeleteConfirmDialog } from '@/components/ui/DeleteConfirmDialog';
 import { inventoryItemsApi, type InventoryItemResponse } from '@/lib/api/inventory';
 
 type BOMPlannerProps = {
@@ -544,19 +545,22 @@ export function BOMPlanner({ language }: BOMPlannerProps) {
   };
 
 
-  const handleDeleteMaterial = async (materialId: string) => {
-    if (!currentBOM) return;
+  // Delete confirmation state
+  const [deleteMaterialId, setDeleteMaterialId] = useState<string | null>(null);
+  const [showDeleteBOMDialog, setShowDeleteBOMDialog] = useState(false);
 
-    if (!window.confirm(t.confirmDelete)) return;
-
+  const confirmDeleteMaterial = useCallback(async () => {
+    if (!currentBOM || !deleteMaterialId) return;
     try {
-      await bomApi.removeMaterial(currentBOM.id, materialId);
+      await bomApi.removeMaterial(currentBOM.id, deleteMaterialId);
       alert(language === 'en' ? 'Material deleted successfully!' : 'सामग्री सफलतापूर्वक हटाई गई!');
       await fetchBOMForProduct(selectedProductId);
     } catch (err: any) {
       alert(err?.detail || 'Failed to delete material');
+    } finally {
+      setDeleteMaterialId(null);
     }
-  };
+  }, [currentBOM, deleteMaterialId, selectedProductId]);
 
   const handleAddMaterial = async () => {
     if (!currentBOM) return;
@@ -651,12 +655,8 @@ export function BOMPlanner({ language }: BOMPlannerProps) {
     }
   };
 
-  const handleDeleteBOM = async () => {
+  const confirmDeleteBOM = useCallback(async () => {
     if (!currentBOM) return;
-
-    if (!confirm(language === 'en' ? 'Are you sure you want to delete this BOM?' : 'क्या आप वाकई इस BOM को हटाना चाहते हैं?')) {
-      return;
-    }
 
     try {
       await bomApi.deleteBOM(currentBOM.id);
@@ -686,8 +686,10 @@ export function BOMPlanner({ language }: BOMPlannerProps) {
         return;
       }
       alert(err?.detail || err?.message || 'Failed to delete BOM');
+    } finally {
+      setShowDeleteBOMDialog(false);
     }
-  };
+  }, [currentBOM]);
 
   // Loading state
   if (isLoadingProducts) {
@@ -754,7 +756,7 @@ export function BOMPlanner({ language }: BOMPlannerProps) {
           <Button
             variant="ghost"
             className="text-red-500 hover:text-red-700 hover:bg-red-50"
-            onClick={handleDeleteBOM}
+            onClick={() => setShowDeleteBOMDialog(true)}
             disabled={!currentBOM}
           >
             <Trash2 className="w-4 h-4" />
@@ -1205,7 +1207,7 @@ export function BOMPlanner({ language }: BOMPlannerProps) {
         onDelete={() => {
           if (editingMaterial) {
             setShowEditMaterialModal(false);
-            handleDeleteMaterial(editingMaterial.id);
+            setDeleteMaterialId(editingMaterial.id);
           }
         }}
         rawMaterials={rawMaterials}
@@ -1349,10 +1351,8 @@ export function BOMPlanner({ language }: BOMPlannerProps) {
                                 </button>
                                 <button
                                   onClick={() => {
-                                    if (window.confirm('Are you sure you want to delete this material?')) {
-                                      handleDeleteMaterial(material.id);
-                                      setShowProductDetailsModal(false);
-                                    }
+                                    setDeleteMaterialId(material.id);
+                                    setShowProductDetailsModal(false);
                                   }}
                                   className="p-2 text-red-600 hover:bg-red-50 rounded transition-colors"
                                   title="Delete"
@@ -1413,6 +1413,34 @@ export function BOMPlanner({ language }: BOMPlannerProps) {
           </Card>
         </div>
       )}
+
+      <DeleteConfirmDialog
+        open={!!deleteMaterialId}
+        onOpenChange={(open) => { if (!open) setDeleteMaterialId(null); }}
+        onConfirm={confirmDeleteMaterial}
+        title={language === 'en'
+          ? 'Are you sure you want to delete this material?'
+          : 'क्या आप वाकई इस सामग्री को हटाना चाहते हैं?'}
+        description={language === 'en'
+          ? 'This action cannot be undone. The material will be permanently removed from this BOM.'
+          : 'यह क्रिया पूर्ववत नहीं की जा सकती। सामग्री इस BOM से स्थायी रूप से हटा दी जाएगी।'}
+        confirmLabel={language === 'en' ? 'Delete' : 'हटाएं'}
+        cancelLabel={language === 'en' ? 'Cancel' : 'रद्द करें'}
+      />
+
+      <DeleteConfirmDialog
+        open={showDeleteBOMDialog}
+        onOpenChange={setShowDeleteBOMDialog}
+        onConfirm={confirmDeleteBOM}
+        title={language === 'en'
+          ? 'Are you sure you want to delete this BOM?'
+          : 'क्या आप वाकई इस BOM को हटाना चाहते हैं?'}
+        description={language === 'en'
+          ? 'This action cannot be undone. The entire Bill of Materials will be permanently deleted.'
+          : 'यह क्रिया पूर्ववत नहीं की जा सकती। पूरा सामग्री विवरण स्थायी रूप से हटा दिया जाएगा।'}
+        confirmLabel={language === 'en' ? 'Delete' : 'हटाएं'}
+        cancelLabel={language === 'en' ? 'Cancel' : 'रद्द करें'}
+      />
     </div>
   );
 }

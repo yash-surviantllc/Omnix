@@ -6,7 +6,7 @@ from app.schemas.gate_entry import (
 )
 from app.schemas.user import UserResponse
 from app.services.gate_entry_service import gate_entry_service
-from app.api.deps import get_current_user, require_role, block_worker_delete
+from app.api.deps import get_current_user, require_role, block_worker_delete, require_worker_module_access
 
 router = APIRouter()
 
@@ -119,8 +119,8 @@ async def update_entry_status(
 @router.delete("/{entry_id}")
 async def delete_gate_entry(
     entry_id: str,
-    current_user: UserResponse = Depends(require_role("Admin")),
-    _worker_guard: UserResponse = Depends(block_worker_delete)
+    current_user: UserResponse = Depends(require_role(["Admin", "Worker"])),
+    _module_guard: UserResponse = Depends(require_worker_module_access("gate-entry"))
 ):
     """
     Delete gate entry.

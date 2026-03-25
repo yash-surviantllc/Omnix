@@ -938,17 +938,8 @@ class PurchaseOrderService:  # Changed from ProductionOrderService
 
     @staticmethod
     async def archive_purchase_order(order_id: str, user_id: str) -> PurchaseOrderResponse:
-        """Archive a purchase order."""
-        db = get_db()
-        update_dict = {
-            'is_archived': True,
-            'archived_at': datetime.utcnow().isoformat(),
-            'archived_by': user_id,
-            'updated_by': user_id,
-            'updated_at': datetime.utcnow().isoformat()
-        }
-        db.table('purchase_orders').update(update_dict).eq('id', order_id).execute()
-        return await PurchaseOrderService.get_order_by_id(order_id)
+        """Archive a purchase order by cancelling it (no archived_at column exists)."""
+        return await PurchaseOrderService.cancel_purchase_order(order_id, user_id)
 
     @staticmethod
     async def cancel_purchase_order(order_id: str, user_id: str) -> PurchaseOrderResponse:
@@ -971,15 +962,16 @@ class PurchaseOrderService:  # Changed from ProductionOrderService
         
         # If it's Draft or Planned (and maybe Cancelled), we can hard delete
         if status in ['Draft', 'Planned', 'Cancelled', 'DRAFT', 'PLANNED', 'CANCELLED']:
-            # Delete related items first due to FKs (though CASCADE should handle it, explicit is safer if CASCADE missing)
-            # Try direct delete relying on CASCADE
             try:
+                # Delete referencing rows first to avoid FK violations
+                db.table('qc_inspections').delete().eq('purchase_order_id', order_id).execute()
+                db.table('purchase_order_items').delete().eq('order_id', order_id).execute()
                 db.table('purchase_orders').delete().eq('id', order_id).execute()
                 return True
             except Exception as e:
-                # If delete fails (e.g. constraints), fall back to Archive
-                print(f"Delete failed, falling back to archive: {e}")
-                await PurchaseOrderService.archive_purchase_order(order_id, user_id)
+                # If delete still fails, fall back to cancel
+                print(f"Delete failed, falling back to cancel: {e}")
+                await PurchaseOrderService.cancel_purchase_order(order_id, user_id)
                 return False
         else:
             # Otherwise, just archive/cancel

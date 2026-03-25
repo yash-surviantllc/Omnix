@@ -180,16 +180,21 @@ def require_worker_module_access(module_key: str):
 
 
 async def block_worker_delete(
-    current_user: UserResponse = Depends(get_current_user)
+    current_user: UserResponse = Depends(get_current_user),
 ) -> UserResponse:
     """
-    Blocks DELETE operations for workers.
-    Apply this as a dependency on all DELETE routes.
+    Hard-blocks DELETE operations for workers on admin-only resources
+    (stages, shifts, products, alerts, wip-board).
+    For module-scoped deletes, use require_worker_module_access() instead.
     """
     user_roles_lower = [r.lower() for r in current_user.roles] if current_user.roles else []
-    if 'worker' in user_roles_lower and 'admin' not in user_roles_lower:
+    if "admin" in user_roles_lower:
+        return current_user
+    if "worker" in user_roles_lower:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Workers are not permitted to delete records"
+            detail="Workers are not permitted to delete this resource",
         )
     return current_user
+
+

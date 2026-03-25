@@ -8,7 +8,7 @@ from app.schemas.purchase_order import (
 from app.schemas.user import UserResponse
 from app.services.purchase_order_service import purchase_order_service
 from app.services.dashboard_service import dashboard_service
-from app.api.deps import get_current_user, require_role, block_worker_delete
+from app.api.deps import get_current_user, require_role, block_worker_delete, require_worker_module_access
 from decimal import Decimal
 
 import logging
@@ -190,7 +190,7 @@ async def cancel_purchase_order(
 async def delete_purchase_order(
     order_id: str,
     current_user: UserResponse = Depends(get_current_user),
-    _worker_guard: UserResponse = Depends(block_worker_delete)
+    _module_guard: UserResponse = Depends(require_worker_module_access("orders"))
 ):
     """
     Delete (cancel) purchase order.
