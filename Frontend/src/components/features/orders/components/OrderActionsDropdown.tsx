@@ -1,7 +1,7 @@
 import {
   Eye, Edit, FileText, QrCode, Star, Trash2, Printer, Clock,
   Users, MessageSquare, Send, Calendar, Package,
-  Share2, Archive, BarChart3, XCircle, ClipboardList, MoreVertical
+  Share2, Archive, BarChart3, XCircle, ClipboardList, MoreVertical, CheckCircle2
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -17,7 +17,7 @@ type OrderAction =
   | 'productionPlan' | 'assignTeam' | 'addNotes' | 'downloadBOM'
   | 'exportExcel' | 'generateQR' | 'sendToProduction' | 'requestMaterials'
   | 'reschedule' | 'share' | 'viewHistory' | 'archive' | 'priority'
-  | 'cancel' | 'delete' | 'createWorkingOrder';
+  | 'cancel' | 'delete' | 'createWorkingOrder' | 'markComplete';
 
 interface OrderActionsDropdownProps {
   orderId: string;
@@ -44,6 +44,7 @@ interface OrderActionsDropdownProps {
     cancelOrder: string;
     deleteOrder: string;
     createWorkingOrder: string;
+    markComplete: string;
   };
 }
 
@@ -177,6 +178,15 @@ export function OrderActionsDropdown({
         >
           <Star className="h-4 w-4 mr-2" />
           {t.markPriority}
+        </DropdownMenuItem>
+
+        <DropdownMenuItem
+          onClick={() => handleAction('markComplete')}
+          className="!cursor-pointer text-green-600 hover:!bg-green-50 focus:!bg-green-50 data-[highlighted]:!bg-green-50 focus:text-green-700 outline-none"
+          style={{ cursor: 'pointer' }}
+        >
+          <CheckCircle2 className="h-4 w-4 mr-2" />
+          {t.markComplete}
         </DropdownMenuItem>
 
         <DropdownMenuItem

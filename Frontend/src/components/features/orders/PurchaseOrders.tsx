@@ -112,6 +112,7 @@ export function PurchaseOrders({ language, onNavigate }: PurchaseOrdersProps) {
       cancelOrder: 'Cancel Order',
       deleteOrder: 'Delete Order',
       createWorkingOrder: 'Create Working Order',
+      markComplete: 'Mark as Complete',
       editTimeline: 'Edit Timeline',
       viewMode: 'View Mode',
       saveChanges: 'Save Changes',
@@ -181,6 +182,7 @@ export function PurchaseOrders({ language, onNavigate }: PurchaseOrdersProps) {
       cancelOrder: 'ऑर्डर रद्द करें',
       deleteOrder: 'ऑर्डर हटाएं',
       createWorkingOrder: 'वर्किंग ऑर्डर बनाएं',
+      markComplete: 'पूर्ण के रूप में चिह्नित करें',
       editTimeline: 'समयरेखा संपादित करें',
       viewMode: 'देखें मोड',
       saveChanges: 'परिवर्तन सहेजें',
@@ -895,6 +897,12 @@ export function PurchaseOrders({ language, onNavigate }: PurchaseOrdersProps) {
         case 'archive':
           await purchaseOrdersApi.archiveOrder(selectedOrder.id);
           alert(`${selectedOrder.order_number} ${language === 'en' ? 'archived successfully' : 'सफलतापूर्वक संग्रहीत'}`);
+          fetchOrders();
+          break;
+
+        case 'markComplete':
+          await purchaseOrdersApi.updateStatus(selectedOrder.id, { status: 'Completed' });
+          alert(`${selectedOrder.order_number} ${language === 'en' ? 'marked as complete' : 'पूर्ण के रूप में चिह्नित किया गया'}`);
           fetchOrders();
           break;
         case 'priority':
@@ -1636,11 +1644,13 @@ export function PurchaseOrders({ language, onNavigate }: PurchaseOrdersProps) {
 
       case 'archive':
       case 'priority':
+      case 'markComplete':
       case 'cancel':
       case 'delete':
         const config = {
           archive: { color: 'blue', icon: Archive, title: t.archiveOrder },
           priority: { color: 'amber', icon: Star, title: t.markPriority },
+          markComplete: { color: 'green', icon: CheckCircle2, title: t.markComplete },
           cancel: { color: 'amber', icon: XCircle, title: t.cancelOrder },
           delete: { color: 'red', icon: Trash2, title: t.deleteOrder }
         }[activeModal];
@@ -1654,7 +1664,7 @@ export function PurchaseOrders({ language, onNavigate }: PurchaseOrdersProps) {
                   <p className={`text-${config.color}-900`}>
                     {language === 'en'
                       ? `Are you sure you want to ${activeModal} this order?`
-                      : `क्या आप वाकई इस ऑर्डर को ${activeModal === 'delete' ? 'हटाना' : activeModal === 'cancel' ? 'रद्द करना' : activeModal === 'archive' ? 'संग्रहित करना' : 'प्राथमिकता के रूप में चिह्नित करना'} चाहते हैं?`}
+                      : `क्या आप वाकई इस ऑर्डर को ${activeModal === 'delete' ? 'हटाना' : activeModal === 'cancel' ? 'रद्द करना' : activeModal === 'archive' ? 'संग्रहित करना' : activeModal === 'priority' ? 'प्राथमिकता के रूप में चिह्नित करना' : activeModal === 'markComplete' ? 'पूर्ण के रूप में चिह्नित करना' : 'क्रिया करना'} चाहते हैं?`}
                   </p>
                 </div>
                 <p className="text-sm text-zinc-600">
