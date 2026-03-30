@@ -255,6 +255,7 @@ export function PurchaseOrders({ language, onNavigate }: PurchaseOrdersProps) {
       cancelOrder: 'ಆದೇಶವನ್ನು ರದ್ದುಗೊಳಿಸಿ',
       deleteOrder: 'ಆದೇಶವನ್ನು ಅಳಿಸಿ',
       createWorkingOrder: 'ವರ್ಕಿಂಗ್ ಆರ್ಡರ್ ರಚಿಸಿ',
+      markComplete: 'ಪೂರ್ಣಗೊಳಿಸಲಾಗಿದೆ ಎಂದು ಗುರುತಿಸಿ',
       createNewOrder: 'Create New Purchase Order',
       selectProduct: 'Select Product',
       chooseProduct: 'Choose product...',
@@ -322,6 +323,7 @@ export function PurchaseOrders({ language, onNavigate }: PurchaseOrdersProps) {
       cancelOrder: 'ஆட்டாளத்தை ரத்துசெய்',
       deleteOrder: 'ஆட்டாளத்தை அழி',
       createWorkingOrder: 'வேலை ஆர்டர் உருவாக்கு',
+      markComplete: 'முடிந்தது எனக் குறி',
       createNewOrder: 'புதிய உற்பத்தி ஆட்டாளம் உருவாக்கு',
       selectProduct: 'பொருளைத் தேர்ந்தெடுக்கவும்',
       chooseProduct: 'பொருளைத் தேர்ந்தெடுக்கவும்...',
@@ -388,6 +390,7 @@ export function PurchaseOrders({ language, onNavigate }: PurchaseOrdersProps) {
       cancelOrder: 'ఆదేశాన్ని రద్దు చేయండి',
       deleteOrder: 'ఆదేశాన్ని తొలగించండి',
       createWorkingOrder: 'వర్కింగ్ ఆర్డర్ సృష్టించండి',
+      markComplete: 'పూర్తయినట్లుగా గుర్తించండి',
       createNewOrder: 'Create New Purchase Order',
       selectProduct: 'Select Product',
       chooseProduct: 'Choose product...',
@@ -454,6 +457,7 @@ export function PurchaseOrders({ language, onNavigate }: PurchaseOrdersProps) {
       cancelOrder: 'आदेश रद्द करा',
       deleteOrder: 'आदेश हटवा',
       createWorkingOrder: 'वर्किंग ऑर्डर तयार करा',
+      markComplete: 'पूर्ण म्हणून चिन्हांकित करा',
       createNewOrder: 'Create New Purchase Order',
       selectProduct: 'Select Product',
       chooseProduct: 'Choose product...',
@@ -520,6 +524,7 @@ export function PurchaseOrders({ language, onNavigate }: PurchaseOrdersProps) {
       cancelOrder: 'આદેશ રદ કરો',
       deleteOrder: 'આદેશ કાઢી નાખો',
       createWorkingOrder: 'વર્કિંગ ઓર્ડર બનાવો',
+      markComplete: 'પૂર્ણ તરીકે ચિહ્નિત કરો',
       createNewOrder: 'Create New Purchase Order',
       selectProduct: 'Select Product',
       chooseProduct: 'Choose product...',
@@ -586,6 +591,7 @@ export function PurchaseOrders({ language, onNavigate }: PurchaseOrdersProps) {
       cancelOrder: 'ਆਦੇਸ਼ ਰੱਦ ਕਰੋ',
       deleteOrder: 'ਆਦੇਸ਼ ਮਿਟਾਓ',
       createWorkingOrder: 'ਵਰਕਿੰਗ ਆਰਡਰ ਬਣਾਓ',
+      markComplete: 'ਪੂਰਾ ਵਜੋਂ ਨਿਸ਼ਾਨਬੱਧ ਕਰੋ',
       createNewOrder: 'Create New Purchase Order',
       selectProduct: 'Select Product',
       chooseProduct: 'Choose product...',
@@ -921,19 +927,22 @@ export function PurchaseOrders({ language, onNavigate }: PurchaseOrdersProps) {
 
 
   const getStatusBadge = (status: string) => {
-    switch (status.toLowerCase()) {
+    if (!status) return null;
+    const normalizedStatus = status.trim().toLowerCase();
+    
+    switch (normalizedStatus) {
       case 'planned':
-        return <Badge className="bg-blue-500">{language === 'en' ? 'Planned' : 'योजनित'}</Badge>;
+        return <Badge className="bg-blue-500 text-white border-transparent">{language === 'en' ? 'Planned' : 'योजनित'}</Badge>;
       case 'in progress':
-        return <Badge className="bg-emerald-500">{language === 'en' ? 'In Progress' : 'प्रगति में'}</Badge>;
+        return <Badge className="bg-emerald-500 text-white border-transparent">{language === 'en' ? 'In Progress' : 'प्रगति में'}</Badge>;
       case 'completed':
-        return <Badge className="bg-green-600">{language === 'en' ? 'Completed' : 'पूर्ण'}</Badge>;
+        return <Badge className="bg-emerald-600 text-white border-transparent">{language === 'en' ? 'Completed' : 'पूर्ण'}</Badge>;
       case 'on hold':
-        return <Badge className="bg-yellow-500">{language === 'en' ? 'On Hold' : 'होल्ड पर'}</Badge>;
+        return <Badge className="bg-yellow-500 text-white border-transparent">{language === 'en' ? 'On Hold' : 'होल्ड पर'}</Badge>;
       case 'cancelled':
-        return <Badge className="bg-red-500">{language === 'en' ? 'Cancelled' : 'रद्द'}</Badge>;
+        return <Badge className="bg-red-500 text-white border-transparent">{language === 'en' ? 'Cancelled' : 'रद्द'}</Badge>;
       default:
-        return <Badge>{status}</Badge>;
+        return <Badge className="bg-zinc-100 text-zinc-800 border-zinc-200">{status}</Badge>;
     }
   };
 

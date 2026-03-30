@@ -457,6 +457,9 @@ class WIPService:
                      'actual_end': datetime.utcnow().isoformat(),
                      'completed_qty': float(c_qty)
                  }).eq('work_order_id', order_id).neq('status', 'Completed').execute()
+                 
+                 if 'completed_qty' not in update_data:
+                     update_data['completed_qty'] = float(c_qty)
 
         result = db.table('work_orders').update(update_data).eq('id', order_id).execute()
         

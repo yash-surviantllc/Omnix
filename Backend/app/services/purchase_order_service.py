@@ -160,6 +160,21 @@ class PurchaseOrderService:  # Changed from ProductionOrderService
                 except Exception as e:
                     print(f"Error batch fetching fallback products: {e}")
 
+            # 4. Batch fetch Work Orders for Progress Calculation
+            wo_progress_by_order = {}
+            if order_ids:
+                try:
+                    wo_query = db.table('work_orders').select('purchase_order_id, target_qty, completed_qty').in_('purchase_order_id', order_ids)
+                    wo_result = wo_query.execute()
+                    for wo in wo_result.data:
+                        oid = wo['purchase_order_id']
+                        if oid not in wo_progress_by_order:
+                            wo_progress_by_order[oid] = {'target': 0, 'completed': 0}
+                        wo_progress_by_order[oid]['target'] += float(wo.get('target_qty') or 0)
+                        wo_progress_by_order[oid]['completed'] += float(wo.get('completed_qty') or 0)
+                except Exception as e:
+                    print(f"Error batch fetching work orders: {e}")
+
             # --- ASSEMBLY ---
             orders = []
             for order in orders_data:
@@ -204,7 +219,15 @@ class PurchaseOrderService:  # Changed from ProductionOrderService
                         else:
                             materials_status = 'Partially Available'
 
-                    progress_percentage = PurchaseOrderService._derive_progress_percentage(order)
+                    # Calculate progress percentage dynamically from work orders
+                    if (order.get('status') or '').strip().lower() == 'completed':
+                        progress_percentage = 100.0
+                    else:
+                        wo_prog = wo_progress_by_order.get(order['id'])
+                        if wo_prog and wo_prog['target'] > 0:
+                            progress_percentage = (wo_prog['completed'] / wo_prog['target']) * 100.0
+                        else:
+                            progress_percentage = PurchaseOrderService._derive_progress_percentage(order)
 
                     # Get items
                     items = []
@@ -737,11 +760,23 @@ class PurchaseOrderService:  # Changed from ProductionOrderService
         
         # Calculate progress (with error handling)
         try:
-            progress = await PurchaseOrderService.get_order_progress(order_id)
-            progress_pct = progress.allocation_percentage if progress else 0
+            if (order.get('status') or '').strip().lower() == 'completed':
+                progress_pct = 100.0
+            else:
+                wo_res = db.table('work_orders').select('target_qty, completed_qty').eq('purchase_order_id', order_id).execute()
+                if wo_res.data:
+                    total_target = sum(float(wo.get('target_qty') or 0) for wo in wo_res.data)
+                    total_completed = sum(float(wo.get('completed_qty') or 0) for wo in wo_res.data)
+                    if total_target > 0:
+                        progress_pct = (total_completed / total_target) * 100.0
+                    else:
+                        progress_pct = 0.0
+                else:
+                    progress = await PurchaseOrderService.get_order_progress(order_id)
+                    progress_pct = progress.allocation_percentage if progress else 0.0
         except Exception as e:
             logging.warning(f"Failed to fetch order progress for order {order_id}: {e}")
-            progress_pct = 0
+            progress_pct = 0.0
             
         # Create response
         return PurchaseOrderResponse(
@@ -834,6 +869,18 @@ class PurchaseOrderService:  # Changed from ProductionOrderService
         elif status_data.status == 'Completed':
             # update_dict['completion_date'] = datetime.utcnow().isoformat()
             update_dict['progress_percentage'] = 100
+            
+            # --- AUTO-COMPLETE ASSOCIATED WORK ORDERS ---
+            try:
+                wo_res = db.table('work_orders').select('id, status').eq('purchase_order_id', order_id).neq('status', 'Completed').execute()
+                if wo_res.data:
+                    from app.services.wip_service import WIPService
+                    from app.schemas.wip import WorkingOrderUpdate
+                    for wo in wo_res.data:
+                        await WIPService.update_working_order(wo['id'], WorkingOrderUpdate(status='Completed'), user_id)
+            except Exception as e:
+                import logging
+                logging.error(f"Failed to auto-complete work orders for PO {order_id}: {e}")
 
         db.table('purchase_orders').update(update_dict).eq('id', order_id).execute()
 

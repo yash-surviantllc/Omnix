@@ -34,6 +34,8 @@ export class ApiClient {
   private baseURL: string;
   private isRefreshing = false;
   private refreshPromise: Promise<void> | null = null;
+  private accessToken: string | null = null;
+  private refreshToken: string | null = null;
 
   constructor(baseURL: string = API_URL) {
     this.baseURL = baseURL;
@@ -53,6 +55,7 @@ export class ApiClient {
   }
 
   private getAccessToken(): string | null {
+    if (this.accessToken) return this.accessToken;
     try {
       const authStorage = localStorage.getItem('auth-storage');
       if (authStorage) {
@@ -66,6 +69,7 @@ export class ApiClient {
   }
 
   private getRefreshToken(): string | null {
+    if (this.refreshToken) return this.refreshToken;
     try {
       const authStorage = localStorage.getItem('auth-storage');
       if (authStorage) {
@@ -99,6 +103,9 @@ export class ApiClient {
       }
 
       const data = await response.json();
+
+      // Update in-memory tokens
+      this.setTokens(data.access_token, data.refresh_token);
 
       // Update tokens in localStorage
       const authStorage = localStorage.getItem('auth-storage');
@@ -263,6 +270,11 @@ export class ApiClient {
 
   invalidateCache(pattern?: string): void {
     cacheService.clear(pattern);
+  }
+
+  setTokens(accessToken: string, refreshToken: string): void {
+    this.accessToken = accessToken;
+    this.refreshToken = refreshToken;
   }
 }
 

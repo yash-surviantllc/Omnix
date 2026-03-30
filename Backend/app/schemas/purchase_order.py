@@ -181,6 +181,7 @@ class PurchaseOrderListItem(BaseModel):  # Changed from ProductionOrderListItem
     days_until_due: int
     is_overdue: bool
     items: List[POItemResponse] = []
+    progress_percentage: Decimal = Decimal('0')
     created_at: datetime
     
     class Config:

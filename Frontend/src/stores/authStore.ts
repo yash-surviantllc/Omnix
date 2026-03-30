@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { authApi, type UserResponse } from '@/lib/api/auth';
+import { apiClient } from '@/lib/api/client';
 import type { ApiError } from '@/lib/api/client';
 
 interface UserData {
@@ -78,6 +79,9 @@ export const useAuthStore = create<AuthStore>()(
             refreshToken: response.refresh_token,
           });
 
+          // Sync tokens immediately with the apiClient to avoid race conditions with persistence
+          apiClient.setTokens(response.access_token, response.refresh_token);
+
           const userResponse = await authApi.getCurrentUser();
           const userData = mapUserResponse(userResponse);
 
@@ -111,6 +115,9 @@ export const useAuthStore = create<AuthStore>()(
         } catch (error) {
           console.error('Logout error:', error);
         } finally {
+          // Clear in-memory tokens in apiClient
+          apiClient.setTokens('', '');
+          
           set({
             isAuthenticated: false,
             user: null,
