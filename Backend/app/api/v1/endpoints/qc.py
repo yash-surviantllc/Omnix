@@ -6,7 +6,7 @@ from app.schemas.qc import (
 )
 from app.schemas.user import UserResponse
 from app.services.qc_service import QCService
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, require_role, require_worker_module_access
 
 router = APIRouter()
 
@@ -24,7 +24,8 @@ class OrderLookupResponse(BaseModel):
 @router.post("/", response_model=QCInspectionResponse)
 async def create_inspection(
     inspection: QCInspectionCreate,
-    current_user: UserResponse = Depends(get_current_user)
+    current_user: UserResponse = Depends(require_role(["Supervisor", "Worker"])),
+    _module_guard: UserResponse = Depends(require_worker_module_access("qc"))
 ):
     """
     Create a new QC inspection.

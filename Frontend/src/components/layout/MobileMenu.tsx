@@ -130,7 +130,7 @@ const translations = {
 
 export function MobileMenu({ language, user, onLogout, setCurrentView }: MobileMenuProps) {
   const { showLanguageMenu, setShowLanguageMenu, setLanguage, setMobileMenuOpen } = useAppStore();
-  const t = translations[language];
+  const t = translations[language] || translations.en;
 
   const handleLanguageChange = (lang: Language) => {
     setLanguage(lang);
@@ -138,42 +138,49 @@ export function MobileMenu({ language, user, onLogout, setCurrentView }: MobileM
     setMobileMenuOpen(false);
   };
 
+  const canAccessModule = (moduleKey: string) => {
+    if (!user || !user.roles) return false;
+    // Dashboard is always accessible
+    if (moduleKey === 'dashboard') return true;
+
+    const roles = user.roles.map((r: string) => r.toLowerCase());
+    
+    // Admin always has access
+    if (roles.includes('admin')) return true;
+    
+    // Non-worker roles (manager, supervisor, etc.) have full access
+    if (!roles.includes('worker')) return true;
+    
+    // Workers only have access if explicitly granted
+    return user.workerModules?.includes(moduleKey);
+  };
+
+  const navItems = [
+    { key: 'dashboard', label: t.dashboard },
+    { key: 'bom', label: t.bom },
+    { key: 'orders', label: t.orders },
+    { key: 'working-order', label: t['working-order'] },
+    { key: 'wip', label: t.wip },
+    { key: 'transfer', label: t.transfer },
+    { key: 'material-request', label: t['material-request'] },
+    { key: 'qc', label: t.qc },
+    { key: 'inventory', label: t.inventory },
+    { key: 'gate-entry', label: t['gate-entry'] },
+    { key: 'gate-exit', label: t['gate-exit'] },
+  ];
+
   return (
     <div className="lg:hidden fixed inset-0 z-30 bg-zinc-900 text-white pt-16 overflow-y-auto">
       <nav className="flex flex-col p-4 space-y-2">
-        <MobileNavButton active={false} onClick={() => { setCurrentView('dashboard'); setMobileMenuOpen(false); }}>
-          {t.dashboard}
-        </MobileNavButton>
-        <MobileNavButton active={false} onClick={() => { setCurrentView('bom'); setMobileMenuOpen(false); }}>
-          {t.bom}
-        </MobileNavButton>
-        <MobileNavButton active={false} onClick={() => { setCurrentView('orders'); setMobileMenuOpen(false); }}>
-          {t.orders}
-        </MobileNavButton>
-        <MobileNavButton active={false} onClick={() => { setCurrentView('working-order'); setMobileMenuOpen(false); }}>
-          {t['working-order']}
-        </MobileNavButton>
-        <MobileNavButton active={false} onClick={() => { setCurrentView('wip'); setMobileMenuOpen(false); }}>
-          {t.wip}
-        </MobileNavButton>
-        <MobileNavButton active={false} onClick={() => { setCurrentView('transfer'); setMobileMenuOpen(false); }}>
-          {t.transfer}
-        </MobileNavButton>
-        <MobileNavButton active={false} onClick={() => { setCurrentView('material-request'); setMobileMenuOpen(false); }}>
-          {t['material-request']}
-        </MobileNavButton>
-        <MobileNavButton active={false} onClick={() => { setCurrentView('qc'); setMobileMenuOpen(false); }}>
-          {t.qc}
-        </MobileNavButton>
-        <MobileNavButton active={false} onClick={() => { setCurrentView('inventory'); setMobileMenuOpen(false); }}>
-          {t.inventory}
-        </MobileNavButton>
-        <MobileNavButton active={false} onClick={() => { setCurrentView('gate-entry'); setMobileMenuOpen(false); }}>
-          {t['gate-entry']}
-        </MobileNavButton>
-        <MobileNavButton active={false} onClick={() => { setCurrentView('gate-exit'); setMobileMenuOpen(false); }}>
-          {t['gate-exit']}
-        </MobileNavButton>
+        {navItems.filter(item => canAccessModule(item.key)).map(item => (
+          <MobileNavButton 
+            key={item.key}
+            active={false} 
+            onClick={() => { setCurrentView(item.key); setMobileMenuOpen(false); }}
+          >
+            {item.label}
+          </MobileNavButton>
+        ))}
         <div className="pt-4">
           <div className="relative">
             <Button

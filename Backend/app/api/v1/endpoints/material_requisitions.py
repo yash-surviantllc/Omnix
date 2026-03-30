@@ -13,7 +13,7 @@ from app.schemas.material_requisition import (
 from app.schemas.user import UserResponse
 from app.services.material_requisition_service import material_requisition_service
 from app.services.dashboard_service import dashboard_service
-from app.api.deps import get_current_user, block_worker_delete, require_worker_module_access
+from app.api.deps import get_current_user, require_role, block_worker_delete, require_worker_module_access
 
 router = APIRouter()
 
@@ -21,7 +21,8 @@ router = APIRouter()
 @router.post("", response_model=MaterialRequisitionResponse, status_code=201)
 async def create_material_requisition(
     data: MaterialRequisitionCreate,
-    current_user: UserResponse = Depends(get_current_user)
+    current_user: UserResponse = Depends(require_role(["Supervisor", "Worker"])),
+    _module_guard: UserResponse = Depends(require_worker_module_access("material-request"))
 ):
     """
     Create a new material requisition
@@ -111,7 +112,8 @@ async def get_material_requisition_by_number(
 async def update_material_requisition(
     requisition_id: str,
     data: MaterialRequisitionUpdate,
-    current_user: UserResponse = Depends(get_current_user)
+    current_user: UserResponse = Depends(require_role(["Supervisor", "Worker"])),
+    _module_guard: UserResponse = Depends(require_worker_module_access("material-request"))
 ):
     """
     Update a material requisition
@@ -152,7 +154,8 @@ async def cancel_material_requisition(
 @router.post("/{requisition_id}/approve", response_model=MaterialRequisitionResponse)
 async def approve_material_requisition(
     requisition_id: str,
-    current_user: UserResponse = Depends(get_current_user)
+    current_user: UserResponse = Depends(require_role(["Supervisor", "Worker"])),
+    _module_guard: UserResponse = Depends(require_worker_module_access("material-request"))
 ):
     """
     Approve a material requisition

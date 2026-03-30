@@ -1,5 +1,6 @@
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from datetime import datetime
 from typing import Optional, List, Union
 from app.core.security import decode_token
 from app.services.auth_service import auth_service
@@ -142,11 +143,11 @@ async def get_current_user_ws(token: str) -> UserResponse:
     return user
 
 
-def require_worker_module_access(module_key: str):
+def require_worker_module_access(module_key: Union[str, List[str]]):
     """
     Dependency factory for worker-scoped module access.
     - Admin bypasses all checks.
-    - Workers must have the module explicitly granted via worker_module_permissions.
+    - Workers must have at least one of the module keys explicitly granted.
     - All other roles (manager, supervisor, etc.) pass through unchanged.
     """
     async def checker(current_user: UserResponse = Depends(get_current_user)):
@@ -160,19 +161,27 @@ def require_worker_module_access(module_key: str):
         if 'worker' not in user_roles_lower:
             return current_user
 
-        # Worker: check module permission
-        db = get_db()
-        result = db.table('worker_module_permissions') \
-            .select('id') \
-            .eq('user_id', current_user.id) \
-            .eq('module_key', module_key) \
-            .execute()
+        # Worker: check cached module permissions from user object
+        worker_modules = current_user.worker_modules or []
+        
+        # If module_key is a list, check if there's any intersection
+        if isinstance(module_key, list):
+            has_access = any(key in worker_modules for key in module_key)
+            module_desc = ", ".join(module_key)
+        else:
+            has_access = module_key in worker_modules
+            module_desc = module_key
 
-        if not result.data:
+        if not has_access:
+            with open(r"c:\Work\Inventory Management\Omnix\Backend\auth_debug.log", "a") as f:
+                f.write(f"{datetime.now().isoformat()} - 403 FORBIDDEN - User: {current_user.id} ({current_user.email}) - Roles: {current_user.roles} - WorkerModules: {worker_modules} - Requested: {module_key}\n")
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Access to module '{module_key}' has not been granted"
+                detail=f"Access to any of modules [{module_desc}] has not been granted to worker"
             )
+
+        with open(r"c:\Work\Inventory Management\Omnix\Backend\auth_debug.log", "a") as f:
+            f.write(f"{datetime.now().isoformat()} - 200 OK - User: {current_user.id} - WorkerModules: {worker_modules} - Requested: {module_key}\n")
 
         return current_user
 

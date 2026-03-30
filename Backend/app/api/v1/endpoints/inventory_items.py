@@ -77,7 +77,8 @@ async def get_inventory_item(
 @router.post("/", response_model=InventoryItemResponse, status_code=201)
 async def create_inventory_item(
     item_data: InventoryItemCreate,
-    current_user: UserResponse = Depends(require_role("Store Manager"))
+    current_user: UserResponse = Depends(require_role(["Store Manager", "Worker"])),
+    _module_guard: UserResponse = Depends(require_worker_module_access("inventory"))
 ):
     """
     Create a new inventory item.
@@ -109,7 +110,8 @@ async def create_inventory_item(
 async def update_inventory_item(
     item_id: str,
     item_data: InventoryItemUpdate,
-    current_user: UserResponse = Depends(require_role("Store Manager"))
+    current_user: UserResponse = Depends(require_role(["Store Manager", "Worker"])),
+    _module_guard: UserResponse = Depends(require_worker_module_access("inventory"))
 ):
     """
     Update an inventory item.
@@ -154,7 +156,8 @@ async def delete_inventory_item(
 @router.post("/adjust", response_model=InventoryItemResponse)
 async def adjust_inventory(
     adjustment: InventoryAdjustmentRequest,
-    current_user: UserResponse = Depends(require_role("Store Manager"))
+    current_user: UserResponse = Depends(require_role(["Store Manager", "Worker"])),
+    _module_guard: UserResponse = Depends(require_worker_module_access("inventory"))
 ):
     """
     Adjust inventory quantity.

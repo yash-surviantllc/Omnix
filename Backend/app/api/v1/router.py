@@ -59,7 +59,7 @@ api_router.include_router(
     boms.router,
     prefix="/boms",
     tags=["BOM Planner"],
-    dependencies=[Depends(require_worker_module_access('bom'))]
+    dependencies=[Depends(require_worker_module_access(['bom', 'working-order']))]
 )
 
 # Inventory routes
@@ -75,7 +75,7 @@ api_router.include_router(
     inventory_items.router,
     prefix="/inventory-items",
     tags=["Inventory Items"],
-    dependencies=[Depends(require_worker_module_access('inventory'))]
+    dependencies=[Depends(require_worker_module_access(['inventory', 'transfer', 'material-request']))]
 )
 
 # Purchase Orders routes
@@ -83,7 +83,7 @@ api_router.include_router(
     purchase_orders.router,
     prefix="/orders",
     tags=["Purchase Orders"],
-    dependencies=[Depends(require_worker_module_access('orders'))]
+    dependencies=[Depends(require_worker_module_access(['orders', 'working-order', 'qc']))]
 )
 
 # Material Transfers routes
@@ -106,7 +106,7 @@ api_router.include_router(
     wip.router,
     prefix="/wip",
     tags=["WIP Live Board"],
-    dependencies=[Depends(require_worker_module_access('working-order'))]
+    dependencies=[Depends(require_worker_module_access(['working-order', 'transfer', 'material-request', 'qc']))]
 )
 
 # WIP board routes
@@ -166,7 +166,8 @@ api_router.include_router(
 api_router.include_router(
     material_requisitions.router,
     prefix="/material-requisitions",
-    tags=["Material Requisitions"]
+    tags=["Material Requisitions"],
+    dependencies=[Depends(require_worker_module_access('material-request'))]
 )
 
 # Notifications routes

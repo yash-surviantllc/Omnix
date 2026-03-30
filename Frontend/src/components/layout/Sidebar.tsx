@@ -148,13 +148,43 @@ const translations = {
 export function Sidebar({ language, user, onLogout, setCurrentView }: SidebarProps) {
   const { setLanguage, currentView } = useAppStore();
   const [showLanguageMenu, setShowLanguageMenu] = useState(false);
-
   const t = translations[language] || translations.en;
 
   const handleLanguageChange = (lang: Language) => {
     setLanguage(lang);
     setShowLanguageMenu(false);
   };
+
+  const canAccessModule = (moduleKey: string) => {
+    if (!user || !user.roles) return false;
+    // Dashboard is always accessible
+    if (moduleKey === 'dashboard') return true;
+
+    const roles = user.roles.map((r: string) => r.toLowerCase());
+    
+    // Admin always has access
+    if (roles.includes('admin')) return true;
+    
+    // Non-worker roles (manager, supervisor, etc.) have full access
+    if (!roles.includes('worker')) return true;
+    
+    // Workers only have access if explicitly granted
+    return user.workerModules?.includes(moduleKey);
+  };
+
+  const navItems = [
+    { key: 'dashboard', label: t.dashboard },
+    { key: 'bom', label: t.bom },
+    { key: 'orders', label: t.orders },
+    { key: 'working-order', label: t['working-order'] },
+    { key: 'wip', label: t.wip },
+    { key: 'transfer', label: t.transfer },
+    { key: 'material-request', label: t['material-request'] },
+    { key: 'qc', label: t.qc },
+    { key: 'inventory', label: t.inventory },
+    { key: 'gate-entry', label: t['gate-entry'] },
+    { key: 'gate-exit', label: t['gate-exit'] },
+  ];
 
   return (
     <aside className="hidden lg:fixed lg:inset-y-0 lg:flex lg:w-64 lg:flex-col bg-zinc-900 text-white">
@@ -170,39 +200,15 @@ export function Sidebar({ language, user, onLogout, setCurrentView }: SidebarPro
         </div>
       </div>
       <nav className="flex-1 space-y-1 px-3 py-4 overflow-y-auto">
-        <NavButton active={currentView === 'dashboard'} onClick={() => setCurrentView('dashboard')}>
-          {t.dashboard}
-        </NavButton>
-        <NavButton active={currentView === 'bom'} onClick={() => setCurrentView('bom')}>
-          {t.bom}
-        </NavButton>
-        <NavButton active={currentView === 'orders'} onClick={() => setCurrentView('orders')}>
-          {t.orders}
-        </NavButton>
-        <NavButton active={currentView === 'working-order'} onClick={() => setCurrentView('working-order')}>
-          {t['working-order']}
-        </NavButton>
-        <NavButton active={currentView === 'wip'} onClick={() => setCurrentView('wip')}>
-          {t.wip}
-        </NavButton>
-        <NavButton active={currentView === 'transfer'} onClick={() => setCurrentView('transfer')}>
-          {t.transfer}
-        </NavButton>
-        <NavButton active={currentView === 'material-request'} onClick={() => setCurrentView('material-request')}>
-          {t['material-request']}
-        </NavButton>
-        <NavButton active={currentView === 'qc'} onClick={() => setCurrentView('qc')}>
-          {t.qc}
-        </NavButton>
-        <NavButton active={currentView === 'inventory'} onClick={() => setCurrentView('inventory')}>
-          {t.inventory}
-        </NavButton>
-        <NavButton active={currentView === 'gate-entry'} onClick={() => setCurrentView('gate-entry')}>
-          {t['gate-entry']}
-        </NavButton>
-        <NavButton active={currentView === 'gate-exit'} onClick={() => setCurrentView('gate-exit')}>
-          {t['gate-exit']}
-        </NavButton>
+        {navItems.filter(item => canAccessModule(item.key)).map(item => (
+          <NavButton 
+            key={item.key}
+            active={currentView === item.key} 
+            onClick={() => setCurrentView(item.key)}
+          >
+            {item.label}
+          </NavButton>
+        ))}
       </nav>
       <div className="border-t border-zinc-800 p-4">
         <div className="relative">

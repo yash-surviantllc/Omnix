@@ -121,7 +121,8 @@ async def get_inventory_by_location(
 @router.post("/transactions", response_model=InventoryTransactionResponse, status_code=201)
 async def record_transaction(
     transaction_data: InventoryTransactionCreate,
-    current_user: UserResponse = Depends(require_role("Store Manager"))
+    current_user: UserResponse = Depends(require_role(["Store Manager", "Worker"])),
+    _module_gate: UserResponse = Depends(require_worker_module_access("inventory"))
 ):
     """
     Record an inventory transaction.
@@ -209,7 +210,8 @@ async def get_transaction(
 @router.post("/alerts", response_model=StockAlertResponse, status_code=201)
 async def create_stock_alert(
     alert_data: StockAlertCreate,
-    current_user: UserResponse = Depends(require_role("Store Manager"))
+    current_user: UserResponse = Depends(require_role(["Store Manager", "Worker"])),
+    _module_gate: UserResponse = Depends(require_worker_module_access("inventory"))
 ):
     """
     Create a stock alert for min/max levels.
@@ -259,7 +261,8 @@ async def get_stock_alert(
 async def update_stock_alert(
     alert_id: str,
     alert_data: StockAlertUpdate,
-    current_user: UserResponse = Depends(require_role("Store Manager"))
+    current_user: UserResponse = Depends(require_role(["Store Manager", "Worker"])),
+    _module_gate: UserResponse = Depends(require_worker_module_access("inventory"))
 ):
     """
     Update stock alert.
@@ -388,7 +391,8 @@ async def get_product_transactions(
 @router.post("/adjust", response_model=InventoryResponse)
 async def adjust_inventory(
     adjustment: StockAdjustment,
-    current_user: UserResponse = Depends(require_role("Store Manager"))
+    current_user: UserResponse = Depends(require_role(["Store Manager", "Worker"])),
+    _module_gate: UserResponse = Depends(require_worker_module_access("inventory"))
 ):
     """
     Adjust inventory (stock count corrections, damaged goods, etc.)

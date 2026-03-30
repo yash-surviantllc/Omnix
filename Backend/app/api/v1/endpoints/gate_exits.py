@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, Query
 from typing import List
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, require_role, require_worker_module_access
 from app.schemas.user import UserResponse
 from app.schemas.gate_exit import GateExitCreate, GateExitResponse, GateExitStats
 from app.services.gate_exit_service import gate_exit_service
@@ -10,7 +10,8 @@ router = APIRouter()
 @router.post("/", response_model=GateExitResponse, status_code=201)
 async def create_exit(
     data: GateExitCreate,
-    current_user: UserResponse = Depends(get_current_user)
+    current_user: UserResponse = Depends(require_role(["Supervisor", "Worker"])),
+    _module_guard: UserResponse = Depends(require_worker_module_access("gate-exit"))
 ):
     """
     Create a new Gate Exit record.

@@ -9,7 +9,7 @@ from app.schemas.material_request import (
 )
 from app.schemas.user import UserResponse
 from app.services.material_request_service import material_request_service
-from app.api.deps import get_current_user, require_role
+from app.api.deps import get_current_user, require_role, require_worker_module_access
 import asyncio
 
 router = APIRouter()
@@ -18,7 +18,8 @@ router = APIRouter()
 @router.post("/", response_model=MaterialRequestResponse, status_code=status.HTTP_201_CREATED)
 async def create_request(
     request_data: MaterialRequestCreate,
-    current_user: UserResponse = Depends(require_role("Operator"))
+    current_user: UserResponse = Depends(require_role(["Operator", "Worker"])),
+    _module_guard: UserResponse = Depends(require_worker_module_access("material-request"))
 ):
     """
     Create a new material request.
@@ -115,7 +116,8 @@ async def get_request(
 async def review_request(
     request_id: str,
     review: ReviewRequest,
-    current_user: UserResponse = Depends(require_role("Store Manager"))
+    current_user: UserResponse = Depends(require_role(["Store Manager", "Worker"])),
+    _module_guard: UserResponse = Depends(require_worker_module_access("material-request"))
 ):
     """
     Review material request (Store Reviewer).
@@ -132,7 +134,8 @@ async def review_request(
 async def approve_request(
     request_id: str,
     approval: ApprovalRequest,
-    current_user: UserResponse = Depends(require_role("Store Manager"))
+    current_user: UserResponse = Depends(require_role(["Store Manager", "Worker"])),
+    _module_guard: UserResponse = Depends(require_worker_module_access("material-request"))
 ):
     """
     Approve material request (full or partial).
@@ -151,7 +154,8 @@ async def approve_request(
 async def reject_request(
     request_id: str,
     notes: Optional[str] = None,
-    current_user: UserResponse = Depends(require_role("Store Manager"))
+    current_user: UserResponse = Depends(require_role(["Store Manager", "Worker"])),
+    _module_guard: UserResponse = Depends(require_worker_module_access("material-request"))
 ):
     """
     Reject material request.
@@ -166,7 +170,7 @@ async def reject_request(
 @router.get("/{request_id}/pick-list", response_model=PickListResponse)
 async def generate_pick_list(
     request_id: str,
-    current_user: UserResponse = Depends(require_role("Store Manager"))
+    current_user: UserResponse = Depends(require_role(["Store Manager", "Worker"]))
 ):
     """
     Generate pick list for approved request.

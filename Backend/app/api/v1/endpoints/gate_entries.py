@@ -14,7 +14,8 @@ router = APIRouter()
 @router.post("/", response_model=GateEntryResponse, status_code=201)
 async def create_gate_entry(
     entry_data: GateEntryCreate,
-    current_user: UserResponse = Depends(get_current_user)
+    current_user: UserResponse = Depends(require_role(["Supervisor", "Worker"])),
+    _module_guard: UserResponse = Depends(require_worker_module_access("gate-entry"))
 ):
     """
     Create a new gate entry (inward).
@@ -89,7 +90,8 @@ async def get_gate_entry(
 async def update_gate_entry(
     entry_id: str,
     entry_data: GateEntryUpdate,
-    current_user: UserResponse = Depends(get_current_user)
+    current_user: UserResponse = Depends(require_role(["Supervisor", "Worker"])),
+    _module_guard: UserResponse = Depends(require_worker_module_access("gate-entry"))
 ):
     """
     Update gate entry details.
@@ -103,7 +105,8 @@ async def update_gate_entry(
 async def update_entry_status(
     entry_id: str,
     status_data: GateEntryStatusUpdate,
-    current_user: UserResponse = Depends(get_current_user)
+    current_user: UserResponse = Depends(require_role(["Supervisor", "Worker"])),
+    _module_guard: UserResponse = Depends(require_worker_module_access("gate-entry"))
 ):
     """
     Update gate entry status.

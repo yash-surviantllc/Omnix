@@ -21,7 +21,8 @@ router = APIRouter()
 @router.post("/working-orders", response_model=WorkingOrderResponse, status_code=201)
 async def create_working_order(
     order_data: WorkingOrderCreate,
-    current_user: UserResponse = Depends(require_role("Supervisor"))
+    current_user: UserResponse = Depends(require_role(["Supervisor", "Worker"])),
+    _module_gate: UserResponse = Depends(require_worker_module_access("working-order"))
 ):
     """
     Create a new working order.
@@ -98,7 +99,8 @@ async def get_working_order(
 async def start_operation_endpoint(
     work_order_number: str,
     operation: str = Query(..., description="Name of the operation to start"),
-    current_user: UserResponse = Depends(require_role("Supervisor"))
+    current_user: UserResponse = Depends(require_role(["Supervisor", "Worker"])),
+    _module_gate: UserResponse = Depends(require_worker_module_access("working-order"))
 ):
     """
     Start a specific operation for a Work Order.
@@ -111,7 +113,8 @@ async def start_operation_endpoint(
 async def pause_operation_endpoint(
     work_order_number: str,
     operation: str = Query(..., description="Name of the operation to pause"),
-    current_user: UserResponse = Depends(require_role("Supervisor"))
+    current_user: UserResponse = Depends(require_role(["Supervisor", "Worker"])),
+    _module_gate: UserResponse = Depends(require_worker_module_access("working-order"))
 ):
     """
     Pause an in-progress operation for a Work Order.
@@ -125,7 +128,8 @@ async def complete_operation_endpoint(
     work_order_number: str,
     operation: str = Query(..., description="Name of the operation to complete"),
     completed_qty: Optional[float] = Query(None, description="Completed quantity (defaults to target qty)"),
-    current_user: UserResponse = Depends(require_role("Supervisor"))
+    current_user: UserResponse = Depends(require_role(["Supervisor", "Worker"])),
+    _module_gate: UserResponse = Depends(require_worker_module_access("working-order"))
 ):
     """
     Complete an in-progress operation for a Work Order.
@@ -139,7 +143,8 @@ async def complete_operation_endpoint(
 async def update_working_order(
     order_id: str,
     order_data: WorkingOrderUpdate,
-    current_user: UserResponse = Depends(require_role("Supervisor"))
+    current_user: UserResponse = Depends(require_role(["Supervisor", "Worker"])),
+    _module_gate: UserResponse = Depends(require_worker_module_access("working-order"))
 ):
     """
     Update working order.
@@ -156,7 +161,7 @@ async def update_working_order(
 async def cancel_working_order(
     order_id: str,
     current_user: UserResponse = Depends(require_role(["Supervisor", "Worker"])),
-    _module_guard: UserResponse = Depends(require_worker_module_access("wip"))
+    _module_guard: UserResponse = Depends(require_worker_module_access("working-order"))
 ):
     """Cancel working order"""
     return await wip_service.delete_working_order(order_id)

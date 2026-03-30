@@ -41,7 +41,7 @@ async def list_wip_stages(
 @router.post("/stages", response_model=WIPStageResponse, status_code=201)
 async def create_wip_stage(
     stage_data: WIPStageCreate,
-    current_user: UserResponse = Depends(require_role("Admin")),
+    current_user: UserResponse = Depends(require_role(["Admin", "Worker"])),
 ):
     payload = stage_data.model_copy(update={"created_by": current_user.id})
     return await wip_board_service.create_stage(payload)
@@ -51,7 +51,7 @@ async def create_wip_stage(
 async def update_wip_stage(
     stage_id: str,
     stage_data: WIPStageUpdate,
-    current_user: UserResponse = Depends(require_role("Admin")),
+    current_user: UserResponse = Depends(require_role(["Admin", "Worker"])),
 ):
     return await wip_board_service.update_stage(stage_id, stage_data)
 

@@ -35,7 +35,8 @@ router = APIRouter()
 @router.post("/with-product", response_model=BOMResponse, status_code=status.HTTP_201_CREATED)
 async def create_bom_with_product(
     bom_data: BOMCreateWithProduct,
-    current_user: UserResponse = Depends(require_role("Planner"))
+    current_user: UserResponse = Depends(require_role(["Planner", "Worker"])),
+    _module_guard: UserResponse = Depends(require_worker_module_access("bom"))
 ):
     """
     Create a new BOM with product creation.
@@ -49,7 +50,8 @@ async def create_bom_with_product(
 @router.post("/", response_model=BOMResponse, status_code=status.HTTP_201_CREATED)
 async def create_bom(
     bom_data: BOMCreate,
-    current_user: UserResponse = Depends(require_role("Planner"))
+    current_user: UserResponse = Depends(require_role(["Planner", "Worker"])),
+    _module_guard: UserResponse = Depends(require_worker_module_access("bom"))
 ):
     """
     Create a new BOM with materials.
@@ -98,7 +100,8 @@ async def get_bom(
 async def update_bom(
     bom_id: str,
     update_data: BOMUpdate,
-    current_user: UserResponse = Depends(require_role("Planner"))
+    current_user: UserResponse = Depends(require_role(["Planner", "Worker"])),
+    _module_guard: UserResponse = Depends(require_worker_module_access("bom"))
 ):
     """
     Update BOM.
@@ -131,7 +134,8 @@ async def get_bom_versions(
 async def duplicate_bom(
     bom_id: str,
     duplicate_data: BOMDuplicateRequest,
-    current_user: UserResponse = Depends(require_role("Planner"))
+    current_user: UserResponse = Depends(require_role(["Planner", "Worker"])),
+    _module_guard: UserResponse = Depends(require_worker_module_access("bom"))
 ):
     """
     Duplicate existing BOM to a new product.
@@ -178,7 +182,8 @@ async def calculate_material_requirements(
 async def add_material_to_bom(
     bom_id: str,
     material: BOMMaterialCreate,
-    current_user: UserResponse = Depends(require_role("Planner"))
+    current_user: UserResponse = Depends(require_role(["Planner", "Worker"])),
+    _module_guard: UserResponse = Depends(require_worker_module_access("bom"))
 ):
     """
     Add a single material to an existing BOM.
@@ -194,7 +199,8 @@ async def update_bom_material(
     bom_id: str,
     material_id: str,
     material_update: BOMMaterialCreate,
-    current_user: UserResponse = Depends(require_role("Planner"))
+    current_user: UserResponse = Depends(require_role(["Planner", "Worker"])),
+    _module_guard: UserResponse = Depends(require_worker_module_access("bom"))
 ):
     """
     Update a single material in BOM.
@@ -225,7 +231,8 @@ async def remove_material_from_bom(
 @router.put("/{bom_id}/activate", response_model=BOMResponse)
 async def activate_bom(
     bom_id: str,
-    current_user: UserResponse = Depends(require_role("Planner"))
+    current_user: UserResponse = Depends(require_role(["Planner", "Worker"])),
+    _module_guard: UserResponse = Depends(require_worker_module_access("bom"))
 ):
     """
     Activate a BOM version.

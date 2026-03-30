@@ -20,7 +20,8 @@ logging.basicConfig(level=logging.INFO)
 @router.post("/", response_model=PurchaseOrderResponse, status_code=201)
 async def create_purchase_order(
     order_data: PurchaseOrderCreate,
-    current_user: UserResponse = Depends(get_current_user)
+    current_user: UserResponse = Depends(require_role(["Planner", "Worker"])),
+    _module_guard: UserResponse = Depends(require_worker_module_access("orders"))
 ):
     """
     Create a new purchase order.
@@ -43,7 +44,8 @@ async def create_purchase_order(
 @router.post("/{order_id}/duplicate", response_model=PurchaseOrderResponse)
 async def duplicate_purchase_order(
     order_id: str,
-    current_user: UserResponse = Depends(get_current_user)
+    current_user: UserResponse = Depends(require_role(["Planner", "Worker"])),
+    _module_guard: UserResponse = Depends(require_worker_module_access("orders"))
 ):
     """
     Duplicate an existing purchase order.
@@ -64,7 +66,8 @@ async def duplicate_purchase_order(
 @router.post("/multi-sku", response_model=PurchaseOrderResponse, status_code=201)
 async def create_multi_sku_order(
     order_data: PurchaseOrderMultiSKUCreate,
-    current_user: UserResponse = Depends(get_current_user)
+    current_user: UserResponse = Depends(require_role(["Planner", "Worker"])),
+    _module_guard: UserResponse = Depends(require_worker_module_access("orders"))
 ):
     """
     Create a purchase order with multiple SKUs.
@@ -128,7 +131,8 @@ async def get_purchase_order(
 async def update_purchase_order(
     order_id: str,
     order_data: PurchaseOrderUpdate,
-    current_user: UserResponse = Depends(get_current_user)
+    current_user: UserResponse = Depends(require_role(["Planner", "Worker"])),
+    _module_guard: UserResponse = Depends(require_worker_module_access("orders"))
 ):
     """
     Update purchase order (only if status is Planned).
@@ -144,7 +148,8 @@ async def update_purchase_order(
 async def update_order_status(
     order_id: str,
     status_data: OrderStatusUpdate,
-    current_user: UserResponse = Depends(get_current_user)
+    current_user: UserResponse = Depends(require_role(["Planner", "Worker"])),
+    _module_guard: UserResponse = Depends(require_worker_module_access("orders"))
 ):
     """
     Update purchase order status (Planner/Supervisor only).
@@ -162,7 +167,8 @@ async def update_order_status(
 @router.post("/{order_id}/archive", response_model=PurchaseOrderResponse)
 async def archive_purchase_order(
     order_id: str,
-    current_user: UserResponse = Depends(get_current_user)
+    current_user: UserResponse = Depends(require_role(["Planner", "Worker"])),
+    _module_guard: UserResponse = Depends(require_worker_module_access("orders"))
 ):
     """
     Archive a purchase order.
@@ -176,7 +182,8 @@ async def archive_purchase_order(
 @router.post("/{order_id}/cancel", response_model=PurchaseOrderResponse)
 async def cancel_purchase_order(
     order_id: str,
-    current_user: UserResponse = Depends(get_current_user)
+    current_user: UserResponse = Depends(require_role(["Planner", "Worker"])),
+    _module_guard: UserResponse = Depends(require_worker_module_access("orders"))
 ):
     """
     Cancel purchase order.
@@ -189,7 +196,7 @@ async def cancel_purchase_order(
 @router.delete("/{order_id}")
 async def delete_purchase_order(
     order_id: str,
-    current_user: UserResponse = Depends(get_current_user),
+    current_user: UserResponse = Depends(require_role(["Admin", "Worker"])),
     _module_guard: UserResponse = Depends(require_worker_module_access("orders"))
 ):
     """
@@ -230,7 +237,8 @@ async def get_order_progress(
 async def assign_team_to_order(
     order_id: str,
     user_ids: List[str],
-    current_user: UserResponse = Depends(require_role("Supervisor"))
+    current_user: UserResponse = Depends(require_role(["Supervisor", "Worker"])),
+    _module_guard: UserResponse = Depends(require_worker_module_access("orders"))
 ):
     """
     Assign team members to a purchase order.

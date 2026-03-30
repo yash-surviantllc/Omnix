@@ -20,7 +20,8 @@ router = APIRouter()
 @router.post("/", response_model=MaterialTransferResponse, status_code=status.HTTP_201_CREATED)
 async def create_transfer(
     transfer_data: MaterialTransferCreate,
-    current_user: UserResponse = Depends(require_role("Store Manager"))
+    current_user: UserResponse = Depends(require_role(["Store Manager", "Worker"])),
+    _module_guard: UserResponse = Depends(require_worker_module_access("transfer"))
 ):
     """
     Create a new material transfer request.
@@ -95,7 +96,8 @@ async def get_transfer(
 async def approve_transfer(
     transfer_id: str,
     approval: TransferApprovalRequest,
-    current_user: UserResponse = Depends(require_role("Store Manager"))
+    current_user: UserResponse = Depends(require_role(["Store Manager", "Worker"])),
+    _module_guard: UserResponse = Depends(require_worker_module_access("transfer"))
 ):
     """
     Approve or reject a transfer request.
@@ -111,7 +113,8 @@ async def approve_transfer(
 @router.post("/{transfer_id}/execute", response_model=MaterialTransferResponse)
 async def execute_transfer(
     transfer_id: str,
-    current_user: UserResponse = Depends(require_role("Store Manager"))
+    current_user: UserResponse = Depends(require_role(["Store Manager", "Worker"])),
+    _module_guard: UserResponse = Depends(require_worker_module_access("transfer"))
 ):
     """
     Execute approved transfer - update inventory.
@@ -171,7 +174,8 @@ async def get_wip_stages_with_units(
 @router.post("/wip-stage-transfer", response_model=WIPStageTransferResponse, status_code=status.HTTP_201_CREATED)
 async def create_wip_stage_transfer(
     wip_transfer: WIPStageTransferCreate,
-    current_user: UserResponse = Depends(require_role("Supervisor"))
+    current_user: UserResponse = Depends(require_role(["Supervisor", "Worker"])),
+    _module_guard: UserResponse = Depends(require_worker_module_access(["transfer", "working-order"]))
 ):
     """
     Move production order between WIP stages.
