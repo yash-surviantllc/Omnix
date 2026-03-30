@@ -36,6 +36,11 @@ class Settings(BaseSettings):
     FROM_NAME: str = "OMNIX Manufacturing OS"
     FRONTEND_URL: str = "http://localhost:3001"
     
+    # Chatbot / LLM
+    GOOGLE_API_KEY: str = ""
+    CHATBOT_MODEL: str = "gemini-2.0-flash"
+    CHATBOT_MODEL_PROVIDER: str = "google_genai"
+
     @property
     def allowed_origins_list(self) -> List[str]:
         """Convert comma-separated string to list"""

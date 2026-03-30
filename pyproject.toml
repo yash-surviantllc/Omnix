@@ -40,3 +40,8 @@ dependencies = [
     "supabase>=2.25.1",
     "uvicorn[standard]>=0.38.0",
 ]
+
+[tool.uv.workspace]
+members = [
+    "Backend",
+]
