@@ -44,6 +44,7 @@ class InventoryItemUpdate(BaseModel):
 class InventoryItemResponse(InventoryItemBase):
     """Schema for inventory item response"""
     id: str
+    product_id: Optional[str] = None
     free_quantity: Decimal
     allocated_quantity: Decimal = Decimal('0')
     transit_quantity: Decimal = Decimal('0')
@@ -62,6 +63,7 @@ class InventoryItemResponse(InventoryItemBase):
 class InventoryItemListResponse(BaseModel):
     """Simplified schema for list view"""
     id: str
+    product_id: Optional[str] = None
     material_code: str
     material_name: str
     quantity: Decimal

@@ -5,6 +5,8 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Package, AlertTriangle, CheckCircle, XCircle, Send, History, Plus, X, Clock } from 'lucide-react';
 import { MaterialRequestProcessor, type MaterialRequest } from '@/lib/material-request-processor';
+import { RequestHistoryTable } from './components/RequestHistoryTable';
+import { MaterialDetailModal } from './components/MaterialDetailModal';
 import { apiClient } from '@/lib/api/client';
 import { inventoryItemsApi, type InventoryItemResponse } from '@/lib/api/inventory';
 import { shiftsApi, type Shift } from '@/lib/api/shifts';
@@ -24,6 +26,8 @@ export function MaterialRequest({ language }: MaterialRequestProps) {
   const [requestText, setRequestText] = useState('');
   const [result, setResult] = useState<MaterialRequest | null>(null);
   const [showHistory, setShowHistory] = useState(false);
+  const [selectedRequest, setSelectedRequest] = useState<any>(null);
+  const [showDetailModal, setShowDetailModal] = useState(false);
   const [showFormModal, setShowFormModal] = useState(false);
   const [manualWorkOrderEntry, setManualWorkOrderEntry] = useState(false);
   const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
@@ -56,6 +60,7 @@ export function MaterialRequest({ language }: MaterialRequestProps) {
   const [inventoryItems, setInventoryItems] = useState<InventoryItemResponse[]>([]);
   const [manualItemEntry, setManualItemEntry] = useState<Record<number, boolean>>({});
   const [shifts, setShifts] = useState<Shift[]>([]);
+  const [isSubmittingRequest, setIsSubmittingRequest] = useState(false);
 
   const fetchInventoryItems = async () => {
     console.log("Fetching inventory items...");
@@ -137,7 +142,29 @@ export function MaterialRequest({ language }: MaterialRequestProps) {
   // WebSocket refs and states (unused)
 
   // Request history - now comes from backend API
-  const [requestHistory] = useState<Array<{ id: string; department: string; material: string; quantity: string; status: string; date: string }>>([]);
+  const [requestHistory, setRequestHistory] = useState<any[]>([]);
+
+  const fetchRequestHistory = async () => {
+    try {
+      const response = await apiClient.get<any[]>('/material-requisitions');
+      setRequestHistory(response);
+    } catch (error) {
+      console.error('Failed to fetch request history:', error);
+    }
+  };
+
+  const fetchRequestDetails = async (requisitionId: string) => {
+    try {
+      const response = await apiClient.get<any>(`/material-requisitions/${requisitionId}`);
+      setSelectedRequest(response);
+    } catch (error) {
+      console.error('Failed to fetch requisition details:', error);
+    }
+  };
+
+  useEffect(() => {
+    fetchRequestHistory();
+  }, []);
 
   const translations = {
     en: {
@@ -146,8 +173,8 @@ export function MaterialRequest({ language }: MaterialRequestProps) {
       newRequest: 'New Request',
       history: 'Request History',
       quickRequest: 'Quick Request (Natural Language)',
-      formalRequest: 'New Material Requisition Form',
-      materialRequisitionForm: 'Material Requisition Form',
+      formalRequest: 'New Material Request Form',
+      materialRequisitionForm: 'Material Request Form',
       companyName: 'Company Name',
       formNumber: 'Work Order',
       dateOfRequest: 'Date of Request',
@@ -163,7 +190,7 @@ export function MaterialRequest({ language }: MaterialRequestProps) {
       deliveryInstructions: 'Delivery Instructions',
       addItem: 'Add Item',
       removeItem: 'Remove',
-      submitForm: 'Submit Requisition',
+      submitForm: 'Submit Request',
       cancel: 'Cancel',
       shiftNumber: 'Shift Number',
       shift1: 'Shift 1 (6 AM - 2 PM)',
@@ -277,24 +304,6 @@ export function MaterialRequest({ language }: MaterialRequestProps) {
     setResult(request);
   };
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'Validated':
-      case 'Completed':
-        return 'bg-green-100 text-green-800 border-green-300';
-      case 'Partial Stock':
-      case 'Approved':
-        return 'bg-yellow-100 text-yellow-800 border-yellow-300';
-      case 'Insufficient Stock':
-      case 'Pending':
-        return 'bg-red-100 text-red-800 border-red-300';
-      case 'Pending Clarification':
-        return 'bg-blue-100 text-blue-800 border-blue-300';
-      default:
-        return 'bg-gray-100 text-gray-800 border-gray-300';
-    }
-  };
-
   const getStatusIcon = (status: string) => {
     switch (status) {
       case 'Validated':
@@ -312,7 +321,9 @@ export function MaterialRequest({ language }: MaterialRequestProps) {
   };
 
   const handleSubmit = async () => {
+    if (isSubmittingRequest) return;
     try {
+      setIsSubmittingRequest(true);
       // Validate required fields
       if (!formData.department) {
         alert(language === 'en' ? 'Please select a department' : 'कृपया विभाग चुनें');
@@ -380,6 +391,7 @@ export function MaterialRequest({ language }: MaterialRequestProps) {
         priority: 'Normal'
       }]);
       setShowFormModal(false);
+      fetchRequestHistory();
     } catch (error: any) {
       console.error('Error creating Material Request:', error);
 
@@ -387,6 +399,8 @@ export function MaterialRequest({ language }: MaterialRequestProps) {
       const errorMessage = error.response?.data?.detail || error.message || 'Unknown error';
 
       alert(`${language === 'en' ? 'Error Creating Request' : 'अनुरोध बनाने में त्रुटि'}\n\n${errorMessage}`);
+    } finally {
+      setIsSubmittingRequest(false);
     }
   };
 
@@ -647,52 +661,44 @@ export function MaterialRequest({ language }: MaterialRequestProps) {
           )}
         </div>
       ) : (
-        /* Request History */
         <div className="space-y-4">
           {requestHistory.length > 0 ? (
-            requestHistory.map((request) => (
-              <Card key={request.id} className="p-6 hover:shadow-md transition-shadow">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-3">
-                      <h3 className="text-zinc-900">{request.id}</h3>
-                      <Badge className={getStatusColor(request.status)}>
-                        {request.status.toUpperCase()}
-                      </Badge>
-                    </div>
-
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                      <div>
-                        <div className="text-zinc-600">{t.department}</div>
-                        <div className="text-zinc-900">{request.department}</div>
-                      </div>
-                      <div>
-                        <div className="text-zinc-600">{t.material}</div>
-                        <div className="text-zinc-900">{request.material}</div>
-                      </div>
-                      <div>
-                        <div className="text-zinc-600">{t.quantity}</div>
-                        <div className="text-zinc-900">{request.quantity}</div>
-                      </div>
-                      <div>
-                        <div className="text-zinc-600">{t.date}</div>
-                        <div className="text-zinc-900">{request.date}</div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <Button variant="outline" size="sm" className="ml-4">
-                    {t.viewDetails}
-                  </Button>
-                </div>
-              </Card>
-            ))
+            <RequestHistoryTable 
+              requests={requestHistory}
+              onViewDetails={(request) => {
+                setSelectedRequest(request); // Show summary first
+                setShowDetailModal(true);
+                fetchRequestDetails(request.id); // Fetch full details (items)
+              }}
+              translations={{
+                requestId: t.requestId,
+                department: t.department,
+                requestedBy: t.requestedBy,
+                items: 'Items',
+                status: t.status,
+                date: t.date,
+                viewDetails: t.viewDetails,
+                noRequests: t.noRequests,
+                createFirst: t.createFirst
+              }}
+            />
           ) : (
-            <Card className="p-12 text-center">
-              <Package className="w-12 h-12 text-zinc-400 mx-auto mb-4" />
-              <h3 className="text-zinc-900 mb-2">{t.noRequests}</h3>
-              <p className="text-zinc-600">{t.createFirst}</p>
-            </Card>
+            <div className="min-h-[300px] flex flex-col items-center justify-center p-8 bg-zinc-50/50 rounded-2xl border border-zinc-100 animate-in fade-in duration-500">
+              <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center shadow-sm border border-zinc-100 mb-4">
+                <Clock className="w-8 h-8 text-zinc-300" />
+              </div>
+              <h3 className="text-xl font-bold text-zinc-900 mb-1">{t.noRequests}</h3>
+              <p className="text-zinc-500 text-sm text-center max-w-xs mb-6">
+                {t.createFirst}
+              </p>
+              <Button 
+                onClick={() => setShowHistory(false)}
+                className="h-10 px-8 rounded-lg font-semibold bg-blue-600 hover:bg-blue-700 text-white transition-all active:scale-95 flex items-center gap-2"
+              >
+                <Plus className="w-4 h-4" />
+                {t.newRequest}
+              </Button>
+            </div>
           )}
         </div>
       )}
@@ -1065,15 +1071,31 @@ export function MaterialRequest({ language }: MaterialRequestProps) {
                 </Button>
                 <Button
                   onClick={handleSubmit}
+                  disabled={isSubmittingRequest}
                   className="flex-1 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
                 >
-                  {t.submitForm}
+                  {isSubmittingRequest ? (
+                    <div className="flex items-center gap-2">
+                      <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      Processing...
+                    </div>
+                  ) : (
+                    language === 'en' ? 'Submit Request' : 'अनुरोध सबमिट करें'
+                  )}
                 </Button>
               </div>
             </div>
           </div>
         </div>
       )}
+      {/* Material Detail Modal */}
+      <MaterialDetailModal
+        isOpen={showDetailModal}
+        onClose={() => setShowDetailModal(false)}
+        title={t.history}
+        data={selectedRequest}
+        type="request"
+      />
     </div>
   );
 }

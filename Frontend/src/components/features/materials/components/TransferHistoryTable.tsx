@@ -2,17 +2,19 @@ import { Badge } from '@/components/ui/badge';
 
 interface TransferRecord {
   id: string;
+  transfer_number: string;
   material: string;
-  quantity: string;
-  from: string;
-  to: string;
+  quantity: string | number;
+  unit: string;
+  from_location: string;
+  to_location: string;
   status: string;
   date: string;
-  reason: string;
 }
 
 interface TransferHistoryTableProps {
   transfers: TransferRecord[];
+  onViewDetails?: (transfer: TransferRecord) => void;
   translations: {
     transferId: string;
     material: string;
@@ -27,7 +29,7 @@ interface TransferHistoryTableProps {
   };
 }
 
-export function TransferHistoryTable({ transfers, translations: t }: TransferHistoryTableProps) {
+export function TransferHistoryTable({ transfers, onViewDetails, translations: t }: TransferHistoryTableProps) {
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'Completed':
@@ -36,21 +38,13 @@ export function TransferHistoryTable({ transfers, translations: t }: TransferHis
         return 'bg-blue-100 text-blue-800 border-blue-300';
       case 'Pending':
         return 'bg-yellow-100 text-yellow-800 border-yellow-300';
+      case 'Approved':
+        return 'bg-emerald-100 text-emerald-800 border-emerald-300';
+      case 'Rejected':
+      case 'Cancelled':
+        return 'bg-red-100 text-red-800 border-red-300';
       default:
         return 'bg-gray-100 text-gray-800 border-gray-300';
-    }
-  };
-
-  const getStatusLabel = (status: string) => {
-    switch (status) {
-      case 'Completed':
-        return 'Completed';
-      case 'In Progress':
-        return 'In Progress';
-      case 'Pending':
-        return 'Pending';
-      default:
-        return status;
     }
   };
 
@@ -75,22 +69,33 @@ export function TransferHistoryTable({ transfers, translations: t }: TransferHis
             <th className="text-left p-3 text-sm font-medium text-zinc-600">{t.to}</th>
             <th className="text-left p-3 text-sm font-medium text-zinc-600">{t.status}</th>
             <th className="text-left p-3 text-sm font-medium text-zinc-600">{t.date}</th>
+            <th className="text-left p-3 text-sm font-medium text-zinc-600"></th>
           </tr>
         </thead>
         <tbody>
           {transfers.map((transfer) => (
-            <tr key={transfer.id} className="border-b border-zinc-100 hover:bg-zinc-50">
-              <td className="p-3 text-sm font-medium">{transfer.id}</td>
-              <td className="p-3 text-sm">{transfer.material}</td>
-              <td className="p-3 text-sm">{transfer.quantity}</td>
-              <td className="p-3 text-sm">{transfer.from}</td>
-              <td className="p-3 text-sm">{transfer.to}</td>
+            <tr key={transfer.id} className="border-b border-zinc-100 hover:bg-zinc-50 transition-colors">
+              <td className="p-3 text-sm font-medium text-zinc-900">{transfer.transfer_number}</td>
+              <td className="p-3 text-sm text-zinc-700">{transfer.material}</td>
+              <td className="p-3 text-sm text-zinc-700">{transfer.quantity} {transfer.unit}</td>
+              <td className="p-3 text-sm text-zinc-700">{transfer.from_location}</td>
+              <td className="p-3 text-sm text-zinc-700">{transfer.to_location}</td>
               <td className="p-3">
-                <Badge className={`text-xs ${getStatusColor(transfer.status)}`}>
-                  {getStatusLabel(transfer.status)}
+                <Badge className={`text-xs font-medium ${getStatusColor(transfer.status)}`}>
+                  {transfer.status}
                 </Badge>
               </td>
-              <td className="p-3 text-sm text-zinc-600">{transfer.date}</td>
+              <td className="p-3 text-sm text-zinc-500">{new Date(transfer.date).toLocaleDateString()}</td>
+              <td className="p-3 text-right">
+                {onViewDetails && (
+                  <button
+                    onClick={() => onViewDetails(transfer)}
+                    className="text-emerald-600 hover:text-emerald-700 text-sm font-medium transition-colors"
+                  >
+                    {t.viewDetails}
+                  </button>
+                )}
+              </td>
             </tr>
           ))}
         </tbody>

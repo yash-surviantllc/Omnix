@@ -117,6 +117,7 @@ class InventoryItemsService:
 
             items.append(InventoryItemListResponse(
                 id=item['id'],
+                product_id=p_id,
                 material_code=item['material_code'],
                 material_name=item['material_name'],
                 quantity=quantity,
@@ -159,6 +160,7 @@ class InventoryItemsService:
         allocated = Decimal('0')
         transit = Decimal('0')
         
+        p_id = None
         # Try to find linked product
         try:
             prod_res = db.table('products').select('id').eq('code', item['material_code']).single().execute()
@@ -175,6 +177,7 @@ class InventoryItemsService:
         except Exception:
             pass
 
+        item['product_id'] = p_id
         item['free_quantity'] = quantity - allocated
         item['allocated_quantity'] = allocated
         item['transit_quantity'] = transit

@@ -17,7 +17,7 @@ router = APIRouter()
 # STANDARD MATERIAL TRANSFER ENDPOINTS
 # =============================================
 
-@router.post("/", response_model=MaterialTransferResponse, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=MaterialTransferResponse, status_code=status.HTTP_201_CREATED)
 async def create_transfer(
     transfer_data: MaterialTransferCreate,
     current_user: UserResponse = Depends(require_role(["Store Manager", "Worker"])),
@@ -34,7 +34,7 @@ async def create_transfer(
     return await material_transfer_service.create_transfer(transfer_data, current_user.id)
 
 
-@router.get("/", response_model=List[MaterialTransferListItem])
+@router.get("", response_model=List[MaterialTransferListItem])
 async def list_transfers(
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),

@@ -15,7 +15,7 @@ import asyncio
 router = APIRouter()
 
 
-@router.post("/", response_model=MaterialRequestResponse, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=MaterialRequestResponse, status_code=status.HTTP_201_CREATED)
 async def create_request(
     request_data: MaterialRequestCreate,
     current_user: UserResponse = Depends(require_role(["Operator", "Worker"])),
@@ -32,7 +32,7 @@ async def create_request(
     return await material_request_service.create_request(request_data, current_user.id)
 
 
-@router.get("/", response_model=List[MaterialRequestListItem])
+@router.get("", response_model=List[MaterialRequestListItem])
 async def list_requests(
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),

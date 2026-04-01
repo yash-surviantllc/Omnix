@@ -3,6 +3,7 @@ import { MaterialData } from '@/types/inventory';
 
 export interface InventoryItemResponse {
     id: string;
+    product_id?: string | null;
     material_code: string;
     material_name: string;
     category: string | null;

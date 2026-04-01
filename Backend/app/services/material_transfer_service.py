@@ -46,16 +46,46 @@ class MaterialTransferService:
         if not product.data:
             raise NotFoundException(detail="Product not found")
         
-        # Validate locations exist
+        # Validate locations exist (can be a Location or a WIP Stage)
+        actual_to_location_id = transfer_data.to_location_id
+        is_to_stage = False
+        to_stage_name = ""
+        
         from_loc = db.table('locations').select('id').eq('id', transfer_data.from_location_id).execute()
+        if not from_loc.data:
+            from_loc = db.table('wip_stages').select('id').eq('id', transfer_data.from_location_id).execute()
+        
         to_loc = db.table('locations').select('id').eq('id', transfer_data.to_location_id).execute()
+        if not to_loc.data:
+            to_stage = db.table('wip_stages').select('id', 'name').eq('id', transfer_data.to_location_id).execute()
+            if to_stage.data:
+                is_to_stage = True
+                to_stage_name = to_stage.data[0]['name']
+                # If it's a stage, we must find a valid physical location for the FK constraint
+                
+                # 1. Try location type 'production_line'
+                fallback = db.table('locations').select('id').eq('type', 'production_line').eq('is_active', True).execute()
+                
+                # 2. Try location type 'store'
+                if not fallback.data:
+                    fallback = db.table('locations').select('id').eq('type', 'store').eq('is_active', True).execute()
+                
+                # 3. Try any active location
+                if not fallback.data:
+                    fallback = db.table('locations').select('id').eq('is_active', True).limit(1).execute()
+                    
+                if fallback.data:
+                    actual_to_location_id = fallback.data[0]['id']
+                    to_loc = fallback # satisfy the check below
+                else:
+                    raise ValidationException(detail="No active physical locations exist in the system to map this transfer to.")
         
         if not from_loc.data:
-            raise NotFoundException(detail="Source location not found")
+            raise NotFoundException(detail="Source location or stage not found")
         if not to_loc.data:
-            raise NotFoundException(detail="Destination location not found")
+            raise NotFoundException(detail="Destination location or stage not found")
         
-        if transfer_data.from_location_id == transfer_data.to_location_id:
+        if transfer_data.from_location_id == actual_to_location_id:
             raise ValidationException(detail="Source and destination locations cannot be the same")
         
         # Check inventory availability at source
@@ -81,23 +111,23 @@ class MaterialTransferService:
             'transfer_number': transfer_number,
             'product_id': transfer_data.product_id,
             'from_location_id': transfer_data.from_location_id,
-            'to_location_id': transfer_data.to_location_id,
+            'to_location_id': actual_to_location_id,
             'quantity': float(transfer_data.quantity),
             'unit': transfer_data.unit,
             'priority': transfer_data.priority,
-            'reason': transfer_data.reason,
+            'reason': f"[Stage: {to_stage_name}] {transfer_data.reason or ''}" if is_to_stage else transfer_data.reason,
             'notes': transfer_data.notes,
             'reference_order_id': transfer_data.reference_order_id,
+            'work_order_id': transfer_data.work_order_id,
+            'work_order_number': transfer_data.work_order_number,
             'status': 'Pending',
             'transfer_type': 'Standard',
             'requested_by': user_id
         }
         
         result = db.table('material_transfers').insert(transfer_dict).execute()
-        
         if not result.data:
-            raise Exception("Failed to create transfer")
-        
+            raise Exception("Failed to insert transfer record into database")
         return await MaterialTransferService.get_transfer_by_id(result.data[0]['id'])
     
     @staticmethod
@@ -137,9 +167,14 @@ class MaterialTransferService:
             product = db.table('products').select('name').eq('id', transfer['product_id']).execute()
             product_name = product.data[0]['name'] if product.data else 'Unknown'
             
-            # Get location names
+            # Get location names (can be Locations or WIP Stages)
             from_loc = db.table('locations').select('name').eq('id', transfer['from_location_id']).execute()
+            if not from_loc.data:
+                from_loc = db.table('wip_stages').select('name').eq('id', transfer['from_location_id']).execute()
+                
             to_loc = db.table('locations').select('name').eq('id', transfer['to_location_id']).execute()
+            if not to_loc.data:
+                to_loc = db.table('wip_stages').select('name').eq('id', transfer['to_location_id']).execute()
             
             from_location_name = from_loc.data[0]['name'] if from_loc.data else 'Unknown'
             to_location_name = to_loc.data[0]['name'] if to_loc.data else 'Unknown'
@@ -193,7 +228,12 @@ class MaterialTransferService:
         
         # Get location names
         from_loc = db.table('locations').select('name').eq('id', t['from_location_id']).execute()
+        if not from_loc.data:
+            from_loc = db.table('wip_stages').select('name').eq('id', t['from_location_id']).execute()
+            
         to_loc = db.table('locations').select('name').eq('id', t['to_location_id']).execute()
+        if not to_loc.data:
+            to_loc = db.table('wip_stages').select('name').eq('id', t['to_location_id']).execute()
         
         from_location_name = from_loc.data[0]['name'] if from_loc.data else None
         to_location_name = to_loc.data[0]['name'] if to_loc.data else None

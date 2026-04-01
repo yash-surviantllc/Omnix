@@ -55,3 +55,4 @@ yarn-error.log*
 # OS
 .DS_Store
 Thumbs.db
+Backend/scripts/reset_worker_password.py
