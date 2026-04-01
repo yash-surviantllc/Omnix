@@ -11,7 +11,7 @@ from app.core.security import get_password_hash
 async def reset_password():
     db = get_db()
     email = "worker1@omnix.com"
-    new_password = "password123"
+    new_password = "Worker@123"
     hashed = get_password_hash(new_password)
     
     print(f"Resetting password for {email}...")

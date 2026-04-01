@@ -322,8 +322,7 @@ export const productsApi = {
 
     const url = `/products/?${queryParams.toString()}`;
     return apiClient.get<Product[]>(url, {
-      useCache: true,
-      ttl: 300 // 5 minutes
+      useCache: false
     });
   },
 

@@ -1,14 +1,17 @@
+import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import type { Product } from '@/lib/api/bom';
+import type { InventoryItemResponse } from '@/lib/api/inventory';
 
 type AddMaterialModalProps = {
   show: boolean;
   onClose: () => void;
   onAdd: () => void;
   rawMaterials: Product[];
+  inventoryItems: InventoryItemResponse[];
   material: {
     materialId: string;
     quantity: string;
@@ -25,6 +28,7 @@ export function AddMaterialModal({
   onClose,
   onAdd,
   rawMaterials,
+  inventoryItems,
   material,
   setMaterial,
   language
@@ -115,8 +119,44 @@ export function AddMaterialModal({
   };
   const t = translations[language];
 
-  return (
-    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+  // Build a unified material list from inventoryItems, mapping to product IDs where possible
+  // Each entry: { displayLabel, productId, unit, unitCost }
+  const buildMaterialOptions = () => {
+    // Use inventory items as the primary source (shows all available materials)
+    // For each inventory item, find the matching product by code (case insensitive)
+    return inventoryItems.map(item => {
+      const matchingProduct = rawMaterials.find(
+        p => p.code.toLowerCase() === item.material_code.toLowerCase()
+      );
+      return {
+        // Use product ID if found (for backend), otherwise use inventory item id as fallback
+        id: matchingProduct?.id || item.id,
+        label: `${item.material_code} - ${item.material_name}`,
+        unit: item.unit,
+        unitCost: item.unit_cost,
+        hasProductMapping: !!matchingProduct
+      };
+    });
+  };
+
+  const materialOptions = buildMaterialOptions();
+
+  const handleMaterialSelect = (selectedId: string) => {
+    const selected = materialOptions.find(opt => opt.id === selectedId);
+    if (selected) {
+      setMaterial({
+        ...material,
+        materialId: selected.id,
+        unit: selected.unit,
+        unitCost: selected.unitCost.toString()
+      });
+    } else {
+      setMaterial({ ...material, materialId: selectedId });
+    }
+  };
+
+  return createPortal(
+    <div className="fixed inset-0 bg-black/50 z-[9999] flex items-center justify-center p-4" style={{ zIndex: 99999 }}>
       <Card className="bg-white rounded-lg shadow-xl max-w-md w-full">
         {/* Header */}
         <div className="bg-gradient-to-r from-emerald-600 to-teal-600 text-white p-4 flex items-center justify-between rounded-t-lg">
@@ -138,13 +178,13 @@ export function AddMaterialModal({
             </label>
             <select
               value={material.materialId}
-              onChange={(e) => setMaterial({ ...material, materialId: e.target.value })}
+              onChange={(e) => handleMaterialSelect(e.target.value)}
               className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
             >
               <option value="">{t.selectMaterial}</option>
-              {rawMaterials.map((mat) => (
-                <option key={mat.id} value={mat.id}>
-                  {mat.code} - {mat.name}
+              {materialOptions.map((opt) => (
+                <option key={opt.id} value={opt.id}>
+                  {opt.label}
                 </option>
               ))}
             </select>
@@ -177,7 +217,7 @@ export function AddMaterialModal({
               <option value="kg">kg</option>
               <option value="m">m</option>
               <option value="pcs">pcs</option>
-              <option value="liter">liter</option>
+              <option value="L">L</option>
             </select>
           </div>
 
@@ -227,6 +267,7 @@ export function AddMaterialModal({
           </Button>
         </div>
       </Card>
-    </div>
+    </div>,
+    document.body
   );
 }

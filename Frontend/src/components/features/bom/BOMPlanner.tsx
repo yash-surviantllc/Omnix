@@ -479,11 +479,8 @@ export function BOMPlanner({ language }: BOMPlannerProps) {
 
   const fetchRawMaterials = async () => {
     try {
-      const data = await productsApi.listProducts({
-        category: 'Raw Material',
-        is_active: true,
-        limit: 100
-      });
+      // Fetch all products so we can correctly map them to inventory items even if their category isn't properly set to 'Raw Material'
+      const data = await productsApi.listProducts();
       setRawMaterials(data);
     } catch (err) {
       console.error('Error fetching raw materials:', err);
@@ -566,54 +563,109 @@ export function BOMPlanner({ language }: BOMPlannerProps) {
     if (!currentBOM) return;
 
     try {
+      let materialProductId = newMaterial.materialId;
+
+      // Resolve inventory item ID → product ID if needed
+      const isProductId = rawMaterials.find(p => p.id === newMaterial.materialId);
+      if (!isProductId) {
+        // Find the inventory item that was selected
+        const inventoryItem = inventoryItems.find(item => item.id === newMaterial.materialId);
+        if (inventoryItem) {
+          // Try to find existing product by code
+          const productByCode = rawMaterials.find(
+            p => p.code.toLowerCase() === inventoryItem.material_code.toLowerCase()
+          );
+          if (productByCode) {
+            materialProductId = productByCode.id;
+          } else {
+            // Auto-create a Raw Material product for this inventory item
+            try {
+              const newProd = await productsApi.createProduct({
+                code: inventoryItem.material_code,
+                name: inventoryItem.material_name,
+                category: 'Raw Material',
+                unit: inventoryItem.unit
+              });
+              materialProductId = newProd.id;
+              await fetchRawMaterials(); // refresh list
+            } catch (prodErr: any) {
+              alert('Failed to register material as product: ' + (prodErr?.detail || prodErr?.message || 'Unknown error'));
+              return;
+            }
+          }
+        } else {
+          alert('Please select a valid material from the dropdown.');
+          return;
+        }
+      }
+
       await bomApi.addMaterial(currentBOM.id, {
-        material_id: newMaterial.materialId,
+        material_id: materialProductId,
         quantity: parseFloat(newMaterial.quantity),
         unit: newMaterial.unit,
         unit_cost: parseFloat(newMaterial.unitCost) || 0,
         scrap_percentage: parseFloat(newMaterial.scrapPercentage) || 0
       });
 
-      alert(language === 'en' ? 'Material added successfully!' : 'सामग्री सफलतापूर्वक जोड़ी गई!');
       setShowAddMaterialModal(false);
-      setNewMaterial({
-        materialId: '',
-        quantity: '',
-        unit: 'kg',
-        unitCost: '',
-        scrapPercentage: '0'
-      });
+      setNewMaterial({ materialId: '', quantity: '', unit: 'kg', unitCost: '', scrapPercentage: '0' });
       await fetchBOMForProduct(selectedProductId);
     } catch (err: any) {
-      alert(err?.detail || 'Failed to add material');
+      const msg = err?.detail || err?.message || 'Failed to add material';
+      alert(msg);
     }
   };
+
 
   const handleUpdateMaterial = async () => {
     if (!currentBOM || !editingMaterial) return;
 
     try {
-      await bomApi.updateMaterial(currentBOM.id, editingMaterial.material_id, {
-        material_id: newMaterial.materialId,
+      let materialProductId = newMaterial.materialId;
+
+      // Resolve inventory item ID → product ID if needed
+      const isProductId = rawMaterials.find(p => p.id === newMaterial.materialId);
+      if (!isProductId) {
+        const inventoryItem = inventoryItems.find(item => item.id === newMaterial.materialId);
+        if (inventoryItem) {
+          const productByCode = rawMaterials.find(
+            p => p.code.toLowerCase() === inventoryItem.material_code.toLowerCase()
+          );
+          if (productByCode) {
+            materialProductId = productByCode.id;
+          } else {
+            try {
+              const newProd = await productsApi.createProduct({
+                code: inventoryItem.material_code,
+                name: inventoryItem.material_name,
+                category: 'Raw Material',
+                unit: inventoryItem.unit
+              });
+              materialProductId = newProd.id;
+              await fetchRawMaterials();
+            } catch (prodErr: any) {
+              alert('Failed to register material as product: ' + (prodErr?.detail || prodErr?.message || 'Unknown error'));
+              return;
+            }
+          }
+        }
+      }
+
+      await bomApi.updateMaterial(currentBOM.id, editingMaterial.id, {
+        material_id: materialProductId,
         quantity: parseFloat(newMaterial.quantity),
         unit: newMaterial.unit,
         unit_cost: parseFloat(newMaterial.unitCost) || 0,
         scrap_percentage: parseFloat(newMaterial.scrapPercentage) || 0
       });
 
-      alert(language === 'en' ? 'Material updated successfully!' : 'सामग्री सफलतापूर्वक अपडेट की गई!');
       setShowEditMaterialModal(false);
       setEditingMaterial(null);
-      setNewMaterial({
-        materialId: '',
-        quantity: '',
-        unit: 'kg',
-        unitCost: '',
-        scrapPercentage: '0'
-      });
+      setNewMaterial({ materialId: '', quantity: '', unit: 'kg', unitCost: '', scrapPercentage: '0' });
       await fetchBOMForProduct(selectedProductId);
     } catch (err: any) {
-      alert(err?.detail || 'Failed to update material');
+      const msg = err?.detail || err?.message || 'Failed to update material';
+      alert(msg);
     }
   };
 
@@ -991,19 +1043,22 @@ export function BOMPlanner({ language }: BOMPlannerProps) {
                               />
                             </td>
                             <td className="p-3">
-                              {newBOM.materials.length > 1 && (
-                                <Button
-                                  onClick={() => {
-                                    const newMaterials = newBOM.materials.filter((_, i) => i !== index);
+                              <Button
+                                onClick={() => {
+                                  const newMaterials = newBOM.materials.filter((_, i) => i !== index);
+                                  // If we delete the last row, add an empty one back
+                                  if (newMaterials.length === 0) {
+                                    setNewBOM({ ...newBOM, materials: [{ itemCode: '', material: '', qty: '', unit: 'kg', unitCost: '' }] });
+                                  } else {
                                     setNewBOM({ ...newBOM, materials: newMaterials });
-                                  }}
-                                  variant="ghost"
-                                  size="sm"
-                                  className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </Button>
-                              )}
+                                  }
+                                }}
+                                variant="ghost"
+                                size="sm"
+                                className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
                             </td>
                           </tr>
                         ))}
@@ -1018,19 +1073,22 @@ export function BOMPlanner({ language }: BOMPlannerProps) {
                     <Card key={index} className="p-4 border-2 border-zinc-200">
                       <div className="flex items-start justify-between mb-3">
                         <span className="text-sm font-medium text-zinc-700">Material {index + 1}</span>
-                        {newBOM.materials.length > 1 && (
-                          <Button
-                            onClick={() => {
-                              const newMaterials = newBOM.materials.filter((_, i) => i !== index);
+                        <Button
+                          onClick={() => {
+                            const newMaterials = newBOM.materials.filter((_, i) => i !== index);
+                            // If we delete the last row, add an empty one back
+                            if (newMaterials.length === 0) {
+                              setNewBOM({ ...newBOM, materials: [{ itemCode: '', material: '', qty: '', unit: 'kg', unitCost: '' }] });
+                            } else {
                               setNewBOM({ ...newBOM, materials: newMaterials });
-                            }}
-                            variant="ghost"
-                            size="sm"
-                            className="text-red-600 hover:text-red-700 hover:bg-red-50 -mt-2 -mr-2"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
-                        )}
+                            }
+                          }}
+                          variant="ghost"
+                          size="sm"
+                          className="text-red-600 hover:text-red-700 hover:bg-red-50 -mt-2 -mr-2"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
                       </div>
 
                       <div className="space-y-3">
@@ -1169,52 +1227,6 @@ export function BOMPlanner({ language }: BOMPlannerProps) {
         </div>
       )}
 
-      {/* Add Material Modal */}
-      <AddMaterialModal
-        show={showAddMaterialModal}
-        onClose={() => {
-          setShowAddMaterialModal(false);
-          setNewMaterial({
-            materialId: '',
-            quantity: '',
-            unit: 'kg',
-            unitCost: '',
-            scrapPercentage: '0'
-          });
-        }}
-        onAdd={handleAddMaterial}
-        rawMaterials={rawMaterials}
-        material={newMaterial}
-        setMaterial={setNewMaterial}
-        language={language}
-      />
-
-      {/* Edit Material Modal */}
-      <EditMaterialModal
-        show={showEditMaterialModal}
-        onClose={() => {
-          setShowEditMaterialModal(false);
-          setEditingMaterial(null);
-          setNewMaterial({
-            materialId: '',
-            quantity: '',
-            unit: 'kg',
-            unitCost: '',
-            scrapPercentage: '0'
-          });
-        }}
-        onUpdate={handleUpdateMaterial}
-        onDelete={() => {
-          if (editingMaterial) {
-            setShowEditMaterialModal(false);
-            setDeleteMaterialId(editingMaterial.id);
-          }
-        }}
-        rawMaterials={rawMaterials}
-        material={newMaterial}
-        setMaterial={setNewMaterial}
-        language={language}
-      />
 
       {/* Product Details Modal - Shows on Double Click */}
       {showProductDetailsModal && selectedProductDetails && (
@@ -1341,8 +1353,9 @@ export function BOMPlanner({ language }: BOMPlannerProps) {
                                       unitCost: material.unit_cost.toString(),
                                       scrapPercentage: material.scrap_percentage?.toString() || '0'
                                     });
+                                    fetchRawMaterials();
+                                    fetchInventoryItems();
                                     setShowEditMaterialModal(true);
-                                    setShowProductDetailsModal(false);
                                   }}
                                   className="p-2 text-blue-600 hover:bg-blue-50 rounded transition-colors"
                                   title="Edit"
@@ -1352,7 +1365,6 @@ export function BOMPlanner({ language }: BOMPlannerProps) {
                                 <button
                                   onClick={() => {
                                     setDeleteMaterialId(material.id);
-                                    setShowProductDetailsModal(false);
                                   }}
                                   className="p-2 text-red-600 hover:bg-red-50 rounded transition-colors"
                                   title="Delete"
@@ -1373,7 +1385,6 @@ export function BOMPlanner({ language }: BOMPlannerProps) {
                         fetchRawMaterials();
                         fetchInventoryItems();
                         setShowAddMaterialModal(true);
-                        setShowProductDetailsModal(false);
                       }}
                       className="bg-emerald-600 hover:bg-emerald-700"
                     >
@@ -1400,7 +1411,6 @@ export function BOMPlanner({ language }: BOMPlannerProps) {
                       fetchRawMaterials();
                       fetchInventoryItems();
                       setShowAddMaterialModal(true);
-                      setShowProductDetailsModal(false);
                     }}
                     className="mt-4 bg-emerald-600 hover:bg-emerald-700"
                   >
@@ -1413,6 +1423,55 @@ export function BOMPlanner({ language }: BOMPlannerProps) {
           </Card>
         </div>
       )}
+
+      {/* Add Material Modal */}
+      <AddMaterialModal
+        show={showAddMaterialModal}
+        onClose={() => {
+          setShowAddMaterialModal(false);
+          setNewMaterial({
+            materialId: '',
+            quantity: '',
+            unit: 'kg',
+            unitCost: '',
+            scrapPercentage: '0'
+          });
+        }}
+        onAdd={handleAddMaterial}
+        rawMaterials={rawMaterials}
+        inventoryItems={inventoryItems}
+        material={newMaterial}
+        setMaterial={setNewMaterial}
+        language={language}
+      />
+
+      {/* Edit Material Modal */}
+      <EditMaterialModal
+        show={showEditMaterialModal}
+        onClose={() => {
+          setShowEditMaterialModal(false);
+          setEditingMaterial(null);
+          setNewMaterial({
+            materialId: '',
+            quantity: '',
+            unit: 'kg',
+            unitCost: '',
+            scrapPercentage: '0'
+          });
+        }}
+        onUpdate={handleUpdateMaterial}
+        onDelete={() => {
+          if (editingMaterial) {
+            setShowEditMaterialModal(false);
+            setDeleteMaterialId(editingMaterial.id);
+          }
+        }}
+        rawMaterials={rawMaterials}
+        inventoryItems={inventoryItems}
+        material={newMaterial}
+        setMaterial={setNewMaterial}
+        language={language}
+      />
 
       <DeleteConfirmDialog
         open={!!deleteMaterialId}
