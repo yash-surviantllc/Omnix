@@ -36,6 +36,7 @@ export class ApiClient {
   private refreshPromise: Promise<void> | null = null;
   private accessToken: string | null = null;
   private refreshToken: string | null = null;
+  private inFlightRequests = new Map<string, Promise<any>>();
 
   constructor(baseURL: string = API_URL) {
     this.baseURL = baseURL;
@@ -145,51 +146,58 @@ export class ApiClient {
       },
     };
 
-    try {
-      const response = await fetch(url, config);
+    // Deduplicate in-flight GET requests
+    if (options.method === 'GET') {
+      const inFlight = this.inFlightRequests.get(url);
+      if (inFlight) {
+        return inFlight;
+      }
+    }
 
-      // Handle 401 Unauthorized - attempt token refresh
-      if (response.status === 401 && !endpoint.includes('/auth/')) {
-        // Prevent multiple simultaneous refresh attempts
-        if (!this.isRefreshing) {
-          this.isRefreshing = true;
-          this.refreshPromise = this.refreshAccessToken()
-            .finally(() => {
-              this.isRefreshing = false;
-              this.refreshPromise = null;
-            });
+    const requestPromise = (async () => {
+      try {
+        let response = await fetch(url, config);
+
+        // Handle 401 Unauthorized - attempt token refresh
+        if (response.status === 401 && !endpoint.includes('/auth/')) {
+          if (!this.isRefreshing) {
+            this.isRefreshing = true;
+            this.refreshPromise = this.refreshAccessToken()
+              .finally(() => {
+                this.isRefreshing = false;
+                this.refreshPromise = null;
+              });
+          }
+
+          if (this.refreshPromise) {
+            await this.refreshPromise;
+          }
+
+          const retryConfig: RequestInit = {
+            ...options,
+            headers: {
+              ...this.getAuthHeaders(),
+              ...options.headers,
+            },
+          };
+
+          response = await fetch(url, retryConfig);
         }
 
-        // Wait for refresh to complete
-        if (this.refreshPromise) {
-          await this.refreshPromise;
-        }
-
-        // Retry the original request with new token
-        const retryConfig: RequestInit = {
-          ...options,
-          headers: {
-            ...this.getAuthHeaders(),
-            ...options.headers,
-          },
-        };
-
-        const retryResponse = await fetch(url, retryConfig);
-
-        if (!retryResponse.ok) {
-          const errorData = await retryResponse.json().catch(() => ({
-            detail: retryResponse.statusText || 'An error occurred',
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({
+            detail: response.statusText || 'An error occurred',
           }));
 
           throw {
             detail: errorData.detail || 'Request failed',
-            status: retryResponse.status,
+            status: response.status,
           } as ApiError;
         }
 
-        const contentType = retryResponse.headers.get('content-type');
+        const contentType = response.headers.get('content-type');
         if (contentType && contentType.includes('application/json')) {
-          const data = await retryResponse.json();
+          const data = await response.json();
           // Cache successful GET responses
           if (options.method === 'GET' && options.useCache) {
             cacheService.set(url, data, options.ttl);
@@ -198,40 +206,27 @@ export class ApiClient {
         }
 
         return {} as T;
-      }
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({
-          detail: response.statusText || 'An error occurred',
-        }));
+      } catch (error) {
+        if ((error as ApiError).status) {
+          throw error;
+        }
 
         throw {
-          detail: errorData.detail || 'Request failed',
-          status: response.status,
+          detail: 'Network error. Please check your connection.',
+          status: 0,
         } as ApiError;
-      }
-
-      const contentType = response.headers.get('content-type');
-      if (contentType && contentType.includes('application/json')) {
-        const data = await response.json();
-        // Cache successful GET responses
-        if (options.method === 'GET' && options.useCache) {
-          cacheService.set(url, data, options.ttl);
+      } finally {
+        if (options.method === 'GET') {
+          this.inFlightRequests.delete(url);
         }
-        return data;
       }
+    })();
 
-      return {} as T;
-    } catch (error) {
-      if ((error as ApiError).status) {
-        throw error;
-      }
-
-      throw {
-        detail: 'Network error. Please check your connection.',
-        status: 0,
-      } as ApiError;
+    if (options.method === 'GET') {
+      this.inFlightRequests.set(url, requestPromise);
     }
+
+    return requestPromise;
   }
 
   async get<T>(endpoint: string, options?: RequestOptions): Promise<T> {

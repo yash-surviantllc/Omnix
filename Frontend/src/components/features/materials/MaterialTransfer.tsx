@@ -185,8 +185,8 @@ export function MaterialTransfer({ language, refreshMaterialTransferData }: Mate
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [showTransferModal, setShowTransferModal] = useState(false);
   const [isSubmittingTransfer, setIsSubmittingTransfer] = useState(false);
-  const [, setSubmitError] = useState<string | null>(null);
-  const [, setSuccessMessage] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [transferHistory, setTransferHistory] = useState<any[]>([]);
   const [workingOrders, setWorkingOrders] = useState<any[]>([]);
   const [showStageTransferModal, setShowStageTransferModal] = useState(false);
@@ -320,7 +320,9 @@ export function MaterialTransfer({ language, refreshMaterialTransferData }: Mate
       transferReason: '',
       workOrderId: '', 
       workOrderNumber: '', 
-      priority: 'Normal' 
+      priority: 'Normal',
+      destination_type: 'LOCATION',
+      destination_id: ''
     });
     setShowTransferModal(true);
     setErrors({});
@@ -345,10 +347,6 @@ export function MaterialTransfer({ language, refreshMaterialTransferData }: Mate
       newErrors.transferReason = t.validationErrors.noReason;
     }
 
-    if (!transferData.workOrderId) {
-      newErrors.workOrder = 'Work Order is required';
-    }
-
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -357,6 +355,8 @@ export function MaterialTransfer({ language, refreshMaterialTransferData }: Mate
     setShowTransferModal(false);
     setTransferData({});
     setErrors({});
+    setSubmitError(null);
+    setSuccessMessage(null);
   };
 
   const handleConfirmTransfer = async () => {
@@ -384,7 +384,11 @@ export function MaterialTransfer({ language, refreshMaterialTransferData }: Mate
         unit: transferData.uom,
         reason: transferData.transferReason,
         priority: transferData.priority || 'Normal',
+        destination_type: transferData.destination_type || 'LOCATION',
+        destination_id: transferData.destination_id || transferData.toLocationId,
       };
+      
+      console.log("Transfer Payload:", payload);
       
       if (transferData.workOrderId) {
         payload.work_order_id = transferData.workOrderId;
@@ -394,10 +398,12 @@ export function MaterialTransfer({ language, refreshMaterialTransferData }: Mate
       }
 
       await apiClient.post('/material-transfers', payload);
-
-      setSuccessMessage('Transfer created successfully.');
+      
+      // Success: Close modal, show toast, and refresh
       resetTransferState();
       refreshMaterialTransferData?.(false);
+      // Assuming a toast system exists, otherwise the user will see the refresh.
+      // If we need an explicit alert, we can use window.alert or a dedicated toast.
     } catch (error: any) {
       setSubmitError(error?.detail || 'Failed to create transfer. Please try again.');
     } finally {
@@ -626,11 +632,7 @@ export function MaterialTransfer({ language, refreshMaterialTransferData }: Mate
                 </div>
               </div>
               <button
-                onClick={() => {
-                  setShowTransferModal(false);
-                  setTransferData({});
-                  setErrors({});
-                }}
+                onClick={resetTransferState}
                 className="p-2 hover:bg-zinc-100 rounded-lg transition-colors"
               >
                 <X className="w-5 h-5 text-zinc-600" />
@@ -639,11 +641,24 @@ export function MaterialTransfer({ language, refreshMaterialTransferData }: Mate
 
             {/* Modal Content */}
             <div className="p-6 space-y-6">
+              {submitError && (
+                <div className="p-4 bg-red-50 border border-red-200 rounded-lg flex items-center gap-3 text-red-700 animate-in fade-in slide-in-from-top-2">
+                  <AlertCircle className="w-5 h-5 shrink-0" />
+                  <p className="text-sm font-medium">{submitError}</p>
+                </div>
+              )}
+
+              {successMessage && (
+                <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-lg flex items-center gap-3 text-emerald-700 animate-in fade-in slide-in-from-top-2">
+                  <Check className="w-5 h-5 shrink-0" />
+                  <p className="text-sm font-medium">{successMessage}</p>
+                </div>
+              )}
 
               {/* Work Order (Top Level Context) */}
               <div>
                 <label className="block mb-2 text-zinc-900 font-medium">
-                  {t.workOrder} <span className="text-red-500">*</span>
+                  {t.workOrder} <span className="text-zinc-400 font-normal">(Optional)</span>
                 </label>
                 <select
                   value={transferData.workOrderId || ''}
@@ -721,11 +736,16 @@ export function MaterialTransfer({ language, refreshMaterialTransferData }: Mate
                   <select
                     value={transferData.toLocationId || ''}
                     onChange={(e) => {
-                      const selectedLoc = allLocations.find(l => l.id === e.target.value);
+                      const val = e.target.value;
+                      const selectedLoc = allLocations.find(l => l.id === val);
+                      const selectedStage = availableStages.find(s => s.id === val);
+                      
                       setTransferData({ 
                         ...transferData, 
-                        toLocationId: e.target.value,
-                        toLocation: selectedLoc?.name || ''
+                        toLocationId: val,
+                        toLocation: selectedLoc?.name || selectedStage?.name || '',
+                        destination_id: val,
+                        destination_type: selectedLoc ? 'LOCATION' : selectedStage ? 'STAGE' : 'LOCATION'
                       });
                       setErrors({ ...errors, toLocation: '' });
                     }}
@@ -841,22 +861,21 @@ export function MaterialTransfer({ language, refreshMaterialTransferData }: Mate
             <div className="sticky bottom-0 bg-white border-t border-zinc-200 p-6 flex gap-3 z-10">
               <Button
                 variant="outline"
-                onClick={() => {
-                  setShowTransferModal(false);
-                  setTransferData({});
-                  setErrors({});
-                }}
+                onClick={resetTransferState}
                 className="flex-1"
               >
                 {t.cancel}
               </Button>
               <Button
                 onClick={handleConfirmTransfer}
-                className="flex-1 bg-emerald-600 hover:bg-emerald-700"
+                className="flex-1 bg-emerald-600 hover:bg-emerald-700 font-medium"
                 disabled={isSubmittingTransfer}
               >
                 {isSubmittingTransfer ? (
-                  'Processing...'
+                  <>
+                    <span className="animate-spin mr-2">⌛</span>
+                    Processing...
+                  </>
                 ) : (
                   <>
                     <Check className="w-4 h-4 mr-2" />

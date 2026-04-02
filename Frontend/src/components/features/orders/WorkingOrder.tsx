@@ -4,7 +4,7 @@ import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { wipApi, type WorkingOrderCreate } from '@/lib/api/wip';
 import { purchaseOrdersApi, type PurchaseOrder } from '@/lib/api/purchase-orders';
 import { bomApi } from '@/lib/api/bom';
@@ -758,19 +758,21 @@ export function WorkingOrder({ language }: WorkingOrderProps) {
     return <Badge className={config.color}>{config.label}</Badge>;
   };
 
-  const filteredOrders = workOrders.filter(order => {
-    const matchesSearch =
-      order.workOrderNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      order.product.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      order.operations.some(op => op.name.toLowerCase().includes(searchQuery.toLowerCase())) ||
-      order.assignedTo.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      order.purchaseOrderNumber.toLowerCase().includes(searchQuery.toLowerCase());
+  const filteredOrders = useMemo(() => {
+    return workOrders.filter(order => {
+      const matchesSearch =
+        order.workOrderNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        order.product.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        order.operations.some(op => op.name.toLowerCase().includes(searchQuery.toLowerCase())) ||
+        order.assignedTo.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        order.purchaseOrderNumber.toLowerCase().includes(searchQuery.toLowerCase());
 
-    const matchesStatus = statusFilter === 'all' || order.status === statusFilter;
-    const matchesPO = poFilter === 'all' || order.purchaseOrderId === poFilter;
+      const matchesStatus = statusFilter === 'all' || order.status === statusFilter;
+      const matchesPO = poFilter === 'all' || order.purchaseOrderId === poFilter;
 
-    return matchesSearch && matchesStatus && matchesPO;
-  });
+      return matchesSearch && matchesStatus && matchesPO;
+    });
+  }, [workOrders, searchQuery, statusFilter, poFilter]);
 
   const handleAction = async (action: string, groupedOrderId: string) => {
     const order = workOrders.find(o => o.id === groupedOrderId);

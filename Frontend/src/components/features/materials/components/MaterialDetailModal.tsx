@@ -118,6 +118,15 @@ export function MaterialDetailModal({ isOpen, onClose, title, data, type }: Deta
                       <span className="font-semibold">{data.to_location}</span>
                     </div>
                   </div>
+                  {data.work_order_number && (
+                    <div className="pt-2 border-t border-zinc-100">
+                      <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider block mb-1">Work Order</label>
+                      <div className="flex items-center gap-2 text-zinc-900 font-bold font-mono text-sm bg-zinc-50 px-2 py-1 rounded">
+                        <FileText className="w-3.5 h-3.5 text-blue-500" />
+                        {data.work_order_number}
+                      </div>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="bg-zinc-50 p-4 rounded-lg space-y-3">

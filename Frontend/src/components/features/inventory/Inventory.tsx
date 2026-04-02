@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Search, Package, ArrowUpDown, AlertTriangle, PlusCircle, Edit2, Trash2 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -332,33 +332,35 @@ export function Inventory({ language }: InventoryProps) {
     return 'Sufficient';
   };
 
-  const allInventoryItems: InventoryDisplayItem[] = inventoryItems.map((item) => {
-    const available = item.quantity;
-    const allocated = item.allocated_quantity || 0;
-    const transit = item.transit_quantity || 0;
-    const free = item.free_quantity ?? (available - allocated);
-    const reorderLevel = item.reorder_level;
-    const status = normalizeStatus(item.status);
+  const allInventoryItems: InventoryDisplayItem[] = useMemo(() => {
+    return inventoryItems.map((item) => {
+      const available = item.quantity;
+      const allocated = item.allocated_quantity || 0;
+      const transit = item.transit_quantity || 0;
+      const free = item.free_quantity ?? (available - allocated);
+      const reorderLevel = item.reorder_level;
+      const status = normalizeStatus(item.status);
 
-    return {
-      id: item.id,
-      material: item.material_name,
-      materialCode: item.material_code,
-      available: `${available} ${item.unit}`,
-      allocated: `${allocated} ${item.unit}`,
-      free: `${free} ${item.unit}`,
-      transit: `${transit} ${item.unit}`,
-      location: item.location || 'N/A',
-      reorderLevel: `${reorderLevel} ${item.unit}`,
-      status,
-      unit: item.unit,
-      // Numeric values for calculations
-      availableNum: available,
-      freeNum: free,
-      transitNum: transit,
-      reorderLevelNum: reorderLevel
-    } as InventoryDisplayItem;
-  });
+      return {
+        id: item.id,
+        material: item.material_name,
+        materialCode: item.material_code,
+        available: `${available} ${item.unit}`,
+        allocated: `${allocated} ${item.unit}`,
+        free: `${free} ${item.unit}`,
+        transit: `${transit} ${item.unit}`,
+        location: item.location || 'N/A',
+        reorderLevel: `${reorderLevel} ${item.unit}`,
+        status,
+        unit: item.unit,
+        // Numeric values for calculations
+        availableNum: available,
+        freeNum: free,
+        transitNum: transit,
+        reorderLevelNum: reorderLevel
+      } as InventoryDisplayItem;
+    });
+  }, [inventoryItems]);
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -392,18 +394,20 @@ export function Inventory({ language }: InventoryProps) {
   };
 
   // Filter inventory items based on search and filter
-  const filteredInventoryItems = allInventoryItems.filter((item) => {
-    // Search filter
-    const matchesSearch = searchQuery === '' ||
-      (item.material && item.material.toLowerCase().includes(searchQuery.toLowerCase())) ||
-      (item.materialCode && item.materialCode.toLowerCase().includes(searchQuery.toLowerCase())) ||
-      (item.location && item.location.toLowerCase().includes(searchQuery.toLowerCase()));
+  const filteredInventoryItems = useMemo(() => {
+    return allInventoryItems.filter((item) => {
+      // Search filter
+      const matchesSearch = searchQuery === '' ||
+        (item.material && item.material.toLowerCase().includes(searchQuery.toLowerCase())) ||
+        (item.materialCode && item.materialCode.toLowerCase().includes(searchQuery.toLowerCase())) ||
+        (item.location && item.location.toLowerCase().includes(searchQuery.toLowerCase()));
 
-    // Status filter
-    const matchesFilter = filterStatus === 'all' || item.status === filterStatus;
+      // Status filter
+      const matchesFilter = filterStatus === 'all' || item.status === filterStatus;
 
-    return matchesSearch && matchesFilter;
-  });
+      return matchesSearch && matchesFilter;
+    });
+  }, [allInventoryItems, searchQuery, filterStatus]);
 
   const criticalCount = allInventoryItems.filter((item) => item.status === 'Critical').length;
   const lowStockCount = allInventoryItems.filter((item) => item.status === 'Low Stock').length;

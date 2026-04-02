@@ -163,6 +163,18 @@ export const inventoryItemsApi = {
         apiClient.invalidateCache('/inventory-items/');
         return response;
     },
+
+    // Get all physical locations
+    getLocations: async (): Promise<any[]> => {
+        return apiClient.get<any[]>('/inventory/locations', {
+            useCache: true,
+            ttl: 3600 // 1 hour
+        });
+    },
+
+    invalidateLocationsCache: () => {
+        apiClient.invalidateCache('/inventory/locations');
+    },
 };
 
 // Helper function to convert API response to MaterialData format
