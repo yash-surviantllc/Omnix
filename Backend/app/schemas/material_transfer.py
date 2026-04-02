@@ -16,6 +16,8 @@ class MaterialTransferBase(BaseModel):
     reference_order_id: Optional[str] = Field(None, description="Link to purchase order")
     work_order_id: Optional[str] = Field(None, description="Associated work order ID")
     work_order_number: Optional[str] = Field(None, description="Work order number for reference")
+    destination_type: Optional[str] = Field(None, description="LOCATION or STAGE")
+    destination_id: Optional[str] = Field(None, description="ID of the destination location or stage")
 
 
 class MaterialTransferCreate(MaterialTransferBase):
@@ -35,6 +37,8 @@ class MaterialTransferResponse(MaterialTransferBase):
     transfer_number: str
     product_code: Optional[str] = None
     product_name: Optional[str] = None
+    from_location: Optional[str] = None
+    to_location: Optional[str] = None
     from_location_name: Optional[str] = None
     to_location_name: Optional[str] = None
     status: str

@@ -47,29 +47,26 @@ class MaterialTransferService:
             raise NotFoundException(detail="Product not found")
         
         # Validate locations exist (can be a Location or a WIP Stage)
-        actual_to_location_id = transfer_data.to_location_id
-        is_to_stage = False
+        actual_to_location_id = transfer_data.destination_id or transfer_data.to_location_id
+        is_to_stage = transfer_data.destination_type == "STAGE"
+        to_stage_id = None
         to_stage_name = ""
         
         from_loc = db.table('locations').select('id').eq('id', transfer_data.from_location_id).execute()
         if not from_loc.data:
             from_loc = db.table('wip_stages').select('id').eq('id', transfer_data.from_location_id).execute()
         
-        to_loc = db.table('locations').select('id').eq('id', transfer_data.to_location_id).execute()
-        if not to_loc.data:
-            to_stage = db.table('wip_stages').select('id', 'name').eq('id', transfer_data.to_location_id).execute()
-            if to_stage.data:
-                is_to_stage = True
-                to_stage_name = to_stage.data[0]['name']
+        if is_to_stage:
+            to_stage_id = actual_to_location_id
+            to_stage_res = db.table('wip_stages').select('id', 'name').eq('id', to_stage_id).execute()
+            if to_stage_res.data:
+                to_stage_name = to_stage_res.data[0]['name']
                 # If it's a stage, we must find a valid physical location for the FK constraint
-                
                 # 1. Try location type 'production_line'
                 fallback = db.table('locations').select('id').eq('type', 'production_line').eq('is_active', True).execute()
-                
                 # 2. Try location type 'store'
                 if not fallback.data:
                     fallback = db.table('locations').select('id').eq('type', 'store').eq('is_active', True).execute()
-                
                 # 3. Try any active location
                 if not fallback.data:
                     fallback = db.table('locations').select('id').eq('is_active', True).limit(1).execute()
@@ -79,14 +76,37 @@ class MaterialTransferService:
                     to_loc = fallback # satisfy the check below
                 else:
                     raise ValidationException(detail="No active physical locations exist in the system to map this transfer to.")
+            else:
+                raise NotFoundException(detail="Destination stage not found")
+        else:
+            to_loc = db.table('locations').select('id').eq('id', actual_to_location_id).execute()
+            if not to_loc.data:
+                # Fallback check in wip_stages just in case destination_type wasn't set correctly
+                to_stage_res = db.table('wip_stages').select('id', 'name').eq('id', actual_to_location_id).execute()
+                if to_stage_res.data:
+                    is_to_stage = True
+                    to_stage_id = actual_to_location_id
+                    to_stage_name = to_stage_res.data[0]['name']
+                    # Use same fallback logic for FK constraint
+                    fallback = db.table('locations').select('id').eq('is_active', True).limit(1).execute()
+                    if fallback.data:
+                        actual_to_location_id = fallback.data[0]['id']
+                        to_loc = fallback
+                    else:
+                        raise ValidationException(detail="No active physical locations exist in the system.")
+                else:
+                    raise NotFoundException(detail="Destination location not found")
         
         if not from_loc.data:
             raise NotFoundException(detail="Source location or stage not found")
         if not to_loc.data:
             raise NotFoundException(detail="Destination location or stage not found")
         
-        if transfer_data.from_location_id == actual_to_location_id:
-            raise ValidationException(detail="Source and destination locations cannot be the same")
+        # Final validation - ensure source and destination are different
+        # For STAGE transfers, we allow from_location_id to be the fallback since the stage is logical
+        is_same = (transfer_data.from_location_id == actual_to_location_id)
+        if is_same and not is_to_stage:
+             raise ValidationException(detail="Source and destination locations cannot be the same")
         
         # Check inventory availability at source
         inv = db.table('inventory').select('available_qty', 'allocated_qty').eq(
@@ -96,9 +116,8 @@ class MaterialTransferService:
         if not inv.data:
             raise ValidationException(detail="No inventory found at source location")
         
-        free_qty = Decimal(str(inv.data[0]['available_qty'])) - Decimal(str(inv.data[0]['allocated_qty']))
-        
-        if free_qty < transfer_data.quantity:
+        free_qty = float(inv.data[0]['available_qty']) - float(inv.data[0]['allocated_qty'])
+        if free_qty < float(transfer_data.quantity):
             raise ValidationException(
                 detail=f"Insufficient free inventory. Available: {free_qty}, Requested: {transfer_data.quantity}"
             )
@@ -112,6 +131,8 @@ class MaterialTransferService:
             'product_id': transfer_data.product_id,
             'from_location_id': transfer_data.from_location_id,
             'to_location_id': actual_to_location_id,
+            'to_stage_id': to_stage_id,
+            'to_stage_name': to_stage_name,
             'quantity': float(transfer_data.quantity),
             'unit': transfer_data.unit,
             'priority': transfer_data.priority,
@@ -120,15 +141,32 @@ class MaterialTransferService:
             'reference_order_id': transfer_data.reference_order_id,
             'work_order_id': transfer_data.work_order_id,
             'work_order_number': transfer_data.work_order_number,
-            'status': 'Pending',
+            'status': 'Approved',
             'transfer_type': 'Standard',
-            'requested_by': user_id
+            'requested_by': user_id,
+            'approved_by': user_id,
+            'approved_at': datetime.utcnow().isoformat(),
+            'created_at': datetime.utcnow().isoformat()
         }
         
         result = db.table('material_transfers').insert(transfer_dict).execute()
         if not result.data:
             raise Exception("Failed to insert transfer record into database")
-        return await MaterialTransferService.get_transfer_by_id(result.data[0]['id'])
+            
+        transfer_id = result.data[0]['id']
+        
+        try:
+            # Immediately execute the transfer
+            await MaterialTransferService.execute_transfer(transfer_id, user_id)
+        except Exception as e:
+            # If execution fails, update status to Failed but return the response
+            db.table('material_transfers').update({
+                'status': 'Failed', 
+                'notes': f"Execution failed: {str(e)}"
+            }).eq('id', transfer_id).execute()
+            
+        # Return the latest state
+        return await MaterialTransferService.get_transfer_by_id(transfer_id)
     
     @staticmethod
     async def list_transfers(
@@ -140,72 +178,72 @@ class MaterialTransferService:
         product_id: Optional[str] = None,
         search: Optional[str] = None
     ) -> List[MaterialTransferListItem]:
-        """List material transfers with filters"""
+        """List material transfers with optimized batch lookups"""
         db = get_db()
-        
         offset = (page - 1) * limit
-        
         query = db.table('material_transfers').select('*')
         
         if status:
             query = query.eq('status', status)
-        
         if from_location_id:
             query = query.eq('from_location_id', from_location_id)
-        
         if to_location_id:
             query = query.eq('to_location_id', to_location_id)
-        
         if product_id:
             query = query.eq('product_id', product_id)
         
         result = query.order('requested_at', desc=True).range(offset, offset + limit - 1).execute()
+        if not result.data:
+            return []
+
+        # Batch Lookups
+        product_ids = list(set(t['product_id'] for t in result.data))
+        from_loc_ids = list(set(t['from_location_id'] for t in result.data))
+        to_loc_ids = list(set(t['to_location_id'] for t in result.data))
+        all_loc_ids = list(set(from_loc_ids + to_loc_ids))
+
+        product_map = {}
+        if product_ids:
+            prod_res = db.table('products').select('id, name').in_('id', product_ids).execute()
+            product_map = {p['id']: p['name'] for p in prod_res.data}
+
+        # Handle names from both locations and wip_stages
+        location_map = {}
+        if all_loc_ids:
+            loc_res = db.table('locations').select('id, name').in_('id', all_loc_ids).execute()
+            location_map.update({l['id']: l['name'] for l in loc_res.data})
+            
+            # Check remaining IDs in wip_stages
+            remaining_ids = [id for id in all_loc_ids if id not in location_map]
+            if remaining_ids:
+                stage_res = db.table('wip_stages').select('id, name').in_('id', remaining_ids).execute()
+                location_map.update({s['id']: s['name'] for s in stage_res.data})
         
         transfers = []
-        for transfer in result.data:
-            # Get product info
-            product = db.table('products').select('name').eq('id', transfer['product_id']).execute()
-            product_name = product.data[0]['name'] if product.data else 'Unknown'
+        for t in result.data:
+            product_name = product_map.get(t['product_id'], 'Unknown')
+            from_name = location_map.get(t['from_location_id'], 'Unknown')
+            to_name = t.get('to_stage_name') or location_map.get(t['to_location_id'], 'Unknown')
             
-            # Get location names (can be Locations or WIP Stages)
-            from_loc = db.table('locations').select('name').eq('id', transfer['from_location_id']).execute()
-            if not from_loc.data:
-                from_loc = db.table('wip_stages').select('name').eq('id', transfer['from_location_id']).execute()
-                
-            to_loc = db.table('locations').select('name').eq('id', transfer['to_location_id']).execute()
-            if not to_loc.data:
-                to_loc = db.table('wip_stages').select('name').eq('id', transfer['to_location_id']).execute()
-            
-            from_location_name = from_loc.data[0]['name'] if from_loc.data else 'Unknown'
-            to_location_name = to_loc.data[0]['name'] if to_loc.data else 'Unknown'
-            
-            # Determine date to show based on status
-            if transfer['status'] == 'Completed' and transfer.get('executed_at'):
-                date_to_show = datetime.fromisoformat(transfer['executed_at'].replace('Z', '+00:00'))
-            else:
-                date_to_show = datetime.fromisoformat(transfer['requested_at'].replace('Z', '+00:00'))
-            
-            # Apply search filter
             if search:
-                search_lower = search.lower()
-                if (search_lower not in transfer['transfer_number'].lower() and
-                    search_lower not in product_name.lower() and
-                    search_lower not in from_location_name.lower() and
-                    search_lower not in to_location_name.lower()):
+                s_lower = search.lower()
+                if not any(s_lower in str(v).lower() for v in [t['transfer_number'], product_name, from_name, to_name]):
                     continue
-            
+
+            date_str = (t.get('executed_at') if t['status'] == 'Completed' else t.get('requested_at')) or t.get('created_at')
+            date_to_show = datetime.fromisoformat(date_str.replace('Z', '+00:00')) if date_str else datetime.utcnow()
+
             transfers.append(MaterialTransferListItem(
-                id=transfer['id'],
-                transfer_number=transfer['transfer_number'],
+                id=t['id'],
+                transfer_number=t['transfer_number'],
                 material=product_name,
-                quantity=Decimal(str(transfer['quantity'])),
-                unit=transfer['unit'],
-                from_location=from_location_name,
-                to_location=to_location_name,
-                status=transfer['status'],
+                quantity=Decimal(str(t['quantity'])),
+                unit=t['unit'],
+                from_location=from_name,
+                to_location=to_name,
+                status=t['status'],
                 date=date_to_show
             ))
-        
         return transfers
     
     @staticmethod
@@ -231,29 +269,24 @@ class MaterialTransferService:
         if not from_loc.data:
             from_loc = db.table('wip_stages').select('name').eq('id', t['from_location_id']).execute()
             
-        to_loc = db.table('locations').select('name').eq('id', t['to_location_id']).execute()
-        if not to_loc.data:
-            to_loc = db.table('wip_stages').select('name').eq('id', t['to_location_id']).execute()
-        
         from_location_name = from_loc.data[0]['name'] if from_loc.data else None
-        to_location_name = to_loc.data[0]['name'] if to_loc.data else None
         
-        # Get user names
-        requested_by_name = None
-        approved_by_name = None
-        executed_by_name = None
+        # Prioritize to_stage_name from the transfer record
+        to_location_name = t.get('to_stage_name')
+        if not to_location_name:
+            to_loc = db.table('locations').select('name').eq('id', t['to_location_id']).execute()
+            to_location_name = to_loc.data[0]['name'] if to_loc.data else None
         
-        if t.get('requested_by'):
-            user = db.table('users').select('full_name', 'username').eq('id', t['requested_by']).execute()
-            requested_by_name = user.data[0].get('full_name') or user.data[0].get('username') if user.data else None
+        # Get user names in batch
+        user_ids = list(set(filter(None, [t.get('requested_by'), t.get('approved_by'), t.get('executed_by')])))
+        user_map = {}
+        if user_ids:
+            users_res = db.table('users').select('id', 'full_name', 'username').in_('id', user_ids).execute()
+            user_map = {u['id']: u.get('full_name') or u.get('username') for u in users_res.data}
         
-        if t.get('approved_by'):
-            user = db.table('users').select('full_name', 'username').eq('id', t['approved_by']).execute()
-            approved_by_name = user.data[0].get('full_name') or user.data[0].get('username') if user.data else None
-        
-        if t.get('executed_by'):
-            user = db.table('users').select('full_name', 'username').eq('id', t['executed_by']).execute()
-            executed_by_name = user.data[0].get('full_name') or user.data[0].get('username') if user.data else None
+        requested_by_name = user_map.get(t.get('requested_by'))
+        approved_by_name = user_map.get(t.get('approved_by'))
+        executed_by_name = user_map.get(t.get('executed_by'))
         
         return MaterialTransferResponse(
             id=t['id'],
@@ -262,9 +295,11 @@ class MaterialTransferService:
             product_code=product_code,
             product_name=product_name,
             from_location_id=t['from_location_id'],
+            from_location=from_location_name,
+            to_location=to_location_name,
             from_location_name=from_location_name,
-            to_location_id=t['to_location_id'],
             to_location_name=to_location_name,
+            to_location_id=t['to_location_id'],
             quantity=Decimal(str(t['quantity'])),
             unit=t['unit'],
             status=t['status'],
@@ -273,6 +308,8 @@ class MaterialTransferService:
             reason=t.get('reason'),
             notes=t.get('notes'),
             reference_order_id=t.get('reference_order_id'),
+            work_order_id=t.get('work_order_id'),
+            work_order_number=t.get('work_order_number'),
             requested_by=t.get('requested_by'),
             requested_by_name=requested_by_name,
             approved_by=t.get('approved_by'),
@@ -362,45 +399,48 @@ class MaterialTransferService:
             if new_available < 0:
                 raise ValidationException(detail="Insufficient inventory at source")
             
-            db.table('inventory').update({
+            update_res = db.table('inventory').update({
                 'available_qty': float(new_available),
                 'updated_at': datetime.utcnow().isoformat()
             }).eq('id', source['id']).execute()
             
-            # 2. Add to destination location
-            dest_inv = db.table('inventory').select('*').eq(
-                'product_id', t['product_id']
-            ).eq('location_id', t['to_location_id']).execute()
+            # 2. Add to destination location (Skip if it's a WIP Stage transfer)
+            is_stage_transfer = t.get('to_stage_id') is not None
             
-            if dest_inv.data:
-                # Update existing
-                dest = dest_inv.data[0]
-                new_dest_qty = Decimal(str(dest['available_qty'])) + Decimal(str(t['quantity']))
+            if not is_stage_transfer:
+                dest_inv = db.table('inventory').select('*').eq(
+                    'product_id', t['product_id']
+                ).eq('location_id', t['to_location_id']).execute()
                 
-                db.table('inventory').update({
-                    'available_qty': float(new_dest_qty),
-                    'updated_at': datetime.utcnow().isoformat()
-                }).eq('id', dest['id']).execute()
-            else:
-                # Insert new
-                db.table('inventory').insert({
-                    'product_id': t['product_id'],
-                    'location_id': t['to_location_id'],
-                    'available_qty': float(t['quantity']),
-                    'allocated_qty': 0
-                }).execute()
+                if dest_inv.data:
+                    # Update existing
+                    dest = dest_inv.data[0]
+                    new_dest_qty = Decimal(str(dest['available_qty'])) + Decimal(str(t['quantity']))
+                    
+                    db.table('inventory').update({
+                        'available_qty': float(new_dest_qty),
+                        'updated_at': datetime.utcnow().isoformat()
+                    }).eq('id', dest['id']).execute()
+                else:
+                    # Insert new
+                    db.table('inventory').insert({
+                        'product_id': t['product_id'],
+                        'location_id': t['to_location_id'],
+                        'available_qty': float(t['quantity']),
+                        'allocated_qty': 0
+                    }).execute()
             
-            # 3. Log inventory transaction
+            # 3. Log inventory transaction (Use 'CONSUMPTION' type for WIP Stages)
             db.table('inventory_transactions').insert({
                 'product_id': t['product_id'],
-                'transaction_type': 'TRANSFER',
+                'transaction_type': 'CONSUMPTION' if is_stage_transfer else 'TRANSFER',
                 'quantity': float(t['quantity']),
                 'from_location_id': t['from_location_id'],
-                'to_location_id': t['to_location_id'],
+                'to_location_id': t['to_location_id'] if not is_stage_transfer else None,
                 'reference_id': transfer_id,
                 'reference_type': 'material_transfer',
-                'notes': f"Transfer {t['transfer_number']}",
-                'performed_by': user_id
+                'notes': f"Transfer {t['transfer_number']} ({'CONSUMPTION' if is_stage_transfer else 'MOVE'}) to stage: {t.get('to_stage_name', 'Unknown')}" if is_stage_transfer else f"Transfer {t['transfer_number']}",
+                'created_by': user_id
             }).execute()
             
             # 4. Update transfer status
@@ -476,30 +516,33 @@ class MaterialTransferService:
     
     @staticmethod
     async def get_wip_stages_with_units() -> List[WIPStageWithUnits]:
-        """Get WIP stages with current unit counts (for UI display)"""
+        """Get WIP stages with grouped unit counts (Optimized)"""
         db = get_db()
-        
         stages = db.table('wip_stages').select('*').eq('is_active', True).order('sequence_number').execute()
+        if not stages.data:
+            return []
+
+        # Batch fetch all tracking data
+        tracking_res = db.table('order_stage_tracking').select('current_stage_id, quantity_in_stage').execute()
         
-        result = []
-        for stage in stages.data:
-            # Count units in this stage
-            tracking = db.table('order_stage_tracking').select('quantity_in_stage').eq(
-                'current_stage_id', stage['id']
-            ).execute()
+        # Group in memory
+        counts_map = {}
+        for row in tracking_res.data:
+            sid = row['current_stage_id']
+            qty = Decimal(str(row['quantity_in_stage']))
+            counts_map[sid] = counts_map.get(sid, Decimal('0')) + qty
             
-            total_units = sum(Decimal(str(t['quantity_in_stage'])) for t in tracking.data) if tracking.data else Decimal('0')
-            
-            result.append(WIPStageWithUnits(
-                id=stage['id'],
-                name=stage['name'],
-                code=stage['code'],
-                sequence_number=stage['sequence_number'],
-                units=int(total_units),
-                target_time_minutes=stage.get('target_time_minutes')
-            ))
-        
-        return result
+        return [
+            WIPStageWithUnits(
+                id=s['id'],
+                name=s['name'],
+                code=s['code'],
+                sequence_number=s['sequence_number'],
+                units=int(counts_map.get(s['id'], Decimal('0'))),
+                target_time_minutes=s.get('target_time_minutes')
+            )
+            for s in stages.data
+        ]
     
     @staticmethod
     async def create_wip_stage_transfer(

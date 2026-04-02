@@ -53,15 +53,18 @@ class InventoryItemsService:
         status: Optional[str] = None,
         category: Optional[str] = None
     ) -> List[InventoryItemListResponse]:
-        """List all inventory items with filters."""
+        """List all inventory items with filters optimized for performance."""
         db = get_db()
-        
         offset = (page - 1) * limit
         
+        # 1. Build optimized core query
         query = db.table('inventory_items').select('*')
         
+        if search:
+            # Multi-field search in one query
+            query = query.or_(f"material_code.ilike.%{search}%,material_name.ilike.%{search}%")
+            
         if status:
-            # Use ilike for case-insensitive matching (handles legacy lowercase rows)
             query = query.ilike('status', status)
         
         if category:
@@ -69,52 +72,55 @@ class InventoryItemsService:
         
         result = query.order('created_at', desc=True).range(offset, offset + limit - 1).execute()
         
-        # Enhanced Logic: Fetch Real-time Allocation and Transit Data
-        # 1. Collect codes
-        codes = [i['material_code'] for i in result.data]
+        if not result.data:
+            return []
+
+        # 2. Batch fetch product associations
+        codes = [item['material_code'] for item in result.data]
         product_map = {} # code -> product_id
+        unique_p_ids = set()
         
-        if codes:
+        try:
+            prod_res = db.table('products').select('id, code').in_('code', codes).execute()
+            for p in prod_res.data:
+                product_map[p['code']] = p['id']
+                unique_p_ids.add(p['id'])
+        except Exception as e:
+            print(f"Error fetching product mapping: {e}")
+
+        # 3. Batch fetch ALL metrics in two single queries (Deduplicated)
+        allocated_map = {} # product_id -> total_allocated
+        transit_map = {}   # product_id -> total_transit
+        
+        if unique_p_ids:
+            p_ids_list = list(unique_p_ids)
             try:
-                prod_res = db.table('products').select('id, code').in_('code', codes).execute()
-                for p in prod_res.data:
-                    product_map[p['code']] = p['id']
-            except Exception:
-                pass
+                # Bulk fetch allocation data
+                inv_res = db.table('inventory').select('product_id, allocated_qty').in_('product_id', p_ids_list).execute()
+                for row in inv_res.data:
+                    p_id = row['product_id']
+                    val = Decimal(str(row.get('allocated_qty', 0)))
+                    allocated_map[p_id] = allocated_map.get(p_id, Decimal('0')) + val
                 
+                # Bulk fetch transit data
+                po_res = db.table('purchase_order_items').select('product_id, quantity, completed_quantity').in_('product_id', p_ids_list).in_('status', ['Pending', 'In Progress']).execute()
+                for row in po_res.data:
+                    p_id = row['product_id']
+                    qty = Decimal(str(row.get('quantity', 0)))
+                    comp = Decimal(str(row.get('completed_quantity', 0) or 0))
+                    transit_map[p_id] = transit_map.get(p_id, Decimal('0')) + (qty - comp)
+            except Exception as e:
+                print(f"Error fetching bulk metrics: {e}")
+
+        # 4. Assemble final items list
         items = []
         for item in result.data:
-            # Apply search filter
-            if search:
-                search_lower = search.lower()
-                if (search_lower not in item['material_code'].lower() and 
-                    search_lower not in item['material_name'].lower()):
-                    continue
-            
-            quantity = Decimal(str(item['quantity']))
-            allocated = Decimal('0')
-            transit = Decimal('0')
-            
-            # 2. Fetch Real Metrics if linked to Product
+            quantity = Decimal(str(item.get('quantity', 0)))
             p_id = product_map.get(item['material_code'])
-            if p_id:
-                try:
-                    # Allocated from Inventory Table
-                    inv_res = db.table('inventory').select('allocated_qty').eq('product_id', p_id).execute()
-                    if inv_res.data:
-                        allocated = sum(Decimal(str(r['allocated_qty'])) for r in inv_res.data)
-                        print(f"Inventory: {item['material_code']}: Found allocated_qty = {allocated}")
-                        
-                    # Transit from PO Items (Pending or In Progress)
-                    po_res = db.table('purchase_order_items').select('quantity, completed_quantity').eq('product_id', p_id).in_('status', ['Pending', 'In Progress']).execute()
-                    if po_res.data:
-                         transit = sum(Decimal(str(r['quantity'])) - Decimal(str(r.get('completed_quantity', 0) or 0)) for r in po_res.data)
-                except Exception as e:
-                    print(f"Error fetching metrics for {item['material_code']}: {e}")
-            else:
-                print(f"Inventory: {item['material_code']}: NOT FOUND in products table - allocated_qty will be 0")
-
-
+            
+            allocated = allocated_map.get(p_id, Decimal('0')) if p_id else Decimal('0')
+            transit = transit_map.get(p_id, Decimal('0')) if p_id else Decimal('0')
+            
             items.append(InventoryItemListResponse(
                 id=item['id'],
                 product_id=p_id,
@@ -122,26 +128,24 @@ class InventoryItemsService:
                 material_name=item['material_name'],
                 quantity=quantity,
                 allocated_quantity=allocated,
-                free_quantity=quantity - allocated,
+                free_quantity=max(Decimal('0'), quantity - allocated),
                 transit_quantity=transit,
                 unit=item['unit'],
                 location=item.get('location'),
                 reorder_level=Decimal(str(item.get('reorder_level', 0))),
                 min_stock_level=Decimal(str(item.get('min_stock_level', 0) or 0)),
                 max_stock_level=Decimal(str(item.get('max_stock_level'))) if item.get('max_stock_level') is not None else None,
-                # Normalize status to Title Case — DB may have legacy lowercase values.
-                # _compute_status recalculates from quantity+reorder_level+min_stock_level
-                # always producing correct Title Case without depending on stale DB status.
                 status=InventoryItemsService._compute_status(
                     quantity,
                     Decimal(str(item.get('reorder_level', 0))),
                     Decimal(str(item.get('min_stock_level', 0) or 0))
                 ),
-                unit_cost=Decimal(str(item['unit_cost'])),
-                total_value=quantity * Decimal(str(item['unit_cost']))
+                unit_cost=Decimal(str(item.get('unit_cost', 0))),
+                total_value=quantity * Decimal(str(item.get('unit_cost', 0)))
             ))
         
         return items
+
     
     @staticmethod
     async def get_inventory_item(item_id: str) -> InventoryItemResponse:
@@ -558,7 +562,7 @@ class InventoryItemsService:
         transaction_type: Optional[str] = None,
         limit: int = 50
     ) -> List[InventoryItemTransactionResponse]:
-        """List inventory item transactions."""
+        """List inventory item transactions with optimized batch lookups."""
         db = get_db()
         
         query = db.table('inventory_item_transactions').select('*')
@@ -571,15 +575,23 @@ class InventoryItemsService:
         
         result = query.order('created_at', desc=True).limit(limit).execute()
         
+        if not result.data:
+            return []
+
+        # Batch fetch all item details
+        item_ids = list(set(t['inventory_item_id'] for t in result.data))
+        item_map = {}
+        if item_ids:
+            items_res = db.table('inventory_items').select('id, material_code, material_name').in_('id', item_ids).execute()
+            item_map = {i['id']: i for i in items_res.data}
+            
         transactions = []
         for trans in result.data:
-            # Get item details
-            item = db.table('inventory_items').select('material_code', 'material_name').eq('id', trans['inventory_item_id']).execute()
-            
+            item = item_map.get(trans['inventory_item_id'], {})
             transactions.append(InventoryItemTransactionResponse(
                 **trans,
-                material_code=item.data[0]['material_code'] if item.data else None,
-                material_name=item.data[0]['material_name'] if item.data else None
+                material_code=item.get('material_code'),
+                material_name=item.get('material_name')
             ))
         
         return transactions

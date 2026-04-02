@@ -274,74 +274,72 @@ class NotificationService:
         query = query.order('created_at', desc=True).limit(limit)
         notifications = query.execute().data or []
         
-        # Enrich with requisition details
+        if not notifications:
+            return []
+
+        # Batch Lookups
+        req_ids = list(set(filter(None, [n.get('reference_id') for n in notifications])))
+        
+        requisitions_map = {}
+        items_map = {}
+        wo_map = {}
+        product_map = {}
+        
+        if req_ids:
+            # 1. Batch Requisitions
+            req_res = db.table('material_requisitions').select('*').in_('id', req_ids).execute()
+            requisitions_map = {r['id']: r for r in req_res.data}
+            
+            # 2. Batch Items
+            items_res = db.table('material_requisition_items').select('*').in_('requisition_id', req_ids).execute()
+            for item in items_res.data:
+                rid = item['requisition_id']
+                if rid not in items_map:
+                    items_map[rid] = []
+                items_map[rid].append(item)
+            
+            # 3. Batch Work Orders
+            wo_numbers = list(set(filter(None, [r.get('work_order_number') for r in requisitions_map.values()])))
+            if wo_numbers:
+                wo_res = db.table('work_orders').select('work_order_number', 'product_id').in_('work_order_number', wo_numbers).execute()
+                wo_map = {w['work_order_number']: w['product_id'] for w in wo_res.data}
+                
+                # 4. Batch Products
+                p_ids = list(set(filter(None, wo_map.values())))
+                if p_ids:
+                    prod_res = db.table('products').select('id', 'code', 'name').in_('id', p_ids).execute()
+                    product_map = {p['id']: p for p in prod_res.data}
+        
         enriched = []
         for notif in notifications:
-            if notif.get('reference_id'):
-                try:
-                    # Get requisition
-                    req_result = (
-                        db.table('material_requisitions')
-                        .select('*')
-                        .eq('id', notif['reference_id'])
-                        .single()
-                        .execute()
-                    )
-                    
-                    if req_result.data:
-                        # Get items
-                        items_result = (
-                            db.table('material_requisition_items')
-                            .select('*')
-                            .eq('requisition_id', notif['reference_id'])
-                            .order('created_at')
-                            .execute()
-                        )
-                        
-                        enriched_data = {
-                            'notification_id': notif['id'],
-                            'is_read': notif['is_read'],
-                            'created_at': notif['created_at'],
-                            'requisition_number': req_result.data['requisition_number'],
-                            'work_order_number': req_result.data.get('work_order_number'),
-                            'department': req_result.data['department'],
-                            'requesting_stage': req_result.data.get('requesting_stage'),
-                            'requested_by': req_result.data['requested_by'],
-                            'shift': req_result.data.get('shift'),
-                            'status': req_result.data['status'],
-                            'items': items_result.data or [],
-                            'reference_id': notif['reference_id']  # Add reference_id for Approve API
-                        }
-
-                        # Enrich with Work Order Product Details (SKU & Name)
-                        if enriched_data['work_order_number']:
-                            try:
-                                wo_res = (
-                                    db.table('work_orders')
-                                    .select('product_id')
-                                    .eq('work_order_number', enriched_data['work_order_number'])
-                                    .single()
-                                    .execute()
-                                )
-                                if wo_res.data and wo_res.data.get('product_id'):
-                                    prod_res = (
-                                        db.table('products')
-                                        .select('code, name')
-                                        .eq('id', wo_res.data['product_id'])
-                                        .single()
-                                        .execute()
-                                    )
-                                    if prod_res.data:
-                                        enriched_data['sku_id'] = prod_res.data.get('code')
-                                        enriched_data['product_name'] = prod_res.data.get('name')
-                            except Exception as e:
-                                print(f"Error fetching WO details for notification: {e}")
-                        
-                        enriched.append(enriched_data)
-                except Exception as e:
-                    print(f"Error enriching notification {notif['id']}: {e}")
-                    continue
-        
+            req_id = notif.get('reference_id')
+            req = requisitions_map.get(req_id)
+            if not req:
+                continue
+            
+            items = items_map.get(req_id, [])
+            wo_number = req.get('work_order_number')
+            prod_id = wo_map.get(wo_number) if wo_number else None
+            prod = product_map.get(prod_id) if prod_id else None
+            
+            enriched_data = {
+                'notification_id': notif['id'],
+                'is_read': notif['is_read'],
+                'created_at': notif['created_at'],
+                'requisition_number': req['requisition_number'],
+                'work_order_number': wo_number,
+                'department': req['department'],
+                'requesting_stage': req.get('requesting_stage'),
+                'requested_by': req['requested_by'],
+                'shift': req.get('shift'),
+                'status': req['status'],
+                'items': items,
+                'reference_id': req_id,
+                'sku_id': prod.get('code') if prod else None,
+                'product_name': prod.get('name') if prod else None
+            }
+            enriched.append(enriched_data)
+            
         return enriched
     
     @staticmethod
