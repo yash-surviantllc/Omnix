@@ -1016,8 +1016,9 @@ class PurchaseOrderService:  # Changed from ProductionOrderService
                 db.table('purchase_orders').delete().eq('id', order_id).execute()
                 return True
             except Exception as e:
-                # If delete still fails, fall back to cancel
-                print(f"Delete failed, falling back to cancel: {e}")
+                # If delete still fails (e.g. materials or work orders exist), fall back to cancel
+                import logging
+                logging.warning(f"Delete failed, falling back to cancel: {e}")
                 await PurchaseOrderService.cancel_purchase_order(order_id, user_id)
                 return False
         else:

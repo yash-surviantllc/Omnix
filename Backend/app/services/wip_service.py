@@ -475,6 +475,38 @@ class WIPService:
         return WorkingOrderResponse(**row)
 
     @staticmethod
+    async def delete_working_order(order_id: str) -> dict:
+        """Cancel a working order (soft delete to prevent data loss)."""
+        db = get_db()
+        
+        # Check if ID belongs to an Operation
+        op_check = db.table('work_order_operations').select('work_order_id').eq('id', order_id).execute()
+        if op_check.data:
+            db.table('work_order_operations').update({
+                'status': 'Cancelled',
+                'actual_end': datetime.utcnow().isoformat()
+            }).eq('id', order_id).execute()
+        else:
+            wo_check = db.table('work_orders').select('id').eq('id', order_id).execute()
+            if not wo_check.data:
+                raise NotFoundException(detail="Working order not found")
+            
+            db.table('work_orders').update({
+                'status': 'Cancelled',
+                'actual_end': datetime.utcnow().isoformat()
+            }).eq('id', order_id).execute()
+            
+            db.table('work_order_operations').update({
+                'status': 'Cancelled',
+                'actual_end': datetime.utcnow().isoformat()
+            }).eq('work_order_id', order_id).neq('status', 'Completed').execute()
+
+        await WIPService._update_stage_metrics()
+        await dashboard_service.broadcast_orders_update()
+        await dashboard_service.broadcast_kpis_update()
+        return {"message": "Working order cancelled successfully"}
+
+    @staticmethod
     async def _allocate_inventory(wo_id: str, product_id: str, target_qty: Decimal, work_order_number: str):
         """Internal helper to handle multi-location inventory allocation for a WO"""
         db = get_db()

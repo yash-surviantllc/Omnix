@@ -443,6 +443,34 @@ class MaterialTransferService:
                 'created_by': user_id
             }).execute()
             
+            # 3.5 If this is a WIP Stage transfer, we must also reduce the total system inventory in inventory_items
+            if is_stage_transfer:
+                # Find the inventory_item. We use the product's code to find it.
+                prod_res = db.table('products').select('code').eq('id', t['product_id']).execute()
+                if prod_res.data:
+                    material_code = prod_res.data[0]['code']
+                    inv_item_res = db.table('inventory_items').select('id, quantity, unit_cost, unit').eq('material_code', material_code).execute()
+                    if inv_item_res.data:
+                        inv_item = inv_item_res.data[0]
+                        old_qty = Decimal(str(inv_item['quantity']))
+                        qty_change = -Decimal(str(t['quantity']))
+                        
+                        db.table('inventory_item_transactions').insert({
+                            'inventory_item_id': inv_item['id'],
+                            'transaction_type': 'OUT',
+                            'quantity_before': float(old_qty),
+                            'quantity_change': float(qty_change),
+                            'quantity_after': float(old_qty + qty_change),
+                            'unit': inv_item['unit'],
+                            'unit_cost': float(inv_item['unit_cost']),
+                            'reason': f"Consumption via WIP Stage Transfer {t['transfer_number']}",
+                            'reference_type': 'material_transfer',
+                            'reference_id': transfer_id,
+                            'reference_number': t['transfer_number'],
+                            'created_by': user_id
+                        }).execute()
+
+            
             # 4. Update transfer status
             db.table('material_transfers').update({
                 'status': 'Completed',

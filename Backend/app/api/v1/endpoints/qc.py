@@ -114,3 +114,17 @@ async def get_inspection(
         return await QCService.get_inspection_by_id(inspection_id)
     except Exception as e:
         raise HTTPException(status_code=404, detail=str(e))
+
+@router.delete("/{inspection_id}")
+async def delete_inspection(
+    inspection_id: str,
+    current_user: UserResponse = Depends(require_role(["Supervisor", "Worker"])),
+    _module_guard: UserResponse = Depends(require_worker_module_access("qc"))
+):
+    """
+    Cancel an existing QC inspection.
+    """
+    try:
+        return await QCService.delete_inspection(inspection_id, current_user.id)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))

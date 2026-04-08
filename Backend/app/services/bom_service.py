@@ -500,7 +500,7 @@ class BOMService:
     
     @staticmethod
     async def delete_bom(bom_id: str) -> dict:
-        """Delete BOM (HARD delete to ensure removal)."""
+        """Delete BOM (Soft delete to prevent foreign key errors)."""
         db = get_db()
         
         # Check if BOM exists
@@ -509,14 +509,8 @@ class BOMService:
             # If not found, return success anyway to be idempotent
             return {"message": "BOM deleted successfully"}
         
-        # 1. Delete associated materials first (Hard Delete)
-        db.table('bom_materials').delete().eq('bom_id', bom_id).execute()
-        
-        # 2. Delete versions (Hard Delete)
-        db.table('bom_versions').delete().eq('bom_id', bom_id).execute()
-
-        # 3. Delete the BOM header (Hard Delete)
-        db.table('boms').delete().eq('id', bom_id).execute()
+        # 1. Soft delete the BOM header
+        db.table('boms').update({'is_active': False}).eq('id', bom_id).execute()
         
         return {"message": "BOM deleted successfully"}
     

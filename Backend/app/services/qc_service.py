@@ -353,3 +353,24 @@ class QCService:
         
         raise ValueError(f"Order '{order_number}' not found")
 
+
+    @staticmethod
+    async def delete_inspection(inspection_id: str, user_id: str) -> dict:
+        """Cancel a QC inspection softly."""
+        db = get_db()
+        existing = db.table('qc_inspections').select('id, status').eq('id', inspection_id).execute()
+        if not existing.data:
+            raise NotFoundException(detail="Inspection not found")
+        
+        if existing.data[0]['status'] == 'Cancelled':
+            return {"message": "Inspection already cancelled"}
+            
+        db.table('qc_inspections').update({
+            'status': 'Cancelled',
+            'updated_at': datetime.utcnow().isoformat()
+        }).eq('id', inspection_id).execute()
+        
+        from app.services.dashboard_service import DashboardService
+        await DashboardService.broadcast_kpis_update()
+        
+        return {"message": "Inspection cancelled successfully"}
