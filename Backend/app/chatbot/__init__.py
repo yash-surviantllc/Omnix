@@ -1,0 +1,1 @@
+# Chatbot package - modules are loaded lazily on first use

@@ -21,7 +21,9 @@ from app.api.v1.endpoints import (
     websockets,
     qc,
     stages,
-    shifts
+    shifts,
+    chat,
+    finished_goods
 )
 
 api_router = APIRouter()
@@ -170,4 +172,18 @@ api_router.include_router(
     shifts.router,
     prefix="/shifts",
     tags=["Shift Management"]
+)
+
+# Chatbot routes
+api_router.include_router(
+    chat.router,
+    prefix="/chat",
+    tags=["Chatbot"]
+)
+
+# Finished Goods routes
+api_router.include_router(
+    finished_goods.router,
+    prefix="/finished-goods",
+    tags=["Finished Goods"]
 )

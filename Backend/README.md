@@ -18,8 +18,14 @@ Handles the lifecycle of production orders, workstation management, and real-tim
 ### Inventory
 Manages stock levels, material transactions, and reorder alerts.
 
+### AI Chatbot (OMNIX Assistant)
+Integrated AI agent powered by LangGraph and Google Gemini. It uses a state-of-the-art graph-based architecture to provide contextual guidance and automated data lookups.
+
 ### Notifications
 A centralized system for triggering and delivering operational alerts across the platform.
+
+### Finished Goods
+Tracking of production completion and dispatch-ready inventory.
 
 ## Setup
 

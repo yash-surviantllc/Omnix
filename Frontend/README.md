@@ -16,8 +16,9 @@ This is the React-based frontend application for the OMNIX Manufacturing Operati
 
 - **Dynamic WIP Board**: Kanban interface for tracking production stages.
 - **Inventory Dashboard**: Real-time stock visibility and transaction history.
+- **AI Chat Assistant**: Integrated helper for module navigation and inventory lookups with Markdown support.
 - **Role-Based Access**: Specialized views for Administrators and Workers.
-- **Localization**: Full support for Hindi and English.
+- **Localization**: Comprehensive support for 8 regional languages (English, Hindi, Kannada, Tamil, Telugu, Marathi, Gujarati, Punjabi).
 
 ## Running the code
 

@@ -6,6 +6,7 @@ OMNIX is a comprehensive Manufacturing Operations System designed to streamline 
 
 ### Production and Workflow Management
 - **Dashboard**: Real-time visualization of production metrics and key performance indicators (KPIs).
+- **AI Assistant**: Intelligent chatbot powered by Google Gemini and LangGraph for module guidance, data lookup, and workflow support.
 - **Purchase Orders**: Systematic management of production orders from planning to completion.
 - **WIP Board**: Visual tracking of production stages using a configurable Kanban-style interface.
 - **BOM Planner**: Management of Bill of Materials and component requirements.
@@ -18,7 +19,7 @@ OMNIX is a comprehensive Manufacturing Operations System designed to streamline 
 
 ### Platform Capabilities
 - **Real-time Synchronization**: Live updates and notifications powered by WebSockets.
-- **Multi-language Interface**: Support for multiple regional languages to cater to diverse workforces.
+- **Multi-language Interface**: Support for 8 regional languages (English, Hindi, Kannada, Tamil, Telugu, Marathi, Gujarati, Punjabi).
 - **Role-Based Access Control**: Secure, granular permissions for administrative and operational staff.
 
 ---
@@ -27,6 +28,8 @@ OMNIX is a comprehensive Manufacturing Operations System designed to streamline 
 
 ### Backend
 - **Framework**: FastAPI (Python)
+- **AI Engine**: LangGraph and LangChain for agentic workflows
+- **LLM**: Google Gemini (Pro & Flash)
 - **Database**: PostgreSQL (Supabase)
 - **Real-time**: WebSockets
 - **Authentication**: JWT with secure token management
